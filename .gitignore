@@ -1,0 +1,51 @@
+# Unity generated
+/[Ll]ibrary/
+/[Tt]emp/
+/[Oo]bj/
+/[Bb]uild/
+/[Bb]uilds/
+/[Ll]ogs/
+/[Uu]ser[Ss]ettings/
+/[Mm]emoryCaptures/
+/[Rr]ecordings/
+/Captures/
+/TestResults*.xml
+
+# IDEs
+.vs/
+.vscode/
+.idea/
+*.csproj
+*.unityproj
+*.sln
+*.slnx
+*.suo
+*.user
+*.userprefs
+*.pidb
+*.booproj
+*.svd
+*.pdb
+*.mdb
+*.opendb
+*.VC.db
+.consulo/
+
+# Unity crash / build artefacts
+sysinfo.txt
+*.apk
+*.aab
+*.unitypackage
+*.app
+crashlytics-buildid.txt
+/[Aa]ssets/[Ss]treamingAssets/aa.meta
+/[Aa]ssets/[Ss]treamingAssets/aa/*
+
+# Art generator scratch (stage-1 bakes, previews, .blend exports): reproducible from ArtSource scripts
+/ArtSource/**/Build/
+__pycache__/
+*.pyc
+
+# OS
+.DS_Store
+Thumbs.db

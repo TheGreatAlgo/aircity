@@ -1,0 +1,344 @@
+{
+  "name": "Mower",
+  "displayName": "Grass mower",
+  "kind": "Mower",
+  "bounds": {
+    "min": [
+      -2.62,
+      -0.0213,
+      -5.42
+    ],
+    "max": [
+      2.62,
+      3.37,
+      4.12
+    ]
+  },
+  "wheelbase": 2.6,
+  "wheels": [
+    {
+      "name": "Wheel_FL",
+      "centre": [
+        -0.92,
+        0.58,
+        2.6
+      ],
+      "radius": 0.58,
+      "steerable": true
+    },
+    {
+      "name": "Wheel_FR",
+      "centre": [
+        0.92,
+        0.58,
+        2.6
+      ],
+      "radius": 0.58,
+      "steerable": true
+    },
+    {
+      "name": "Wheel_RL",
+      "centre": [
+        -0.98,
+        0.84,
+        0.0
+      ],
+      "radius": 0.84,
+      "steerable": false
+    },
+    {
+      "name": "Wheel_RR",
+      "centre": [
+        0.98,
+        0.84,
+        0.0
+      ],
+      "radius": 0.84,
+      "steerable": false
+    }
+  ],
+  "spinners": [],
+  "lights": [
+    {
+      "name": "Beacon",
+      "type": "Beacon",
+      "position": [
+        0.0,
+        3.27,
+        -0.42
+      ],
+      "direction": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "color": "#FF9A10",
+      "size": 1.1,
+      "phase": 0.0
+    },
+    {
+      "name": "Road_L",
+      "type": "Head",
+      "position": [
+        -0.62,
+        2.94,
+        1.66
+      ],
+      "direction": [
+        0.0,
+        -0.05,
+        1.0
+      ],
+      "color": "#FFF4E0",
+      "size": 0.8,
+      "phase": 0.0
+    },
+    {
+      "name": "Road_R",
+      "type": "Head",
+      "position": [
+        0.62,
+        2.94,
+        1.66
+      ],
+      "direction": [
+        0.0,
+        -0.05,
+        1.0
+      ],
+      "color": "#FFF4E0",
+      "size": 0.8,
+      "phase": 0.0
+    },
+    {
+      "name": "Headlight_L",
+      "type": "Head",
+      "position": [
+        -0.27,
+        1.38,
+        3.99
+      ],
+      "direction": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "color": "#FFF4E0",
+      "size": 0.7,
+      "phase": 0.0
+    },
+    {
+      "name": "Headlight_R",
+      "type": "Head",
+      "position": [
+        0.27,
+        1.38,
+        3.99
+      ],
+      "direction": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "color": "#FFF4E0",
+      "size": 0.7,
+      "phase": 0.0
+    },
+    {
+      "name": "Work_FL",
+      "type": "Work",
+      "position": [
+        -0.78,
+        3.03,
+        1.64
+      ],
+      "direction": [
+        -0.2,
+        -0.55,
+        0.8
+      ],
+      "color": "#FFFFFF",
+      "size": 0.8,
+      "phase": 0.0
+    },
+    {
+      "name": "Work_FR",
+      "type": "Work",
+      "position": [
+        0.78,
+        3.03,
+        1.64
+      ],
+      "direction": [
+        0.2,
+        -0.55,
+        0.8
+      ],
+      "color": "#FFFFFF",
+      "size": 0.8,
+      "phase": 0.0
+    },
+    {
+      "name": "Work_RL",
+      "type": "Work",
+      "position": [
+        -0.78,
+        3.03,
+        -0.66
+      ],
+      "direction": [
+        -0.35,
+        -0.55,
+        -0.75
+      ],
+      "color": "#FFFFFF",
+      "size": 0.8,
+      "phase": 0.0
+    },
+    {
+      "name": "Work_RR",
+      "type": "Work",
+      "position": [
+        0.78,
+        3.03,
+        -0.66
+      ],
+      "direction": [
+        0.35,
+        -0.55,
+        -0.75
+      ],
+      "color": "#FFFFFF",
+      "size": 0.8,
+      "phase": 0.0
+    },
+    {
+      "name": "Tail_L",
+      "type": "Tail",
+      "position": [
+        -1.0,
+        1.62,
+        -0.62
+      ],
+      "direction": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "color": "#FF1A12",
+      "size": 0.6,
+      "phase": 0.0
+    },
+    {
+      "name": "Tail_R",
+      "type": "Tail",
+      "position": [
+        1.0,
+        1.62,
+        -0.62
+      ],
+      "direction": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "color": "#FF1A12",
+      "size": 0.6,
+      "phase": 0.0
+    },
+    {
+      "name": "MowerTail_L",
+      "type": "Tail",
+      "position": [
+        -0.95,
+        0.78,
+        -4.96
+      ],
+      "direction": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "color": "#FF1A12",
+      "size": 0.6,
+      "phase": 0.0
+    },
+    {
+      "name": "MowerTail_R",
+      "type": "Tail",
+      "position": [
+        0.95,
+        0.78,
+        -4.96
+      ],
+      "direction": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "color": "#FF1A12",
+      "size": 0.6,
+      "phase": 0.0
+    },
+    {
+      "name": "Marker_L",
+      "type": "Marker",
+      "position": [
+        -2.59,
+        0.86,
+        -2.45
+      ],
+      "direction": [
+        -1.0,
+        0.0,
+        0.0
+      ],
+      "color": "#FF8A10",
+      "size": 0.5,
+      "phase": 0.0
+    },
+    {
+      "name": "Marker_R",
+      "type": "Marker",
+      "position": [
+        2.59,
+        0.86,
+        -2.45
+      ],
+      "direction": [
+        1.0,
+        0.0,
+        0.0
+      ],
+      "color": "#FF8A10",
+      "size": 0.5,
+      "phase": 0.0
+    }
+  ],
+  "work": {
+    "laneWidth": 4.4,
+    "workSpeed": 4.2,
+    "transitSpeed": 8.0,
+    "turnRadius": 7.0,
+    "sprayPoint": [
+      0.0,
+      0.25,
+      -5.0
+    ],
+    "sprayDirection": [
+      0.0,
+      0.3,
+      -1.0
+    ],
+    "broomPoint": [
+      0.0,
+      0.0,
+      0.0
+    ]
+  },
+  "parking": [
+    0.0,
+    0.0,
+    0.0
+  ]
+}

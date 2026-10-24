@@ -1,0 +1,764 @@
+{
+  "model": "Narrowbody",
+  "displayName": "Narrowbody twinjet",
+  "category": "Airliner",
+  "bounds": {
+    "min": [
+      -17.9129,
+      -0.03,
+      -19.9
+    ],
+    "max": [
+      17.9129,
+      11.55,
+      17.74
+    ]
+  },
+  "atlasSize": 2048,
+  "texelsPerMetre": 53.3928337097168,
+  "detail": "Textures/Narrowbody_Detail.png",
+  "dirt": "Textures/Narrowbody_Dirt.png",
+  "registrationDirt": "Textures/Narrowbody_RegistrationDirt.png",
+  "logoUV": "Textures/Narrowbody_LogoUV.png",
+  "logoBox": [
+    31.4,
+    35.2,
+    6.6,
+    10.3
+  ],
+  "groundShadow": "Textures/Narrowbody_GroundShadow.png",
+  "font": "../Shared/RegistrationFont.regfont",
+  "defaultBody": "Textures/Narrowbody_Body_Default.png",
+  "defaultRegistration": "Textures/Narrowbody_Registration_Default.png",
+  "uvTemplate": "Textures/Narrowbody_UV_Template.png",
+  "schemes": [
+    {
+      "style": "Classic",
+      "mask": "Textures/Narrowbody_Mask_Classic.png",
+      "registrationBox": [
+        26.6,
+        29.5,
+        -1.02,
+        -0.67
+      ]
+    },
+    {
+      "style": "Swoosh",
+      "mask": "Textures/Narrowbody_Mask_Swoosh.png",
+      "registrationBox": [
+        24.5,
+        27.4,
+        1.15,
+        1.5
+      ]
+    },
+    {
+      "style": "TwoTone",
+      "mask": "Textures/Narrowbody_Mask_TwoTone.png",
+      "registrationBox": [
+        26.6,
+        29.5,
+        0.3,
+        0.65
+      ]
+    },
+    {
+      "style": "Trainer",
+      "mask": "Textures/Narrowbody_Mask_Trainer.png",
+      "registrationBox": [
+        26.6,
+        29.5,
+        0.3,
+        0.65
+      ]
+    }
+  ],
+  "registration": {
+    "textureWidth": 768,
+    "halfHeight": 268,
+    "port": {
+      "crop": [
+        0.6351000070571899,
+        0.05535455793142319,
+        0.8718892335891724,
+        0.13813136518001556
+      ],
+      "k": 0.02654365963817002,
+      "tu": 0.0009818569079749924,
+      "tv": 0.09008467383217844,
+      "sign": 1.0
+    },
+    "starboard": {
+      "crop": [
+        0.1281161904335022,
+        0.24471086263656616,
+        0.36490538716316223,
+        0.32748767733573914
+      ],
+      "k": 0.026543655770481102,
+      "tu": 0.9990234456250219,
+      "tv": 0.2794409794323638,
+      "sign": -1.0
+    }
+  },
+  "examples": [
+    {
+      "name": "ClassicBlue",
+      "style": "Classic",
+      "baseColor": "#F4F4F1",
+      "color1": "#1B2A5C",
+      "color2": "#C9A13A",
+      "color3": "#1B2A5C",
+      "registrationColor": "#1B2A5C",
+      "registration": "N172CB",
+      "logo": ""
+    },
+    {
+      "name": "SunsetRed",
+      "style": "Classic",
+      "baseColor": "#F5F3EE",
+      "color1": "#A3141B",
+      "color2": "#3A3A3E",
+      "color3": "#A3141B",
+      "registrationColor": "#2B2B2E",
+      "registration": "N4721R",
+      "logo": "../../Liveries/Logos/SunsetRed.png"
+    },
+    {
+      "name": "SkyhawkSP",
+      "style": "Swoosh",
+      "baseColor": "#F6F6F4",
+      "color1": "#1D3E72",
+      "color2": "#8E98A6",
+      "color3": "#1D3E72",
+      "registrationColor": "#1D3E72",
+      "registration": "N652SP",
+      "logo": ""
+    },
+    {
+      "name": "FlightSchool",
+      "style": "Trainer",
+      "baseColor": "#F7F7F5",
+      "color1": "#C62026",
+      "color2": "#C62026",
+      "color3": "#1F2F57",
+      "registrationColor": "#1F2F57",
+      "registration": "N35FS",
+      "logo": ""
+    },
+    {
+      "name": "RegionalAir",
+      "style": "TwoTone",
+      "baseColor": "#F7F7F4",
+      "color1": "#B8BEC6",
+      "color2": "#0F6B4F",
+      "color3": "#0F6B4F",
+      "registrationColor": "#0F6B4F",
+      "registration": "N208RA",
+      "logo": "../../Liveries/Logos/RegionalAir.png"
+    },
+    {
+      "name": "BushYellow",
+      "style": "TwoTone",
+      "baseColor": "#F1B91C",
+      "color1": "#1E1E1E",
+      "color2": "#F7F7F4",
+      "color3": "#1E1E1E",
+      "registrationColor": "#1E1E1E",
+      "registration": "C-FBSH",
+      "logo": ""
+    }
+  ],
+  "gear": {
+    "wheels": [
+      {
+        "name": "Wheel_Nose_L",
+        "position": [
+          -0.27,
+          0.36,
+          12.64
+        ],
+        "radius": 0.38,
+        "steerable": true
+      },
+      {
+        "name": "Wheel_Nose_R",
+        "position": [
+          0.27,
+          0.36,
+          12.64
+        ],
+        "radius": 0.38,
+        "steerable": true
+      },
+      {
+        "name": "Wheel_L1",
+        "position": [
+          -3.35,
+          0.555,
+          -0.0
+        ],
+        "radius": 0.585,
+        "steerable": false
+      },
+      {
+        "name": "Wheel_L2",
+        "position": [
+          -4.25,
+          0.555,
+          -0.0
+        ],
+        "radius": 0.585,
+        "steerable": false
+      },
+      {
+        "name": "Wheel_R1",
+        "position": [
+          3.35,
+          0.555,
+          -0.0
+        ],
+        "radius": 0.585,
+        "steerable": false
+      },
+      {
+        "name": "Wheel_R2",
+        "position": [
+          4.25,
+          0.555,
+          -0.0
+        ],
+        "radius": 0.585,
+        "steerable": false
+      }
+    ],
+    "steeringPivot": [
+      -0.0,
+      0.0,
+      12.64
+    ],
+    "maxSteeringAngle": 75.0
+  },
+  "performance": {
+    "takeoffDistance": 2100.0,
+    "landingDistance": 1500.0,
+    "maxTakeoffMass": 78000.0,
+    "unpavedRunways": false
+  },
+  "points": [
+    {
+      "name": "Door_L1",
+      "type": "PassengerDoor",
+      "position": [
+        -1.471,
+        2.62,
+        12.14
+      ],
+      "normal": [
+        -1.0,
+        0.0,
+        -0.0
+      ],
+      "size": [
+        0.81,
+        1.85
+      ]
+    },
+    {
+      "name": "Door_R1",
+      "type": "PassengerDoor",
+      "position": [
+        1.471,
+        2.62,
+        12.14
+      ],
+      "normal": [
+        1.0,
+        0.0,
+        -0.0
+      ],
+      "size": [
+        0.81,
+        1.85
+      ]
+    },
+    {
+      "name": "Door_L2",
+      "type": "PassengerDoor",
+      "position": [
+        -0.5839,
+        2.72,
+        -13.21
+      ],
+      "normal": [
+        -1.0,
+        0.0,
+        -0.0
+      ],
+      "size": [
+        0.81,
+        1.85
+      ]
+    },
+    {
+      "name": "Door_R2",
+      "type": "PassengerDoor",
+      "position": [
+        0.5839,
+        2.72,
+        -13.21
+      ],
+      "normal": [
+        1.0,
+        0.0,
+        -0.0
+      ],
+      "size": [
+        0.81,
+        1.85
+      ]
+    },
+    {
+      "name": "Cargo_Fwd",
+      "type": "CargoDoor",
+      "position": [
+        0.4233,
+        1.95,
+        6.44
+      ],
+      "normal": [
+        1.0,
+        0.0,
+        -0.0
+      ],
+      "size": [
+        1.8,
+        1.24
+      ]
+    },
+    {
+      "name": "Cargo_Aft",
+      "type": "CargoDoor",
+      "position": [
+        0.414,
+        1.95,
+        -5.46
+      ],
+      "normal": [
+        1.0,
+        0.0,
+        -0.0
+      ],
+      "size": [
+        1.8,
+        1.24
+      ]
+    },
+    {
+      "name": "Fuel",
+      "type": "Fuel",
+      "position": [
+        8.0,
+        2.7911,
+        0.2166
+      ],
+      "normal": [
+        -0.0,
+        -1.0,
+        -0.0
+      ],
+      "size": [
+        0.3,
+        0.3
+      ]
+    },
+    {
+      "name": "GPU",
+      "type": "GroundPower",
+      "position": [
+        0.55,
+        2.0172,
+        13.84
+      ],
+      "normal": [
+        0.4,
+        -0.9,
+        -0.0
+      ],
+      "size": [
+        0.2,
+        0.2
+      ]
+    },
+    {
+      "name": "Water",
+      "type": "Water",
+      "position": [
+        -0.6,
+        1.9753,
+        -8.76
+      ],
+      "normal": [
+        -0.4,
+        -0.9,
+        -0.0
+      ],
+      "size": [
+        0.15,
+        0.15
+      ]
+    },
+    {
+      "name": "Lav",
+      "type": "Lavatory",
+      "position": [
+        0.6,
+        2.27,
+        -11.26
+      ],
+      "normal": [
+        0.4,
+        -0.9,
+        -0.0
+      ],
+      "size": [
+        0.15,
+        0.15
+      ]
+    },
+    {
+      "name": "TowBar",
+      "type": "TowAttach",
+      "position": [
+        -0.0,
+        0.36,
+        12.84
+      ],
+      "normal": [
+        -0.0,
+        0.0,
+        1.0
+      ],
+      "size": [
+        0,
+        0
+      ]
+    },
+    {
+      "name": "Chock_Nose",
+      "type": "WheelChock",
+      "position": [
+        -0.0,
+        0.0,
+        12.64
+      ],
+      "normal": [
+        -0.0,
+        0.0,
+        1.0
+      ],
+      "size": [
+        0.6,
+        0
+      ]
+    },
+    {
+      "name": "Chock_L",
+      "type": "WheelChock",
+      "position": [
+        -3.8,
+        0.0,
+        -0.0
+      ],
+      "normal": [
+        -0.0,
+        0.0,
+        1.0
+      ],
+      "size": [
+        1.3,
+        0
+      ]
+    },
+    {
+      "name": "Chock_R",
+      "type": "WheelChock",
+      "position": [
+        3.8,
+        0.0,
+        -0.0
+      ],
+      "normal": [
+        -0.0,
+        0.0,
+        1.0
+      ],
+      "size": [
+        1.3,
+        0
+      ]
+    }
+  ],
+  "lights": [
+    {
+      "name": "Nav_L",
+      "type": "Navigation",
+      "position": [
+        -16.95,
+        3.7953,
+        -3.3404
+      ],
+      "direction": [
+        -0.82,
+        0.0,
+        0.57
+      ],
+      "spread": 110,
+      "color": [
+        1.0,
+        0.08,
+        0.05
+      ]
+    },
+    {
+      "name": "Nav_R",
+      "type": "Navigation",
+      "position": [
+        16.95,
+        3.7953,
+        -3.3404
+      ],
+      "direction": [
+        0.82,
+        0.0,
+        0.57
+      ],
+      "spread": 110,
+      "color": [
+        0.15,
+        1.0,
+        0.35
+      ]
+    },
+    {
+      "name": "Nav_Tail",
+      "type": "Navigation",
+      "position": [
+        -0.0,
+        4.5,
+        -19.84
+      ],
+      "direction": [
+        -0.0,
+        0.0,
+        -1.0
+      ],
+      "spread": 140,
+      "color": [
+        1.0,
+        0.97,
+        0.9
+      ]
+    },
+    {
+      "name": "Strobe_L",
+      "type": "Strobe",
+      "position": [
+        -16.93,
+        3.8053,
+        -3.6604
+      ],
+      "direction": [
+        -0.0,
+        1.0,
+        -0.0
+      ],
+      "spread": 360,
+      "color": [
+        1.0,
+        0.97,
+        0.9
+      ]
+    },
+    {
+      "name": "Strobe_R",
+      "type": "Strobe",
+      "position": [
+        16.93,
+        3.8053,
+        -3.6604
+      ],
+      "direction": [
+        -0.0,
+        1.0,
+        -0.0
+      ],
+      "spread": 360,
+      "color": [
+        1.0,
+        0.97,
+        0.9
+      ]
+    },
+    {
+      "name": "Strobe_Tail",
+      "type": "Strobe",
+      "position": [
+        -0.0,
+        4.62,
+        -19.86
+      ],
+      "direction": [
+        -0.0,
+        0.0,
+        -1.0
+      ],
+      "spread": 360,
+      "color": [
+        1.0,
+        0.97,
+        0.9
+      ]
+    },
+    {
+      "name": "Beacon_Top",
+      "type": "Beacon",
+      "position": [
+        -0.0,
+        6.19,
+        0.74
+      ],
+      "direction": [
+        -0.0,
+        1.0,
+        -0.0
+      ],
+      "spread": 360,
+      "color": [
+        1.0,
+        0.08,
+        0.05
+      ]
+    },
+    {
+      "name": "Beacon_Bottom",
+      "type": "Beacon",
+      "position": [
+        -0.0,
+        1.64,
+        -1.76
+      ],
+      "direction": [
+        -0.0,
+        -1.0,
+        -0.0
+      ],
+      "spread": 360,
+      "color": [
+        1.0,
+        0.08,
+        0.05
+      ]
+    },
+    {
+      "name": "Landing_L",
+      "type": "Landing",
+      "position": [
+        -3.0,
+        2.1217,
+        3.34
+      ],
+      "direction": [
+        -0.0,
+        -0.18,
+        0.98
+      ],
+      "spread": 25,
+      "color": [
+        1.0,
+        0.97,
+        0.9
+      ]
+    },
+    {
+      "name": "Landing_R",
+      "type": "Landing",
+      "position": [
+        3.0,
+        2.1217,
+        3.34
+      ],
+      "direction": [
+        -0.0,
+        -0.18,
+        0.98
+      ],
+      "spread": 25,
+      "color": [
+        1.0,
+        0.97,
+        0.9
+      ]
+    },
+    {
+      "name": "Taxi",
+      "type": "Taxi",
+      "position": [
+        -0.0,
+        1.15,
+        12.84
+      ],
+      "direction": [
+        -0.0,
+        -0.24,
+        0.97
+      ],
+      "spread": 50,
+      "color": [
+        1.0,
+        0.97,
+        0.9
+      ]
+    },
+    {
+      "name": "Logo_L",
+      "type": "Logo",
+      "position": [
+        -2.2,
+        5.12,
+        -15.86
+      ],
+      "direction": [
+        0.45,
+        0.86,
+        -0.25
+      ],
+      "spread": 35,
+      "color": [
+        1.0,
+        0.97,
+        0.9
+      ]
+    },
+    {
+      "name": "Logo_R",
+      "type": "Logo",
+      "position": [
+        2.2,
+        5.12,
+        -15.86
+      ],
+      "direction": [
+        -0.45,
+        0.86,
+        -0.25
+      ],
+      "spread": 35,
+      "color": [
+        1.0,
+        0.97,
+        0.9
+      ]
+    }
+  ]
+}

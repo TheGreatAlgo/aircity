@@ -1,0 +1,26 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2b32a8c27c30c4beb8a27e7bf6e3f5f3, type: 3}
+  m_Name: RegionalAir
+  m_EditorClassIdentifier: AirCity.Runtime::AirCity.Aircraft.AircraftLiveryAsset
+  livery:
+    style: 2
+    baseColor: {r: 0.96862745, g: 0.96862745, b: 0.95686275, a: 1}
+    color1: {r: 0.72156864, g: 0.74509805, b: 0.7764706, a: 1}
+    color2: {r: 0.05882353, g: 0.41960785, b: 0.30980393, a: 1}
+    color3: {r: 0.05882353, g: 0.41960785, b: 0.30980393, a: 1}
+    registrationColor: {r: 0.05882353, g: 0.41960785, b: 0.30980393, a: 1}
+    defaultRegistration: N208RA
+    paintSmoothness: 0.55
+    logo: {fileID: 2800000, guid: b3b836f26efed4def898d6e2d0f151b2, type: 3}
+    customMask: {fileID: 0}
+    customAlbedo: {fileID: 0}

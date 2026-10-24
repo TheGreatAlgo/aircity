@@ -1,0 +1,167 @@
+{
+  "name": "Depot",
+  "displayName": "Maintenance depot",
+  "kind": "Depot",
+  "bounds": {
+    "min": [
+      -23.57,
+      0.0,
+      -24.45
+    ],
+    "max": [
+      23.6,
+      10.5,
+      1.6
+    ]
+  },
+  "wheelbase": 0.0,
+  "wheels": [],
+  "spinners": [],
+  "lights": [
+    {
+      "name": "Flood_0",
+      "type": "Flood",
+      "position": [
+        -18.0,
+        7.55,
+        0.55
+      ],
+      "direction": [
+        0.0,
+        -1.0,
+        0.55
+      ],
+      "color": "#FFF1D8",
+      "size": 1.1,
+      "phase": 0.0
+    },
+    {
+      "name": "Flood_1",
+      "type": "Flood",
+      "position": [
+        -9.5,
+        7.55,
+        0.55
+      ],
+      "direction": [
+        0.0,
+        -1.0,
+        0.55
+      ],
+      "color": "#FFF1D8",
+      "size": 1.1,
+      "phase": 0.0
+    },
+    {
+      "name": "Flood_2",
+      "type": "Flood",
+      "position": [
+        -1.0,
+        7.55,
+        0.55
+      ],
+      "direction": [
+        0.0,
+        -1.0,
+        0.55
+      ],
+      "color": "#FFF1D8",
+      "size": 1.1,
+      "phase": 0.0
+    },
+    {
+      "name": "Flood_3",
+      "type": "Flood",
+      "position": [
+        7.5,
+        7.55,
+        0.55
+      ],
+      "direction": [
+        0.0,
+        -1.0,
+        0.55
+      ],
+      "color": "#FFF1D8",
+      "size": 1.1,
+      "phase": 0.0
+    },
+    {
+      "name": "Flood_Office",
+      "type": "Flood",
+      "position": [
+        17.0,
+        4.2,
+        0.55
+      ],
+      "direction": [
+        0.0,
+        -1.0,
+        0.55
+      ],
+      "color": "#FFF1D8",
+      "size": 1.0,
+      "phase": 0.0
+    }
+  ],
+  "work": {},
+  "parking": [
+    0.0,
+    0.0,
+    0.0
+  ],
+  "doors": [
+    {
+      "name": "Door_0",
+      "position": [
+        -18.0,
+        0.0,
+        0.0
+      ],
+      "width": 6.5,
+      "height": 6.4
+    },
+    {
+      "name": "Door_1",
+      "position": [
+        -9.5,
+        0.0,
+        0.0
+      ],
+      "width": 6.5,
+      "height": 6.4
+    },
+    {
+      "name": "Door_2",
+      "position": [
+        -1.0,
+        0.0,
+        0.0
+      ],
+      "width": 6.5,
+      "height": 6.4
+    },
+    {
+      "name": "Door_3",
+      "position": [
+        7.5,
+        0.0,
+        0.0
+      ],
+      "width": 6.5,
+      "height": 6.4
+    }
+  ],
+  "interior": {
+    "min": [
+      -22.75,
+      0.0,
+      -23.75
+    ],
+    "max": [
+      11.5,
+      8.3,
+      -0.25
+    ]
+  }
+}

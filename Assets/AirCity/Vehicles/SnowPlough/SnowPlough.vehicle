@@ -1,0 +1,371 @@
+{
+  "name": "SnowPlough",
+  "displayName": "Runway snow plough",
+  "kind": "SnowPlough",
+  "bounds": {
+    "min": [
+      -3.1233,
+      -0.025,
+      -1.984
+    ],
+    "max": [
+      3.1905,
+      4.05,
+      11.6553
+    ]
+  },
+  "wheelbase": 6.2,
+  "wheels": [
+    {
+      "name": "Wheel_FL",
+      "centre": [
+        -1.04,
+        0.56,
+        6.2
+      ],
+      "radius": 0.56,
+      "steerable": true
+    },
+    {
+      "name": "Wheel_FR",
+      "centre": [
+        1.04,
+        0.56,
+        6.2
+      ],
+      "radius": 0.56,
+      "steerable": true
+    },
+    {
+      "name": "Wheel_RL",
+      "centre": [
+        -1.04,
+        0.56,
+        0.0
+      ],
+      "radius": 0.56,
+      "steerable": false
+    },
+    {
+      "name": "Wheel_RR",
+      "centre": [
+        1.04,
+        0.56,
+        0.0
+      ],
+      "radius": 0.56,
+      "steerable": false
+    }
+  ],
+  "spinners": [
+    {
+      "name": "Broom",
+      "axis": [
+        0.866,
+        0.0,
+        0.5
+      ],
+      "rpm": 380.0
+    }
+  ],
+  "lights": [
+    {
+      "name": "PloughLight_L",
+      "type": "Head",
+      "position": [
+        -0.98,
+        3.78,
+        8.38
+      ],
+      "direction": [
+        0.0,
+        -0.06,
+        1.0
+      ],
+      "color": "#FFF4E0",
+      "size": 1.0,
+      "phase": 0.0
+    },
+    {
+      "name": "PloughLight_R",
+      "type": "Head",
+      "position": [
+        0.98,
+        3.78,
+        8.38
+      ],
+      "direction": [
+        0.0,
+        -0.06,
+        1.0
+      ],
+      "color": "#FFF4E0",
+      "size": 1.0,
+      "phase": 0.0
+    },
+    {
+      "name": "Headlight_L",
+      "type": "Head",
+      "position": [
+        -0.92,
+        1.12,
+        8.8
+      ],
+      "direction": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "color": "#FFF4E0",
+      "size": 0.8,
+      "phase": 0.0
+    },
+    {
+      "name": "Headlight_R",
+      "type": "Head",
+      "position": [
+        0.92,
+        1.12,
+        8.8
+      ],
+      "direction": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "color": "#FFF4E0",
+      "size": 0.8,
+      "phase": 0.0
+    },
+    {
+      "name": "Tail_L",
+      "type": "Tail",
+      "position": [
+        -1.08,
+        0.95,
+        -1.98
+      ],
+      "direction": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "color": "#FF1A12",
+      "size": 0.7,
+      "phase": 0.0
+    },
+    {
+      "name": "Tail_R",
+      "type": "Tail",
+      "position": [
+        1.08,
+        0.95,
+        -1.98
+      ],
+      "direction": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "color": "#FF1A12",
+      "size": 0.7,
+      "phase": 0.0
+    },
+    {
+      "name": "TailHigh_L",
+      "type": "Tail",
+      "position": [
+        -0.98,
+        2.42,
+        -1.83
+      ],
+      "direction": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "color": "#FF1A12",
+      "size": 0.7,
+      "phase": 0.0
+    },
+    {
+      "name": "TailHigh_R",
+      "type": "Tail",
+      "position": [
+        0.98,
+        2.42,
+        -1.83
+      ],
+      "direction": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "color": "#FF1A12",
+      "size": 0.7,
+      "phase": 0.0
+    },
+    {
+      "name": "Beacon_L",
+      "type": "Beacon",
+      "position": [
+        -0.92,
+        3.86,
+        6.32
+      ],
+      "direction": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "color": "#FF9A10",
+      "size": 1.15,
+      "phase": 0.0
+    },
+    {
+      "name": "Beacon_R",
+      "type": "Beacon",
+      "position": [
+        0.92,
+        3.86,
+        6.32
+      ],
+      "direction": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "color": "#FF9A10",
+      "size": 1.15,
+      "phase": 0.37
+    },
+    {
+      "name": "Work_BladeL",
+      "type": "Work",
+      "position": [
+        -1.2,
+        3.7,
+        8.2
+      ],
+      "direction": [
+        -0.55,
+        -0.35,
+        0.75
+      ],
+      "color": "#FFFFFF",
+      "size": 0.85,
+      "phase": 0.0
+    },
+    {
+      "name": "Work_BladeR",
+      "type": "Work",
+      "position": [
+        1.2,
+        3.7,
+        8.2
+      ],
+      "direction": [
+        0.45,
+        -0.3,
+        0.85
+      ],
+      "color": "#FFFFFF",
+      "size": 0.85,
+      "phase": 0.0
+    },
+    {
+      "name": "Work_BroomL",
+      "type": "Work",
+      "position": [
+        -1.22,
+        3.55,
+        6.1
+      ],
+      "direction": [
+        -0.5,
+        -0.6,
+        -0.6
+      ],
+      "color": "#FFFFFF",
+      "size": 0.85,
+      "phase": 0.0
+    },
+    {
+      "name": "Work_BroomR",
+      "type": "Work",
+      "position": [
+        1.22,
+        3.55,
+        6.1
+      ],
+      "direction": [
+        0.5,
+        -0.6,
+        -0.6
+      ],
+      "color": "#FFFFFF",
+      "size": 0.85,
+      "phase": 0.0
+    },
+    {
+      "name": "Marker_BladeL",
+      "type": "Marker",
+      "position": [
+        -2.4381,
+        2.36,
+        8.2729
+      ],
+      "direction": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "color": "#FF8A10",
+      "size": 0.55,
+      "phase": 0.0
+    },
+    {
+      "name": "Marker_BladeR",
+      "type": "Marker",
+      "position": [
+        2.7581,
+        2.36,
+        11.2729
+      ],
+      "direction": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "color": "#FF8A10",
+      "size": 0.55,
+      "phase": 0.0
+    }
+  ],
+  "work": {
+    "laneWidth": 5.0,
+    "workSpeed": 11.0,
+    "transitSpeed": 13.9,
+    "turnRadius": 12.0,
+    "sprayPoint": [
+      -2.9414,
+      0.5,
+      8.525
+    ],
+    "sprayDirection": [
+      -0.85,
+      0.4,
+      0.35
+    ],
+    "broomPoint": [
+      -3.2579,
+      0.3,
+      1.5
+    ]
+  },
+  "parking": [
+    0.0,
+    0.0,
+    0.0
+  ]
+}

@@ -1,0 +1,142 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!1001 &3754100579003223690
+PrefabInstance:
+  m_ObjectHideFlags: 0
+  serializedVersion: 2
+  m_Modification:
+    serializedVersion: 3
+    m_TransformParent: {fileID: 0}
+    m_Modifications:
+    - target: {fileID: -8679921383154817045, guid: 014796861ac584f78ad4bf18f5d72b79, type: 3}
+      propertyPath: m_LocalPosition.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 014796861ac584f78ad4bf18f5d72b79, type: 3}
+      propertyPath: m_LocalPosition.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 014796861ac584f78ad4bf18f5d72b79, type: 3}
+      propertyPath: m_LocalPosition.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 014796861ac584f78ad4bf18f5d72b79, type: 3}
+      propertyPath: m_LocalRotation.w
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 014796861ac584f78ad4bf18f5d72b79, type: 3}
+      propertyPath: m_LocalRotation.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 014796861ac584f78ad4bf18f5d72b79, type: 3}
+      propertyPath: m_LocalRotation.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 014796861ac584f78ad4bf18f5d72b79, type: 3}
+      propertyPath: m_LocalRotation.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 014796861ac584f78ad4bf18f5d72b79, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 014796861ac584f78ad4bf18f5d72b79, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 014796861ac584f78ad4bf18f5d72b79, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 919132149155446097, guid: 014796861ac584f78ad4bf18f5d72b79, type: 3}
+      propertyPath: m_Name
+      value: Mower
+      objectReference: {fileID: 0}
+    m_RemovedComponents: []
+    m_RemovedGameObjects: []
+    m_AddedGameObjects: []
+    m_AddedComponents:
+    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 014796861ac584f78ad4bf18f5d72b79, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 6287453783687083115}
+    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 014796861ac584f78ad4bf18f5d72b79, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 456679079439836652}
+  m_SourcePrefab: {fileID: 100100000, guid: 014796861ac584f78ad4bf18f5d72b79, type: 3}
+--- !u!1 &4096119826812924891 stripped
+GameObject:
+  m_CorrespondingSourceObject: {fileID: 919132149155446097, guid: 014796861ac584f78ad4bf18f5d72b79, type: 3}
+  m_PrefabInstance: {fileID: 3754100579003223690}
+  m_PrefabAsset: {fileID: 0}
+--- !u!114 &6287453783687083115
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4096119826812924891}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a6ebc14b03b0247d785faa69708784f2, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: AirCity.Runtime::AirCity.Vehicles.VehicleLights
+  type: {fileID: -3326733738379100494, guid: a57d1a571ee3046349a0bd8c7b69b835, type: 3}
+  glowMaterial: {fileID: 2100000, guid: 4fed08e6b89714b3aa6d2009bb7b6020, type: 2}
+  headlights: 1
+  beacon: 0
+  work: 0
+  markers: 1
+  flood: 0
+  onlyAtNight: 1
+--- !u!114 &456679079439836652
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4096119826812924891}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9ad8ae71c30d84a3983265bf6e33c440, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: AirCity.Runtime::AirCity.Vehicles.Vehicle
+  type: {fileID: -3326733738379100494, guid: a57d1a571ee3046349a0bd8c7b69b835, type: 3}
+  sprayMaterial: {fileID: 2100000, guid: ab5847705c2794121880f17672bafde4, type: 2}
+  wheels:
+  - transform: {fileID: 7417423989768636877}
+    rest: {x: 0, y: 0, z: 0, w: 1}
+    radius: 0.58
+    steerable: 1
+  - transform: {fileID: 5720883172707311423}
+    rest: {x: 0, y: 0, z: 0, w: 1}
+    radius: 0.58
+    steerable: 1
+  - transform: {fileID: 7353296183314673189}
+    rest: {x: 0, y: 0, z: 0, w: 1}
+    radius: 0.84
+    steerable: 0
+  - transform: {fileID: 5362397557846058412}
+    rest: {x: 0, y: 0, z: 0, w: 1}
+    radius: 0.84
+    steerable: 0
+  spinners: []
+--- !u!4 &5362397557846058412 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: -111975652298233050, guid: 014796861ac584f78ad4bf18f5d72b79, type: 3}
+  m_PrefabInstance: {fileID: 3754100579003223690}
+  m_PrefabAsset: {fileID: 0}
+--- !u!4 &5720883172707311423 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: -324938149649591883, guid: 014796861ac584f78ad4bf18f5d72b79, type: 3}
+  m_PrefabInstance: {fileID: 3754100579003223690}
+  m_PrefabAsset: {fileID: 0}
+--- !u!4 &7353296183314673189 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: 5914661712164266159, guid: 014796861ac584f78ad4bf18f5d72b79, type: 3}
+  m_PrefabInstance: {fileID: 3754100579003223690}
+  m_PrefabAsset: {fileID: 0}
+--- !u!4 &7417423989768636877 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: -3245189568780204217, guid: 014796861ac584f78ad4bf18f5d72b79, type: 3}
+  m_PrefabInstance: {fileID: 3754100579003223690}
+  m_PrefabAsset: {fileID: 0}

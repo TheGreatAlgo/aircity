@@ -1,0 +1,18 @@
+{
+    "name": "AirCity.Editor",
+    "rootNamespace": "AirCity",
+    "references": [
+        "AirCity.Runtime"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

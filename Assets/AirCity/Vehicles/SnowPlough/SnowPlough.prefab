@@ -1,0 +1,151 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!1001 &8711914920289529609
+PrefabInstance:
+  m_ObjectHideFlags: 0
+  serializedVersion: 2
+  m_Modification:
+    serializedVersion: 3
+    m_TransformParent: {fileID: 0}
+    m_Modifications:
+    - target: {fileID: -8679921383154817045, guid: 7152dcbf26bbd47ba9622214627dc71b, type: 3}
+      propertyPath: m_LocalPosition.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 7152dcbf26bbd47ba9622214627dc71b, type: 3}
+      propertyPath: m_LocalPosition.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 7152dcbf26bbd47ba9622214627dc71b, type: 3}
+      propertyPath: m_LocalPosition.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 7152dcbf26bbd47ba9622214627dc71b, type: 3}
+      propertyPath: m_LocalRotation.w
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 7152dcbf26bbd47ba9622214627dc71b, type: 3}
+      propertyPath: m_LocalRotation.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 7152dcbf26bbd47ba9622214627dc71b, type: 3}
+      propertyPath: m_LocalRotation.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 7152dcbf26bbd47ba9622214627dc71b, type: 3}
+      propertyPath: m_LocalRotation.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 7152dcbf26bbd47ba9622214627dc71b, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 7152dcbf26bbd47ba9622214627dc71b, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 7152dcbf26bbd47ba9622214627dc71b, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 919132149155446097, guid: 7152dcbf26bbd47ba9622214627dc71b, type: 3}
+      propertyPath: m_Name
+      value: SnowPlough
+      objectReference: {fileID: 0}
+    m_RemovedComponents: []
+    m_RemovedGameObjects: []
+    m_AddedGameObjects: []
+    m_AddedComponents:
+    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 7152dcbf26bbd47ba9622214627dc71b, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 6229496126649454350}
+    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 7152dcbf26bbd47ba9622214627dc71b, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 1202751881067000570}
+  m_SourcePrefab: {fileID: 100100000, guid: 7152dcbf26bbd47ba9622214627dc71b, type: 3}
+--- !u!4 &259913618674532028 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: -324938149649591883, guid: 7152dcbf26bbd47ba9622214627dc71b, type: 3}
+  m_PrefabInstance: {fileID: 8711914920289529609}
+  m_PrefabAsset: {fileID: 0}
+--- !u!4 &474248822429385775 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: -111975652298233050, guid: 7152dcbf26bbd47ba9622214627dc71b, type: 3}
+  m_PrefabInstance: {fileID: 8711914920289529609}
+  m_PrefabAsset: {fileID: 0}
+--- !u!4 &3030981036831270990 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: -3245189568780204217, guid: 7152dcbf26bbd47ba9622214627dc71b, type: 3}
+  m_PrefabInstance: {fileID: 8711914920289529609}
+  m_PrefabAsset: {fileID: 0}
+--- !u!4 &3095073603082768294 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: 5914661712164266159, guid: 7152dcbf26bbd47ba9622214627dc71b, type: 3}
+  m_PrefabInstance: {fileID: 8711914920289529609}
+  m_PrefabAsset: {fileID: 0}
+--- !u!4 &6710301214956193994 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: 2736278793216747459, guid: 7152dcbf26bbd47ba9622214627dc71b, type: 3}
+  m_PrefabInstance: {fileID: 8711914920289529609}
+  m_PrefabAsset: {fileID: 0}
+--- !u!1 &8369827378205381208 stripped
+GameObject:
+  m_CorrespondingSourceObject: {fileID: 919132149155446097, guid: 7152dcbf26bbd47ba9622214627dc71b, type: 3}
+  m_PrefabInstance: {fileID: 8711914920289529609}
+  m_PrefabAsset: {fileID: 0}
+--- !u!114 &6229496126649454350
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8369827378205381208}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a6ebc14b03b0247d785faa69708784f2, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: AirCity.Runtime::AirCity.Vehicles.VehicleLights
+  type: {fileID: -3326733738379100494, guid: d292e0dd214bc4acaa50dc8736d19172, type: 3}
+  glowMaterial: {fileID: 2100000, guid: 4fed08e6b89714b3aa6d2009bb7b6020, type: 2}
+  headlights: 1
+  beacon: 0
+  work: 0
+  markers: 1
+  flood: 0
+  onlyAtNight: 1
+--- !u!114 &1202751881067000570
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8369827378205381208}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9ad8ae71c30d84a3983265bf6e33c440, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: AirCity.Runtime::AirCity.Vehicles.Vehicle
+  type: {fileID: -3326733738379100494, guid: d292e0dd214bc4acaa50dc8736d19172, type: 3}
+  sprayMaterial: {fileID: 2100000, guid: ab5847705c2794121880f17672bafde4, type: 2}
+  wheels:
+  - transform: {fileID: 3030981036831270990}
+    rest: {x: 0, y: 0, z: 0, w: 1}
+    radius: 0.56
+    steerable: 1
+  - transform: {fileID: 259913618674532028}
+    rest: {x: 0, y: 0, z: 0, w: 1}
+    radius: 0.56
+    steerable: 1
+  - transform: {fileID: 3095073603082768294}
+    rest: {x: 0, y: 0, z: 0, w: 1}
+    radius: 0.56
+    steerable: 0
+  - transform: {fileID: 474248822429385775}
+    rest: {x: 0, y: 0, z: 0, w: 1}
+    radius: 0.56
+    steerable: 0
+  spinners:
+  - transform: {fileID: 6710301214956193994}
+    rest: {x: 0, y: 0, z: 0, w: 1}
+    axis: {x: 0.86601907, y: 0, z: 0.500011}
+    rpm: 380

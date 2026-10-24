@@ -1,0 +1,74 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!21 &2100000
+Material:
+  serializedVersion: 8
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_Name: Dirt
+  m_Shader: {fileID: 4800000, guid: b4327f803e225436b87a6d7185f6db6e, type: 3}
+  m_Parent: {fileID: 0}
+  m_ModifiedSerializedProperties: 0
+  m_ValidKeywords:
+  - _FRINGE
+  m_InvalidKeywords: []
+  m_LightmapFlags: 4
+  m_EnableInstancingVariants: 0
+  m_DoubleSidedGI: 0
+  m_CustomRenderQueue: -1
+  stringTagMap: {}
+  disabledShaderPasses: []
+  m_LockedProperties: 
+  m_SavedProperties:
+    serializedVersion: 3
+    m_TexEnvs:
+    - _BaseMap:
+        m_Texture: {fileID: 2800000, guid: f572d4c510cbb48ca868a5e9cac4602d, type: 3}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _MacroMap:
+        m_Texture: {fileID: 2800000, guid: d870f09b9001142e9b8c5ab6113d0148, type: 3}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _MaskMap:
+        m_Texture: {fileID: 2800000, guid: 972641fa5b9d246b38cbe01090a4ddf8, type: 3}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _NormalMap:
+        m_Texture: {fileID: 2800000, guid: 5961106ebbf3d48f9b298515be611aff, type: 3}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _WornMap:
+        m_Texture: {fileID: 2800000, guid: dbf5e6d5a95694ab59d21d47706f8326, type: 3}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _WornMaskMap:
+        m_Texture: {fileID: 2800000, guid: 4002db51523174642bcedd401447c00a, type: 3}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _WornNormalMap:
+        m_Texture: {fileID: 2800000, guid: 6c580d61861e04f9d8fdc4bdec55934c, type: 3}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    m_Ints: []
+    m_Floats:
+    - _Fringe: 1
+    - _JointDarkness: 0
+    - _JointWidth: 0
+    - _MacroScale: 240
+    - _MacroStrength: 0.14
+    - _NormalStrength: 1
+    - _Porosity: 0.5
+    - _Puddles: 0.7
+    - _Rubber: 0.6
+    - _SlabVariation: 0
+    - _Smoothness: 0.3
+    - _TileSize: 2
+    m_Colors:
+    - _JointSpacing: {r: 0, g: 0, b: 0, a: 0}
+    - _RubberColor: {r: 0.2, g: 0.16, b: 0.12, a: 1}
+    - _Tint: {r: 1, g: 1, b: 1, a: 1}
+  m_BuildTextureStacks: []
+  m_AllowLocking: 1

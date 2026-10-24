@@ -1,0 +1,35 @@
+# Unity YAML: text, LF, and smart merges via UnityYAMLMerge (see README "Git setup")
+*.unity      text eol=lf merge=unityyamlmerge
+*.prefab     text eol=lf merge=unityyamlmerge
+*.asset      text eol=lf merge=unityyamlmerge
+*.mat        text eol=lf merge=unityyamlmerge
+*.anim       text eol=lf merge=unityyamlmerge
+*.controller text eol=lf merge=unityyamlmerge
+*.meta       text eol=lf merge=unityyamlmerge
+*.cs         text eol=lf diff=csharp
+*.asmdef     text eol=lf
+*.json       text eol=lf
+*.aircraft   text eol=lf
+*.regfont    text eol=lf
+*.inputactions text eol=lf
+*.py         text eol=lf
+*.md         text eol=lf
+
+# Binary art in Git LFS
+*.png  filter=lfs diff=lfs merge=lfs -text
+*.jpg  filter=lfs diff=lfs merge=lfs -text
+*.jpeg filter=lfs diff=lfs merge=lfs -text
+*.tga  filter=lfs diff=lfs merge=lfs -text
+*.tif  filter=lfs diff=lfs merge=lfs -text
+*.psd  filter=lfs diff=lfs merge=lfs -text
+*.exr  filter=lfs diff=lfs merge=lfs -text
+*.hdr  filter=lfs diff=lfs merge=lfs -text
+*.fbx  filter=lfs diff=lfs merge=lfs -text
+*.obj  filter=lfs diff=lfs merge=lfs -text
+*.blend filter=lfs diff=lfs merge=lfs -text
+*.wav  filter=lfs diff=lfs merge=lfs -text
+*.mp3  filter=lfs diff=lfs merge=lfs -text
+*.ogg  filter=lfs diff=lfs merge=lfs -text
+*.ttf  filter=lfs diff=lfs merge=lfs -text
+*.otf  filter=lfs diff=lfs merge=lfs -text
+*.mp4  filter=lfs diff=lfs merge=lfs -text

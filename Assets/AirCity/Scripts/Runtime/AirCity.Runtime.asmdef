@@ -1,0 +1,17 @@
+{
+    "name": "AirCity.Runtime",
+    "rootNamespace": "AirCity",
+    "references": [
+        "Unity.InputSystem",
+        "Unity.Burst"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
