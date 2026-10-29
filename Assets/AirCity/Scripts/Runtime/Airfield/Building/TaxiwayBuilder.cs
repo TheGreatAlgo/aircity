@@ -15,10 +15,14 @@ namespace AirCity.Airfield.Building
     ///    taxiway meets a runway;
     ///  - lit edges: blue edge lights along straights, curves and fillets; red stop bars at the holding
     ///    positions of runways with precision lighting;
-    ///  - service roads: tighter corners, white edge lines and centre dashes, a give-way marking (double dashed
-    ///    line and triangle) before every taxiway they meet, a stop line before runways, never lights;
+    ///  - roads: tighter corners, white edge lines and centre dashes (round bends too), a give-way marking (double
+    ///    dashed line and triangle) before every taxiway they meet, a stop line before runways, never lights; their
+    ///    pavement lies under paved aprons (AirfieldHeights.Road), so across an apron only the paint shows. Where
+    ///    only roads meet, the edge lines follow the kerbs round the corners, a road running straight through (the
+    ///    only one: MainRoad) keeps its centre dashes across, and every other road gives way;
     ///  - verges (BuildVerges): mown grass bands either side of paved taxiways, stopped short of junctions so
-    ///    neighbouring bands never overlap.
+    ///    neighbouring bands never overlap;
+    ///  - where stands or de-icing bays open onto a side (frontage), no verge and no edge lights.
     /// Surface submeshes are indexed by PavementSurface.
     /// </summary>
     sealed class TaxiwayBuilder
@@ -37,7 +41,7 @@ namespace AirCity.Airfield.Building
             public float leftStart, rightStart;
             public readonly List<Vector2> gap = new List<Vector2>();   // outline to the next arm (counter-clockwise)
             public bool Real => edge != null;
-            public bool Road => edge != null && edge.road;
+            public bool Road => edge != null && edge.IsRoad;
         }
 
         sealed class Joint
@@ -58,11 +62,47 @@ namespace AirCity.Airfield.Building
         readonly TaxiwayNetwork net;
         readonly IReadOnlyList<Runway> runways;
         readonly Dictionary<int, Joint> joints = new Dictionary<int, Joint>();
+        readonly IReadOnlyDictionary<TaxiwayEdge, List<(float s0, float s1, int side)>> frontage;
 
-        public TaxiwayBuilder(TaxiwayNetwork net, IReadOnlyList<Runway> runways)
+        public TaxiwayBuilder(TaxiwayNetwork net, IReadOnlyList<Runway> runways,
+            IReadOnlyDictionary<TaxiwayEdge, List<(float s0, float s1, int side)>> frontage = null)
         {
             this.net = net;
             this.runways = runways;
+            this.frontage = frontage;
+        }
+
+        /// <summary>Is a point s along an edge, on one side of it (-1 left, 1 right), where a stand opens onto it?</summary>
+        bool Fronted(TaxiwayEdge e, int side, float s, float margin = 0f)
+        {
+            if (frontage == null || !frontage.TryGetValue(e, out var list)) return false;
+            foreach (var (s0, s1, sd) in list)
+                if ((sd == 0 || sd == side) && s >= s0 - margin && s <= s1 + margin) return true;
+            return false;
+        }
+
+        /// <summary>The parts of [s0, s1] along an edge's side that no stand covers.</summary>
+        List<(float s0, float s1)> Unfronted(TaxiwayEdge e, int side, float s0, float s1)
+        {
+            var free = new List<(float, float)> { (s0, s1) };
+            if (frontage == null || !frontage.TryGetValue(e, out var list)) return free;
+            foreach (var (c0, c1, sd) in list)
+            {
+                if (sd != 0 && sd != side) continue;
+                var next = new List<(float, float)>();
+                foreach (var (f0, f1) in free)
+                {
+                    if (c1 <= f0 || c0 >= f1)
+                    {
+                        next.Add((f0, f1));
+                        continue;
+                    }
+                    if (c0 > f0) next.Add((f0, c0));
+                    if (c1 < f1) next.Add((c1, f1));
+                }
+                free = next;
+            }
+            return free;
         }
 
         public void Build(SurfaceBuilder surface, PaintBuilder paint, LightBuilder lights)
@@ -123,7 +163,7 @@ namespace AirCity.Airfield.Building
         {
             var a0 = j.arms[0];
             var a1 = j.arms[1];
-            if (Mathf.Abs(a0.edge.width - a1.edge.width) > 0.01f || a0.edge.surface != a1.edge.surface || a0.Road != a1.Road) return false;
+            if (Mathf.Abs(a0.edge.width - a1.edge.width) > 0.01f || a0.edge.surface != a1.edge.surface || a0.edge.road != a1.edge.road) return false;
             float alpha = Mathf.Acos(Mathf.Clamp(Vector2.Dot(a0.dir, a1.dir), -1f, 1f));
             if (alpha > Mathf.PI - 3f * Mathf.Deg2Rad || alpha < 25f * Mathf.Deg2Rad) return false;
             float radius = RunwayRules.TaxiwayTurnRadius(a0.edge.width);
@@ -229,9 +269,9 @@ namespace AirCity.Airfield.Building
             float s0 = armA.cut, s1 = len - armB.cut;
             bool unpaved = !e.surface.IsPaved();
             if (s1 - s0 > 0.01f)
-                surface.Rect(Sub(e.surface), ja.p, u, s0, s1, -hw, hw, AirfieldHeights.Taxiway,
+                surface.Rect(Sub(e.surface), ja.p, u, s0, s1, -hw, hw, e.IsRoad ? AirfieldHeights.Road : AirfieldHeights.Taxiway,
                     AirfieldKind.Taxiway, 0f, unpaved ? SurfaceBuilder.Fringe : 0f, false);
-            if (e.road)
+            if (e.IsRoad)
             {
                 BuildRoadPaint(e, ja, armA, jb, armB, paint);
                 return;
@@ -254,7 +294,8 @@ namespace AirCity.Airfield.Building
                 {
                     float s = Mathf.Lerp(s0, s1, (i + 0.5f) / n);
                     foreach (float sgn in new[] { -1f, 1f })
-                        EdgeLight(lights, ja.p + u * s + Geo.Right(u) * (sgn * (hw + LightOffset)));
+                        if (!Fronted(e, (int)sgn, s, 2f))
+                            EdgeLight(lights, ja.p + u * s + Geo.Right(u) * (sgn * (hw + LightOffset)));
                 }
             }
         }
@@ -285,7 +326,9 @@ namespace AirCity.Airfield.Building
             RoadEnd(jb, armB, len - armA.cut, paint);
         }
 
-        /// <summary>Where a road meets a taxiway, how far from the node its give-way line is (0: no taxiway).</summary>
+        /// <summary>How far from the node a road's give-way line is (0: it doesn't give way there). Before a taxiway:
+        /// 2 m back from the taxiway's edge, never inside the junction. Where only roads meet: at the edge of the
+        /// road it joins, unless it is the main road.</summary>
         float GiveWayAt(Joint j, Arm arm)
         {
             float t = 0f;
@@ -295,7 +338,85 @@ namespace AirCity.Airfield.Building
                 float sin = Mathf.Max(Mathf.Abs(Geo.Cross(arm.dir, b.dir)), 0.3f);
                 t = Mathf.Max(t, (b.hw + 2f) / sin + 1f);
             }
-            return t <= 0f ? 0f : Mathf.Max(t, arm.cut + 0.5f);
+            if (t > 0f) return Mathf.Max(t, arm.cut + 0.5f);
+            if (!RoadJunction(j) || j.arms.Count < 3 || (MainRoad(j, out var m0, out var m1) && (arm == m0 || arm == m1))) return 0f;
+            foreach (var b in j.arms)
+            {
+                if (b == arm || Vector2.Angle(arm.dir, b.dir) >= MainRoadAngle) continue;
+                float sin = Mathf.Max(Mathf.Abs(Geo.Cross(arm.dir, b.dir)), 0.3f);
+                t = Mathf.Max(t, (b.hw + 0.5f) / sin);
+            }
+            return t;
+        }
+
+        /// <summary>Two roads at least this far apart (degrees) run straight on through a junction.</summary>
+        const float MainRoadAngle = 150f;
+
+        /// <summary>A junction where only roads meet (no taxiway, no runway).</summary>
+        static bool RoadJunction(Joint j) => j.outline != null && j.node.runway == null && j.arms.Count >= 2 && j.arms.All(a => a.Road);
+
+        /// <summary>The road running straight on through a road junction, if exactly one does: it has priority. A
+        /// crossroads of two straight roads, or a junction with none, has no main road (every road gives way).</summary>
+        static bool MainRoad(Joint j, out Arm a, out Arm b)
+        {
+            a = b = null;
+            int found = 0;
+            for (int i = 0; i < j.arms.Count; i++)
+                for (int k = i + 1; k < j.arms.Count; k++)
+                    if (Vector2.Angle(j.arms[i].dir, j.arms[k].dir) >= MainRoadAngle)
+                    {
+                        found++;
+                        a = j.arms[i];
+                        b = j.arms[k];
+                    }
+            if (found == 1) return true;
+            a = b = null;
+            return false;
+        }
+
+        /// <summary>Paint where only roads meet: edge lines round every kerb (straight on across the far side of a
+        /// T), and the main road's centre dashes through the middle. The give-way lines come with each road's own
+        /// paint (RoadEnd).</summary>
+        void RoadJunctionPaint(Joint j, PaintBuilder paint)
+        {
+            paint.frame = RunwayFrame.None;
+            int n = j.arms.Count;
+            for (int i = 0; i < n; i++)
+            {
+                var a = j.arms[i];
+                var b = j.arms[(i + 1) % n];
+                if (!a.edge.surface.IsPaved() || !b.edge.surface.IsPaved()) continue;
+                var kerb = new List<Vector2> { j.p + a.dir * a.cut + Geo.Left(a.dir) * a.hw };
+                kerb.AddRange(a.gap);
+                kerb.Add(j.p + b.dir * b.cut + Geo.Right(b.dir) * b.hw);
+                paint.Strip(Inside(kerb, RoadEdgeInset), RoadLineHalfWidth, PaintBuilder.White);
+            }
+            if (!MainRoad(j, out var m0, out var m1)) return;
+            var p0 = j.p + m0.dir * m0.cut;
+            var p1 = j.p + m1.dir * m1.cut;
+            var pts = new List<Vector2>();
+            for (int s = 0; s <= 16; s++)
+            {
+                float t = s / 16f;
+                pts.Add((1 - t) * (1 - t) * p0 + 2 * (1 - t) * t * j.p + t * t * p1);
+            }
+            paint.Dashes(pts, RoadLineHalfWidth, 3f, 6f, PaintBuilder.White);
+        }
+
+        /// <summary>A kerb line moved `inset` metres in onto the pavement (to the left of the way it runs: kerbs
+        /// are walked counter-clockwise round the junction). Repeated points are dropped.</summary>
+        static List<Vector2> Inside(List<Vector2> line, float inset)
+        {
+            var pts = new List<Vector2>();
+            foreach (var p in line)
+                if (pts.Count == 0 || (p - pts[pts.Count - 1]).sqrMagnitude > 1e-4f) pts.Add(p);
+            var o = new List<Vector2>(pts.Count);
+            for (int k = 0; k < pts.Count; k++)
+            {
+                var d = pts[Mathf.Min(k + 1, pts.Count - 1)] - pts[Mathf.Max(k - 1, 0)];
+                o.Add(d.sqrMagnitude > 1e-8f ? pts[k] + Geo.Left(d.normalized) * inset : pts[k]);
+            }
+            return o;
         }
 
         /// <summary>A road's end at a node: a stop line before a runway, a give-way marking before a taxiway.</summary>
@@ -378,14 +499,15 @@ namespace AirCity.Airfield.Building
             // the arc runs in from arm 0 and out along arm 1: its ends sit square to the straights
             var d0 = -j.arms[0].dir;
             var d1 = j.arms[1].dir;
-            surface.Strip(Sub(e.surface), j.arc, hw, AirfieldHeights.Taxiway, AirfieldKind.Taxiway, 0f,
+            surface.Strip(Sub(e.surface), j.arc, hw, e.IsRoad ? AirfieldHeights.Road : AirfieldHeights.Taxiway, AirfieldKind.Taxiway, 0f,
                 unpaved ? SurfaceBuilder.Fringe : 0f, d0, d1);
             if (unpaved) return;
             paint.frame = RunwayFrame.None;
-            if (e.road)
+            if (e.IsRoad)
             {
                 foreach (float sgn in new[] { -1f, 1f })
                     paint.Strip(Offset(j.arc, sgn * (hw - RoadEdgeInset), d0, d1), RoadLineHalfWidth, PaintBuilder.White);
+                paint.Dashes(j.arc, RoadLineHalfWidth, 3f, 6f, PaintBuilder.White);
                 return;
             }
             paint.Strip(j.arc, CentrelineHalfWidth, PaintBuilder.Yellow);
@@ -404,9 +526,17 @@ namespace AirCity.Airfield.Building
             var kind = PavementSurface.Concrete;
             foreach (var s in new[] { PavementSurface.Asphalt, PavementSurface.Grass, PavementSurface.Dirt })
                 if (count[(int)s] > count[(int)kind]) kind = s;
-            surface.Fan(Sub(kind), j.p, j.outline, AirfieldHeights.Taxiway, AirfieldKind.Junction,
+            // only roads meeting: as low as the roads (under aprons); anything with a taxiway or a runway in it
+            // stays at taxiway height
+            bool roads = j.node.runway == null && j.arms.All(a => a.Road);
+            surface.Fan(Sub(kind), j.p, j.outline, roads ? AirfieldHeights.Road : AirfieldHeights.Taxiway, AirfieldKind.Junction,
                 kind.IsPaved() ? 0f : SurfaceBuilder.Fringe);
             if (!kind.IsPaved()) return;
+            if (RoadJunction(j))
+            {
+                RoadJunctionPaint(j, paint);
+                return;
+            }
 
             // lead-in lines between every pair of taxiways a turn can link (not through a runway junction,
             // where the centrelines run straight to the runway edge)
@@ -488,7 +618,10 @@ namespace AirCity.Airfield.Building
                 verges.mesh.owner = vergeOwners.Count;
                 vergeOwners.Add(e);
                 verges.state = new SurfaceValues { grass = e.vergeGrass, work = e.vergeWork != null ? e.vergeWork.ShaderState : e.vergeStripes };
-                verges.Verges(0, ja.p, armA.dir, s0, s1, e.width * 0.5f, v, AirfieldHeights.TaxiwayVerge);
+                foreach (int side in new[] { -1, 1 })
+                    foreach (var (p0, p1) in Unfronted(e, side, s0, s1))
+                        if (p1 - p0 >= 2f)
+                            verges.Verges(0, ja.p, armA.dir, p0, p1, e.width * 0.5f, v, AirfieldHeights.TaxiwayVerge, side);
             }
         }
 

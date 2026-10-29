@@ -160,5 +160,136 @@ namespace AirCity.Airfield.Building
             centre = corner + bisector * (r / Mathf.Sin(half));
             return r / Mathf.Tan(half);
         }
+
+        // ------------------------------------------------------------------ polygons (corners in order, either way round)
+
+        /// <summary>The signed area (positive when the corners run counter-clockwise from above).</summary>
+        public static float SignedArea(IList<Vector2> poly)
+        {
+            float a = 0f;
+            for (int i = 0; i < poly.Count; i++) a += Cross(poly[i], poly[(i + 1) % poly.Count]);
+            return a * 0.5f;
+        }
+
+        /// <summary>Is a point inside the polygon (crossing rule; a point on the outline may go either way)?</summary>
+        public static bool Inside(IList<Vector2> poly, Vector2 p)
+        {
+            bool inside = false;
+            for (int i = 0, j = poly.Count - 1; i < poly.Count; j = i++)
+            {
+                var a = poly[i];
+                var b = poly[j];
+                if ((a.y > p.y) != (b.y > p.y) && p.x < a.x + (p.y - a.y) / (b.y - a.y) * (b.x - a.x)) inside = !inside;
+            }
+            return inside;
+        }
+
+        /// <summary>How far a point is from the polygon's outline.</summary>
+        public static float DistanceToOutline(IList<Vector2> poly, Vector2 p)
+        {
+            float best = float.MaxValue;
+            for (int i = 0; i < poly.Count; i++)
+                best = Mathf.Min(best, Vector2.Distance(p, ClosestOnSegment(p, poly[i], poly[(i + 1) % poly.Count], out _)));
+            return best;
+        }
+
+        /// <summary>Does the outline cross itself (two edges that aren't neighbours crossing or touching)?</summary>
+        public static bool SelfIntersects(IList<Vector2> poly)
+        {
+            int n = poly.Count;
+            for (int i = 0; i < n; i++)
+                for (int k = i + 2; k < n; k++)
+                {
+                    if (i == 0 && k == n - 1) continue;   // neighbours round the end
+                    if (SegmentsMeet(poly[i], poly[(i + 1) % n], poly[k], poly[(k + 1) % n])) return true;
+                }
+            return false;
+        }
+
+        /// <summary>Do two segments cross or touch (ends included)?</summary>
+        public static bool SegmentsMeet(Vector2 a0, Vector2 a1, Vector2 b0, Vector2 b1)
+        {
+            float d1 = Cross(b1 - b0, a0 - b0), d2 = Cross(b1 - b0, a1 - b0);
+            float d3 = Cross(a1 - a0, b0 - a0), d4 = Cross(a1 - a0, b1 - a0);
+            if (((d1 > 0f && d2 < 0f) || (d1 < 0f && d2 > 0f)) && ((d3 > 0f && d4 < 0f) || (d3 < 0f && d4 > 0f))) return true;
+            const float eps = 1e-4f;
+            return (Mathf.Abs(d1) < eps && OnSegment(a0, b0, b1)) || (Mathf.Abs(d2) < eps && OnSegment(a1, b0, b1)) ||
+                   (Mathf.Abs(d3) < eps && OnSegment(b0, a0, a1)) || (Mathf.Abs(d4) < eps && OnSegment(b1, a0, a1));
+        }
+
+        static bool OnSegment(Vector2 p, Vector2 a, Vector2 b) =>
+            p.x >= Mathf.Min(a.x, b.x) - 1e-4f && p.x <= Mathf.Max(a.x, b.x) + 1e-4f &&
+            p.y >= Mathf.Min(a.y, b.y) - 1e-4f && p.y <= Mathf.Max(a.y, b.y) + 1e-4f;
+
+        /// <summary>Do two polygons overlap by more than `slack` metres? Polygons that only share (part of) an edge
+        /// or a corner don't.</summary>
+        public static bool Overlap(IList<Vector2> a, IList<Vector2> b, float slack = 0.05f)
+        {
+            for (int i = 0; i < a.Count; i++)
+                for (int k = 0; k < b.Count; k++)
+                    if (Segments(a[i], a[(i + 1) % a.Count], b[k], b[(k + 1) % b.Count], slack, out _)) return true;
+            foreach (var p in a)
+                if (Inside(b, p) && DistanceToOutline(b, p) > slack) return true;
+            foreach (var p in b)
+                if (Inside(a, p) && DistanceToOutline(a, p) > slack) return true;
+            // identical or edge-sharing outlines with no corner strictly inside: compare a point well inside each
+            return Inside(b, InteriorPoint(a)) && DistanceToOutline(b, InteriorPoint(a)) > slack;
+        }
+
+        /// <summary>A point inside a simple polygon (the centroid of its first ear).</summary>
+        public static Vector2 InteriorPoint(IList<Vector2> poly)
+        {
+            var t = Triangulate(poly);
+            if (t.Count == 0) return poly.Count > 0 ? poly[0] : Vector2.zero;
+            return (poly[t[0].a] + poly[t[0].b] + poly[t[0].c]) / 3f;
+        }
+
+        /// <summary>
+        /// Triangles filling a simple polygon (ear clipping), as corner indices, counter-clockwise from above. Corners
+        /// in a straight line are skipped; an outline that crosses itself is filled only as far as it can be.
+        /// </summary>
+        public static List<(int a, int b, int c)> Triangulate(IList<Vector2> poly)
+        {
+            var tris = new List<(int, int, int)>();
+            var idx = new List<int>();
+            for (int i = 0; i < poly.Count; i++) idx.Add(i);
+            if (SignedArea(poly) < 0f) idx.Reverse();
+            while (idx.Count > 3)
+            {
+                bool clipped = false;
+                for (int i = 0; i < idx.Count && !clipped; i++)
+                {
+                    int ia = idx[(i + idx.Count - 1) % idx.Count], ib = idx[i], ic = idx[(i + 1) % idx.Count];
+                    Vector2 a = poly[ia], b = poly[ib], c = poly[ic];
+                    float turn = Cross(b - a, c - b);
+                    if (Mathf.Abs(turn) < 1e-5f)
+                    {
+                        idx.RemoveAt(i);      // straight on (or doubling back): no triangle
+                        clipped = true;
+                        continue;
+                    }
+                    if (turn < 0f) continue;  // a reflex corner
+                    bool ear = true;
+                    foreach (int k in idx)
+                    {
+                        if (k == ia || k == ib || k == ic) continue;
+                        var p = poly[k];
+                        if (Cross(b - a, p - a) >= -1e-5f && Cross(c - b, p - b) >= -1e-5f && Cross(a - c, p - c) >= -1e-5f)
+                        {
+                            ear = false;
+                            break;
+                        }
+                    }
+                    if (!ear) continue;
+                    tris.Add((ia, ib, ic));
+                    idx.RemoveAt(i);
+                    clipped = true;
+                }
+                if (!clipped) return tris;
+            }
+            if (idx.Count == 3 && Cross(poly[idx[1]] - poly[idx[0]], poly[idx[2]] - poly[idx[1]]) > 1e-5f)
+                tris.Add((idx[0], idx[1], idx[2]));
+            return tris;
+        }
     }
 }

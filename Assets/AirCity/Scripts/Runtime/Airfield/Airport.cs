@@ -2,20 +2,73 @@ using System;
 using System.Collections.Generic;
 using AirCity.Aircraft;
 using AirCity.Airfield.Building;
+using AirCity.Traffic;
 using AirCity.Vehicles;
 using UnityEngine;
 
 namespace AirCity.Airfield
 {
-    /// <summary>A paved apron rectangle (stands come later).</summary>
+    /// <summary>
+    /// A free-placed apron: open pavement of any shape (a simple polygon). Stands draw over it, and service roads run
+    /// under paved ones, so across them a road is only its paint. Aprons of one surface may overlap and merge
+    /// (their texture is world-mapped); asphalt and concrete can't overlap each other, nor can dirt and grass
+    /// (Airport.ApronProblem), and paved aprons cover unpaved ones.
+    /// </summary>
     [Serializable]
-    public struct ApronArea
+    public class ApronArea
     {
-        public Vector3 centre;
-        public Vector2 size;
-        [Tooltip("Degrees clockwise from north (+Z).")]
-        public float rotation;
-        public PavementSurface surface;
+        [Tooltip("Corners, counter-clockwise from above (Airport space, x z).")]
+        public List<Vector2> outline = new List<Vector2>();
+        public PavementSurface surface = PavementSurface.Concrete;
+        // the rectangle scenes saved before aprons had outlines (Migrate turns it into one)
+        [SerializeField, HideInInspector] Vector3 centre;
+        [SerializeField, HideInInspector] Vector2 size;
+        [SerializeField, HideInInspector] float rotation;
+
+        /// <summary>An apron with these corners, either way round (stored counter-clockwise).</summary>
+        public static ApronArea Polygon(IEnumerable<Vector2> corners, PavementSurface surface)
+        {
+            var a = new ApronArea { outline = new List<Vector2>(corners), surface = surface };
+            if (Geo.SignedArea(a.outline) < 0f) a.outline.Reverse();
+            return a;
+        }
+
+        /// <summary>A rectangle: size.x across its axis, size.y along it, the axis `rotation` degrees clockwise from
+        /// north.</summary>
+        public static ApronArea Rect(Vector2 centre, Vector2 size, float rotation, PavementSurface surface) =>
+            Polygon(RectCorners(centre, size, rotation), surface);
+
+        static Vector2[] RectCorners(Vector2 c, Vector2 size, float rotation)
+        {
+            float rad = rotation * Mathf.Deg2Rad;
+            var axis = new Vector2(Mathf.Sin(rad), Mathf.Cos(rad));
+            var along = axis * (size.y * 0.5f);
+            var across = Geo.Right(axis) * (size.x * 0.5f);
+            return new[] { c - along - across, c - along + across, c + along + across, c + along - across };
+        }
+
+        public float Area => Mathf.Abs(Geo.SignedArea(outline));
+
+        /// <summary>Is a ground point (Airport space, x z) on the apron, or within margin of it?</summary>
+        public bool Contains(Vector2 p, float margin = 0f) =>
+            outline.Count >= 3 && (Geo.Inside(outline, p) || (margin > 0f && Geo.DistanceToOutline(outline, p) <= margin));
+
+        /// <summary>Can a vehicle drive straight from a to b on the apron (within margin of it all the way)?</summary>
+        public bool Crossable(Vector2 a, Vector2 b, float margin)
+        {
+            int n = Mathf.Max(1, Mathf.CeilToInt(Vector2.Distance(a, b) / 4f));
+            for (int i = 0; i <= n; i++)
+                if (!Contains(Vector2.Lerp(a, b, i / (float)n), margin)) return false;
+            return true;
+        }
+
+        /// <summary>Give an apron saved as a rectangle its outline.</summary>
+        internal void Migrate()
+        {
+            if (outline.Count > 0 || size.x <= 0f || size.y <= 0f) return;
+            outline.AddRange(RectCorners(Geo.XZ(centre), size, rotation));
+            size = Vector2.zero;
+        }
     }
 
     /// <summary>
@@ -60,11 +113,15 @@ namespace AirCity.Airfield
         [Tooltip("Game seconds per real second while playing (until the game clock exists): weather, grass growth and " +
                  "the depot's vehicles all run on it, so a higher value fast-forwards everything together.")]
         public float timeScale = 1f;
+        [Tooltip("Where the wind blows from (degrees clockwise from north). Aircraft take off and land into it, so it " +
+                 "picks which way each runway is used (AirTraffic.UsedFromStart).")]
+        [Range(0f, 360f)] public float windFrom = 270f;
 
         readonly List<Runway> runways = new List<Runway>();
         AirfieldPart groundPart, apronPart;
         bool dirty;
         AirportMaintenance maintenance;
+        AirTraffic traffic;
         Pavement pavement;
         int layoutVersion, pavementVersion = -1;
 
@@ -123,6 +180,9 @@ namespace AirCity.Airfield
         /// <summary>The work for the depots: the job queue, dispatch, stepping the teams.</summary>
         public AirportMaintenance Maintenance => maintenance ??= new AirportMaintenance(this);
 
+        /// <summary>The flights: departures, arrivals and the tower that keeps them apart.</summary>
+        public AirTraffic Traffic => traffic ??= new AirTraffic(this);
+
         /// <summary>Where there's pavement to drive on (rebuilt after the layout changes).</summary>
         public Pavement Pavement
         {
@@ -139,18 +199,11 @@ namespace AirCity.Airfield
             }
         }
 
+        /// <summary>The generated apron mesh (for tests and tools; rebuilt on change).</summary>
+        public Mesh ApronMesh => apronPart?.Mesh;
+
         /// <summary>Runways, taxiways or aprons were rebuilt.</summary>
         internal void LayoutChanged() => layoutVersion++;
-
-        /// <summary>Is a ground point on (or within margin of) an apron?</summary>
-        public static bool OnApron(ApronArea a, Vector2 p, float margin = 0f)
-        {
-            float rad = a.rotation * Mathf.Deg2Rad;
-            var axis = new Vector2(Mathf.Sin(rad), Mathf.Cos(rad));
-            var d = p - Geo.XZ(a.centre);
-            return Mathf.Abs(Vector2.Dot(d, axis)) <= a.size.y * 0.5f + margin &&
-                   Mathf.Abs(Vector2.Dot(d, Geo.Right(axis))) <= a.size.x * 0.5f + margin;
-        }
 
         /// <summary>A new maintenance depot with its door front at `front`, doors facing `outward`, using another
         /// depot's vehicle types and prefabs (if given).</summary>
@@ -163,10 +216,15 @@ namespace AirCity.Airfield
             go.transform.localRotation = Quaternion.LookRotation(Geo.X0Z(outward.normalized), Vector3.up);
             var d = go.AddComponent<MaintenanceDepot>();
             if (assetsFrom != null)
+            {
                 d.SetAssets(assetsFrom.ploughType, assetsFrom.mowerType, assetsFrom.buildingType, assetsFrom.ploughPrefab,
                     assetsFrom.mowerPrefab, assetsFrom.buildingPrefab);
+                d.SetTugAssets(assetsFrom.smallTugType, assetsFrom.largeTugType, assetsFrom.smallTugPrefab, assetsFrom.largeTugPrefab);
+            }
             d.snowPloughs = 1;
             d.mowers = 1;
+            d.smallTugs = 1;
+            d.largeTugs = 0;
             go.SetActive(true);
             return d;
         }
@@ -178,14 +236,41 @@ namespace AirCity.Airfield
             AirfieldPart.DestroyAny(d.gameObject);
         }
 
-        /// <summary>The apron's corners on the ground, going round.</summary>
-        public static Vector2[] Corners(ApronArea a)
+        /// <summary>The smallest apron worth building (square metres).</summary>
+        public const float MinApronArea = 100f;
+
+        /// <summary>Why an apron with this outline and surface can't be built (or `except`, an existing one, changed
+        /// to it), or null if it can.</summary>
+        public string ApronProblem(IList<Vector2> outline, PavementSurface surface, ApronArea except = null)
         {
-            float rad = a.rotation * Mathf.Deg2Rad;
-            var along = new Vector2(Mathf.Sin(rad), Mathf.Cos(rad)) * (a.size.y * 0.5f);
-            var across = Geo.Right(along.normalized) * (a.size.x * 0.5f);
-            var c = Geo.XZ(a.centre);
-            return new[] { c - along - across, c - along + across, c + along + across, c + along - across };
+            if (outline.Count < 3) return "needs three corners";
+            if (Geo.SelfIntersects(outline)) return "its edges cross";
+            if (Mathf.Abs(Geo.SignedArea(outline)) < MinApronArea) return "too small";
+            foreach (var a in aprons)
+            {
+                if (a == except || a.surface == surface || a.surface.IsPaved() != surface.IsPaved()) continue;
+                if (Geo.Overlap(outline, a.outline)) return $"overlaps a {a.surface.ToString().ToLowerInvariant()} apron";
+            }
+            return null;
+        }
+
+        /// <summary>A new apron with these corners (either way round), or null if it can't be built (ApronProblem).</summary>
+        public ApronArea AddApron(IEnumerable<Vector2> corners, PavementSurface surface)
+        {
+            var a = ApronArea.Polygon(corners, surface);
+            if (ApronProblem(a.outline, surface) != null) return null;
+            aprons.Add(a);
+            BuildGround();
+            return a;
+        }
+
+        /// <summary>Change an apron's surface; false (and unchanged) if it would then overlap an apron it mustn't.</summary>
+        public bool SetApronSurface(ApronArea a, PavementSurface surface)
+        {
+            if (a == null || ApronProblem(a.outline, surface, a) != null) return false;
+            a.surface = surface;
+            BuildGround();
+            return true;
         }
 
         public void RemoveApron(int index)
@@ -307,7 +392,7 @@ namespace AirCity.Airfield
         public bool TryPickApron(Vector2 point, out int index)
         {
             for (index = aprons.Count - 1; index >= 0; index--)
-                if (OnApron(aprons[index], point)) return true;
+                if (aprons[index].Contains(point)) return true;
             return false;
         }
 
@@ -318,7 +403,7 @@ namespace AirCity.Airfield
         /// <summary>
         /// Advance game time: while it snows, snow builds up on the ground, runways and taxiways
         /// (RunwayRules.SnowfallRate); otherwise it melts, faster in rain, and grass strips and verges grow (verges
-        /// only once the ground is clear of snow). The depots' teams move on.
+        /// only once the ground is clear of snow). The depots' teams and the flights move on.
         /// </summary>
         public void Simulate(float seconds)
         {
@@ -333,6 +418,7 @@ namespace AirCity.Airfield
             var t = GetComponentInChildren<TaxiwayNetwork>();
             if (t != null) t.Simulate(seconds, rate, grow, verges);
             Maintenance.Simulate(seconds);
+            Traffic.Simulate(seconds);
             ApplyGlobals();
         }
 
@@ -376,7 +462,8 @@ namespace AirCity.Airfield
             Shader.SetGlobalFloat(SnowId, groundSnow);
         }
 
-        /// <summary>Rebuild the grass and aprons (runways and taxiways rebuild themselves).</summary>
+        /// <summary>Rebuild the grass and aprons (runways and taxiways rebuild themselves). Roads need no rebuild:
+        /// they lie under paved aprons whatever the aprons do.</summary>
         public void BuildGround()
         {
             if (!isActiveAndEnabled) return;
@@ -395,11 +482,9 @@ namespace AirCity.Airfield
             var aprons = new SurfaceBuilder(Surfaces.Count);
             foreach (var a in this.aprons)
             {
-                float rad = a.rotation * Mathf.Deg2Rad;
-                var axis = new Vector2(Mathf.Sin(rad), Mathf.Cos(rad));
-                var origin = Geo.XZ(a.centre) - axis * (a.size.y * 0.5f);
-                aprons.Rect((int)a.surface, origin, axis, 0f, a.size.y, -a.size.x * 0.5f, a.size.x * 0.5f,
-                    AirfieldHeights.Apron, AirfieldKind.Apron, 0f, a.surface.IsPaved() ? 0f : SurfaceBuilder.Fringe);
+                a.Migrate();
+                aprons.Polygon((int)a.surface, a.outline, AirfieldHeights.ApronOf(a.surface), AirfieldKind.Apron,
+                    a.surface.IsPaved() ? 0f : SurfaceBuilder.Fringe);
             }
             apronPart.Set(aprons.mesh.Apply(apronPart.Target, "Aprons"), dirt, asphalt, concrete, grassStrip);
             LayoutChanged();

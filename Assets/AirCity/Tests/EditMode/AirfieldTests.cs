@@ -481,7 +481,7 @@ namespace AirCity.Tests.Airfield
             CheckMesh(airport.Taxiways.SurfaceMesh, "taxiway surface");
             CheckMesh(airport.Taxiways.PaintMesh, "taxiway paint");
             CheckMesh(airport.Taxiways.VergeMesh, "taxiway verges");
-            Assert.IsTrue(airport.Taxiways.edges.Any(e => e.road), "a service road to the depot");
+            Assert.IsTrue(airport.Taxiways.edges.Any(e => e.road == RoadClass.Service), "a service road to the depot");
             Debug.Log($"sandbox airport: {airport.Runways.Sum(r => r.LightCount) + airport.Taxiways.LightCount} lights, " +
                       $"{airport.Taxiways.SurfaceMesh.vertexCount} taxiway surface verts");
         }
@@ -567,16 +567,146 @@ namespace AirCity.Tests.Airfield
             Assert.IsFalse(airport.TryPickDepot(new Vector2(0f, -390f), out _), "in front of them");
             Assert.AreEqual(4, depot.Corners.Length);
 
-            airport.aprons.Add(new ApronArea { centre = new Vector3(0f, 0f, -600f), size = new Vector2(100f, 60f), rotation = 90f });
+            airport.aprons.Add(ApronArea.Rect(new Vector2(0f, -600f), new Vector2(100f, 60f), 90f, PavementSurface.Concrete));
             airport.BuildGround();
             // size.x is across its axis, size.y along it: turned 90 degrees it is 60 m east-west, 100 m north-south
             Assert.IsTrue(airport.TryPickApron(new Vector2(25f, -645f), out int apron));
             Assert.IsFalse(airport.TryPickApron(new Vector2(35f, -600f), out _));
-            var corners = Airport.Corners(airport.aprons[apron]);
+            var corners = airport.aprons[apron].outline;
             Assert.AreEqual(100f, Vector2.Distance(corners[0], corners[1]), 0.01f, "across");
             Assert.AreEqual(60f, Vector2.Distance(corners[0], corners[3]), 0.01f, "along");
             airport.RemoveApron(apron);
             Assert.AreEqual(0, airport.aprons.Count);
+        }
+
+        [Test]
+        public void Aprons_AreAnyShapeAndVehiclesKeepOnThem()
+        {
+            var airport = NewAirport();
+            // an L, its corners given clockwise: stored counter-clockwise
+            var l = new[] { new Vector2(0f, 0f), new Vector2(0f, 100f), new Vector2(40f, 100f), new Vector2(40f, 40f),
+                new Vector2(100f, 40f), new Vector2(100f, 0f) };
+            var apron = airport.AddApron(l, PavementSurface.Concrete);
+            Assert.IsNotNull(apron);
+            var o = apron.outline;
+            Assert.Greater(Enumerable.Range(0, o.Count).Sum(i => o[i].x * o[(i + 1) % o.Count].y - o[(i + 1) % o.Count].x * o[i].y), 0f,
+                "counter-clockwise");
+            Assert.AreEqual(6400f, apron.Area, 0.1f);
+            Assert.IsTrue(apron.Contains(new Vector2(20f, 80f)));
+            Assert.IsFalse(apron.Contains(new Vector2(80f, 80f)), "the L's notch");
+            CheckMesh(airport.ApronMesh, "L apron");
+            Assert.IsTrue(airport.Pavement.Contains(new Vector2(20f, 80f)) && airport.Pavement.Contains(new Vector2(90f, 10f)),
+                "filled all the way into both arms");
+            Assert.IsFalse(airport.Pavement.Contains(new Vector2(80f, 80f)), "not across the notch");
+            Assert.IsTrue(airport.ApronMesh.vertices.All(v => Mathf.Abs(v.y - AirfieldHeights.Apron) < 1e-5f));
+
+            Assert.AreEqual("its edges cross", airport.ApronProblem(new[] { new Vector2(200f, 0f), new Vector2(300f, 100f),
+                new Vector2(300f, 0f), new Vector2(200f, 100f) }, PavementSurface.Concrete));
+            Assert.AreEqual("too small", airport.ApronProblem(new[] { new Vector2(200f, 0f), new Vector2(205f, 0f),
+                new Vector2(205f, 5f) }, PavementSurface.Concrete));
+            var over = new[] { new Vector2(30f, 30f), new Vector2(70f, 30f), new Vector2(70f, 60f), new Vector2(30f, 60f) };
+            Assert.IsNotNull(airport.ApronProblem(over, PavementSurface.Asphalt), "asphalt and concrete can't overlap");
+            Assert.IsNull(airport.ApronProblem(over, PavementSurface.Concrete), "concrete merges with concrete");
+            Assert.IsNull(airport.ApronProblem(over, PavementSurface.Grass), "paved aprons cover grass ones");
+            var beside = new[] { new Vector2(100f, 0f), new Vector2(150f, 0f), new Vector2(150f, 40f), new Vector2(100f, 40f) };
+            Assert.IsNotNull(airport.AddApron(beside, PavementSurface.Asphalt), "an asphalt apron sharing an edge");
+            Assert.IsNotNull(airport.AddApron(over, PavementSurface.Grass), "a grass apron under the concrete one");
+            Assert.IsFalse(airport.SetApronSurface(apron, PavementSurface.Dirt), "dirt would overlap the grass");
+            Assert.AreEqual(PavementSurface.Concrete, apron.surface);
+            Assert.IsTrue(airport.SetApronSurface(apron, PavementSurface.Grass), "grass merges with grass");
+            Assert.IsTrue(airport.ApronMesh.vertices.Any(v => Mathf.Abs(v.y - AirfieldHeights.ApronUnpaved) < 1e-5f), "grass sits lower");
+
+            // vehicles drive straight across an apron only where the line stays on it
+            var net = airport.Taxiways;
+            int a = net.AddNode(new Vector3(90f, 0f, 20f)), corner = net.AddNode(new Vector3(20f, 0f, 20f)),
+                b = net.AddNode(new Vector3(20f, 0f, 90f));
+            CollectionAssert.AreEqual(new[] { a, corner, b }, net.FindVehicleRoute(a, b), "round the notch, not across it");
+
+            // aprons saved as rectangles before they had outlines
+            var old = JsonUtility.FromJson<ApronArea>(
+                "{\"centre\":{\"x\":0,\"y\":0,\"z\":-600},\"size\":{\"x\":100,\"y\":60},\"rotation\":90,\"surface\":2}");
+            airport.aprons.Add(old);
+            airport.BuildGround();
+            Assert.AreEqual(4, old.outline.Count);
+            Assert.AreEqual(6000f, old.Area, 0.1f);
+            Assert.IsTrue(old.Contains(new Vector2(25f, -645f)));
+        }
+
+        [Test]
+        public void Roads_JunctionsAndBendsAreMarked()
+        {
+            var airport = NewAirport();
+            var net = airport.Taxiways;
+            int Node(float x, float z) => net.AddNode(new Vector3(x, 0f, z));
+            void Road(int a, int b) => net.Connect(a, b, RunwayRules.RoadWidth, PavementSurface.Asphalt, false, RoadClass.Service);
+            // a T at the origin (the main road west-east, a side road south), a crossroads at x = 400, a bend at x = 800
+            Road(Node(-100f, 0f), Node(100f, 0f));
+            Road(Node(0f, -100f), net.SplitEdge(net.edges[0], Vector3.zero));
+            Road(Node(300f, 0f), Node(500f, 0f));
+            Road(Node(400f, -100f), Node(400f, 100f));
+            int bend = Node(800f, 0f);
+            Road(Node(700f, 0f), bend);
+            Road(bend, Node(800f, 100f));
+            net.Rebuild();
+            CheckMesh(net.SurfaceMesh, "road junctions");
+            var paint = net.PaintMesh.vertices.Select(v => new Vector2(v.x, v.z)).ToList();
+            int In(float cx, float x0, float x1, float z0, float z1) =>
+                paint.Count(p => p.x - cx >= x0 && p.x - cx <= x1 && p.y >= z0 && p.y <= z1);
+
+            // give-way lines 4 m out (the main road's edge plus half a metre), across the lane coming in
+            Assert.Greater(In(0f, 0.3f, 3f, -4.8f, -3.8f), 0, "the side road of the T gives way");
+            Assert.AreEqual(0, In(0f, 3.8f, 4.8f, 0.6f, 2.6f), "the road through the T doesn't");
+            Assert.Greater(In(0f, -2f, 2f, -0.2f, 0.2f), 0, "its centre dashes carry on through");
+            Assert.Greater(In(0f, -1f, 1f, 3f, 3.4f), 0, "and so does its edge line across the far side");
+            foreach (var (x0, x1, z0, z1, arm) in new[] { (3.8f, 4.8f, 0.6f, 2.6f, "east"), (-2.6f, -0.6f, 3.8f, 4.8f, "north"),
+                         (-4.8f, -3.8f, -2.6f, -0.6f, "west"), (0.6f, 2.6f, -4.8f, -3.8f, "south") })
+                Assert.Greater(In(400f, x0, x1, z0, z1), 0, $"at a crossroads of equals every arm gives way ({arm})");
+            Assert.AreEqual(0, In(400f, -0.2f, 0.2f, -0.2f, 0.2f), "and no road's dashes run through the middle");
+
+            // the kerb line round the T's south-east corner, 0.3 m in from the fillet (8 m radius round (11.5, -11.5))
+            var corner = new Vector2(11.5f, -11.5f);
+            Assert.Greater(paint.Count(p => p.x > 3.5f && p.x < 11.5f && p.y < -3.5f && p.y > -11.5f &&
+                                            Mathf.Abs(Vector2.Distance(p, corner) - 8.3f) < 0.3f), 2, "edge line round the kerb");
+
+            // the bend: centre dashes on the arc (radius 2.5 x 7 m round (782.5, 17.5)) as well as edge lines
+            var centre = new Vector2(782.5f, 17.5f);
+            Assert.Greater(paint.Count(p => p.x > 782.5f && p.y < 17.5f && Mathf.Abs(Vector2.Distance(p, centre) - 17.5f) < 0.3f), 4,
+                "dashes round the bend");
+        }
+
+        [Test]
+        public void Roads_ComeInClassesAndAreOnlyPaintAcrossPavedAprons()
+        {
+            var service = RunwayRules.Road(RoadClass.Service);
+            Assert.AreEqual(RunwayRules.RoadWidth, service.Width, 0.01f);
+            Assert.IsTrue(service.airside && service.buildable);
+            foreach (var c in new[] { RoadClass.Street, RoadClass.Highway })
+                Assert.IsFalse(RunwayRules.Road(c).airside || RunwayRules.Road(c).buildable, $"{c}: landside, not yet");
+            Assert.Greater(RunwayRules.Road(RoadClass.Highway).Width, RunwayRules.Road(RoadClass.Street).Width);
+
+            var airport = NewAirport();
+            airport.AddApron(new[] { new Vector2(-50f, -50f), new Vector2(50f, -50f), new Vector2(50f, 50f), new Vector2(-50f, 50f) },
+                PavementSurface.Concrete);
+            var net = airport.Taxiways;
+            net.Connect(net.AddNode(new Vector3(-150f, 0f, 0f)), net.AddNode(new Vector3(150f, 0f, 0f)), RunwayRules.RoadWidth,
+                PavementSurface.Asphalt, false, RoadClass.Service);
+            // a taxiway crossing it off the apron, and a street (not buildable in game yet, but the graph takes it)
+            net.Connect(net.AddNode(new Vector3(100f, 0f, -100f)), net.AddNode(new Vector3(100f, 0f, 100f)), 15f, PavementSurface.Asphalt);
+            net.Connect(net.AddNode(new Vector3(-150f, 0f, -80f)), net.AddNode(new Vector3(150f, 0f, -80f)), 6.5f,
+                PavementSurface.Asphalt, false, RoadClass.Street);
+            net.Rebuild();
+            CheckMesh(net.SurfaceMesh, "roads and taxiway");
+            Assert.IsNull(net.FindRoute(net.NearestNode(new Vector3(-150f, 0f, -80f), 1f).id, net.NearestNode(new Vector3(150f, 0f, -80f), 1f).id,
+                Type("Cessna172")), "aircraft never use streets either");
+
+            var v = net.SurfaceMesh.vertices;
+            var onApron = v.Where(p => Mathf.Abs(p.x) < 40f && Mathf.Abs(p.z) < 5f).ToList();
+            Assert.IsNotEmpty(onApron);
+            Assert.IsTrue(onApron.All(p => p.y < AirfieldHeights.Apron), "the road's pavement is under the apron");
+            Assert.IsTrue(v.Any(p => Vector2.Distance(new Vector2(p.x, p.z), new Vector2(100f, 0f)) < 12f &&
+                                     Mathf.Abs(p.y - AirfieldHeights.Taxiway) < 1e-5f), "the junction with the taxiway stays on top");
+            var paint = net.PaintMesh.vertices;
+            Assert.Greater(paint.Count(p => Mathf.Abs(p.x) < 40f && Mathf.Abs(p.z) < 4f), 8, "its markings are painted on the apron");
         }
 
         /// <summary>Finite, non-empty, and every triangle faces up (clockwise seen from above).</summary>

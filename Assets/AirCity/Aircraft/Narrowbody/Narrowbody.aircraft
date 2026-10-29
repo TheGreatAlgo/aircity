@@ -243,7 +243,12 @@
     "takeoffDistance": 2100.0,
     "landingDistance": 1500.0,
     "maxTakeoffMass": 78000.0,
-    "unpavedRunways": false
+    "unpavedRunways": false,
+    "taxiSpeed": 10.0,
+    "rotateSpeed": 74.0,
+    "approachSpeed": 70.5,
+    "climbRate": 12.7,
+    "climbSpeed": 85.0
   },
   "points": [
     {

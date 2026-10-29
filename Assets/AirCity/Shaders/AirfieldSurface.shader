@@ -261,10 +261,11 @@ Shader "AirCity/AirfieldSurface"
                 smoothness = lerp(smoothness, 0.93, puddle);
                 n = lerp(n, half3(0, 0, 1), puddle);
 
-                // snow: the ground depth on grass (aprons are kept nearly clear), each runway's / taxiway's own
-                // depth on pavement, none behind the ploughs; while the ground around is snowy, pavement keeps
-                // white remnants in its joints and low spots
-                float depth = kind == KIND_GROUND || kind == KIND_VERGE ? _AirfieldSnow : kind == KIND_APRON ? _AirfieldSnow * 0.15
+                // snow: the ground depth on grass (aprons and stands are kept nearly clear), each runway's /
+                // taxiway's own depth on pavement, none behind the ploughs; while the ground around is snowy,
+                // pavement keeps white remnants in its joints and low spots
+                float depth = kind == KIND_GROUND || kind == KIND_VERGE ? _AirfieldSnow
+                            : kind == KIND_APRON || kind == KIND_STAND ? _AirfieldSnow * 0.15
                             : (worked && i.work.w > 0.0 ? 0.0 : i.color.g);
                 // fills the texture's hollows first; the grain keeps the texture's repeat from showing through
                 half snowNoise = mask.b * 0.35 + fine.g * 0.4 + Macro(xz, 6.3).a * 0.25;

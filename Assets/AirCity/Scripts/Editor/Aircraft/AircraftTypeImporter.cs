@@ -13,7 +13,7 @@ namespace AirCity.EditorTools.Aircraft
     /// <see cref="AircraftType"/>. Paths in the file are relative to it, positions are already in Unity space.
     /// Re-imports automatically when the generator rewrites the file or any referenced texture.
     /// </summary>
-    [ScriptedImporter(3, "aircraft")]
+    [ScriptedImporter(4, "aircraft")]
     public class AircraftTypeImporter : ScriptedImporter
     {
 #pragma warning disable 0649   // assigned by JsonUtility
@@ -23,7 +23,13 @@ namespace AirCity.EditorTools.Aircraft
         [Serializable] class BoundsJson { public float[] min, max; }
         [Serializable] class WheelJson { public string name; public float[] position; public float radius; public bool steerable; }
         [Serializable] class GearJson { public WheelJson[] wheels; public float[] steeringPivot; public float maxSteeringAngle; }
-        [Serializable] class PerformanceJson { public float takeoffDistance, landingDistance, maxTakeoffMass; public bool unpavedRunways; }
+        [Serializable]
+        class PerformanceJson
+        {
+            public float takeoffDistance, landingDistance, maxTakeoffMass;
+            public bool unpavedRunways;
+            public float taxiSpeed, rotateSpeed, approachSpeed, climbRate, climbSpeed;
+        }
         [Serializable] class PointJson { public string name, type; public float[] position, normal, size; }
         [Serializable] class LightJson { public string name, type; public float[] position, direction, color; public float spread; }
 
@@ -82,6 +88,11 @@ namespace AirCity.EditorTools.Aircraft
                 t.landingDistance = json.performance.landingDistance;
                 t.maxTakeoffMass = json.performance.maxTakeoffMass;
                 t.unpavedRunways = json.performance.unpavedRunways;
+                t.taxiSpeed = json.performance.taxiSpeed;
+                t.rotateSpeed = json.performance.rotateSpeed;
+                t.approachSpeed = json.performance.approachSpeed;
+                t.climbRate = json.performance.climbRate;
+                t.climbSpeed = json.performance.climbSpeed;
             }
             var points = new List<AircraftType.ServicePoint>();
             foreach (var p in json.points ?? Array.Empty<PointJson>())

@@ -6,8 +6,9 @@ using UnityEngine;
 namespace AirCity.EditorTools.Vehicles
 {
     /// <summary>
-    /// Prefabs and materials for the maintenance vehicles and the depot building (created once, then hand-editable):
-    ///   Assets/AirCity/Vehicles/&lt;Model&gt;/&lt;Model&gt;.prefab   model + Vehicle + VehicleLights (depot: lights only)
+    /// Prefabs and materials for the maintenance vehicles, the tugs, the depot and the control towers (created once, then
+    /// hand-editable):
+    ///   Assets/AirCity/Vehicles/&lt;Model&gt;/&lt;Model&gt;.prefab   model + Vehicle + VehicleLights (buildings: lights only)
     ///   Assets/AirCity/Vehicles/Materials                     the light glow and the snow / clippings spray
     ///   AirCity ▸ Vehicles ▸ Create Missing Prefabs
     /// </summary>
@@ -24,7 +25,7 @@ namespace AirCity.EditorTools.Vehicles
             EnsureFolder(Materials);
             var glow = LoadOrCreateMaterial("VehicleLightGlow", () => new Material(AssetDatabase.LoadAssetAtPath<Shader>($"{Shaders}/VehicleLightGlow.shader")));
             var spray = LoadOrCreateMaterial("Spray", CreateSprayMaterial);
-            foreach (var model in new[] { "SnowPlough", "Mower", "Depot" })
+            foreach (var model in Models)
             {
                 var type = Type(model);
                 if (type == null)
@@ -45,7 +46,7 @@ namespace AirCity.EditorTools.Vehicles
                 var lights = go.AddComponent<VehicleLights>();
                 lights.type = type;
                 lights.glowMaterial = glow;
-                if (type.kind != VehicleKind.Depot)
+                if (!type.IsBuilding)
                 {
                     var v = go.AddComponent<Vehicle>();
                     v.type = type;
@@ -56,6 +57,8 @@ namespace AirCity.EditorTools.Vehicles
                 else
                 {
                     lights.headlights = lights.work = false;
+                    // a tower's aerodrome beacon turns from dusk to dawn, its obstruction lights with it
+                    lights.beacon = lights.beaconOnlyAtNight = type.kind == VehicleKind.Tower;
                 }
                 PrefabUtility.SaveAsPrefabAsset(go, path);
                 Object.DestroyImmediate(go);
@@ -64,13 +67,20 @@ namespace AirCity.EditorTools.Vehicles
             AssetDatabase.SaveAssets();
         }
 
+        public static readonly string[] Models = { "SnowPlough", "Mower", "Depot", "TowerSmall", "TowerMedium", "TowerLarge", "TugSmall", "TugLarge" };
+        /// <summary>The control towers, smallest first: a grass airfield's, a regional airport's, a hub's.</summary>
+        public static readonly string[] Towers = { "TowerSmall", "TowerMedium", "TowerLarge" };
+
         public static string PrefabPath(string model) => $"{Root}/{model}/{model}.prefab";
         public static GameObject Prefab(string model) => AssetDatabase.LoadAssetAtPath<GameObject>(PrefabPath(model));
         public static VehicleType Type(string model) => AssetDatabase.LoadAssetAtPath<VehicleType>($"{Root}/{model}/{model}.vehicle");
 
-        /// <summary>Give a depot its vehicle types, prefabs and building.</summary>
-        public static void Assign(MaintenanceDepot depot) =>
+        /// <summary>Give a depot its vehicle types, prefabs and building, and its tugs.</summary>
+        public static void Assign(MaintenanceDepot depot)
+        {
             depot.SetAssets(Type("SnowPlough"), Type("Mower"), Type("Depot"), Prefab("SnowPlough"), Prefab("Mower"), Prefab("Depot"));
+            depot.SetTugAssets(Type("TugSmall"), Type("TugLarge"), Prefab("TugSmall"), Prefab("TugLarge"));
+        }
 
         static Material LoadOrCreateMaterial(string name, System.Func<Material> make)
         {

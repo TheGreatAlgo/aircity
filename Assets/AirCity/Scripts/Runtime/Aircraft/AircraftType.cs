@@ -128,6 +128,14 @@ namespace AirCity.Aircraft
         public float maxTakeoffMass;
         [Tooltip("Can use unpaved (dirt) runways. Jets can't.")]
         public bool unpavedRunways;
+        [Tooltip("Top speed taxiing on straight taxiways (m/s).")]
+        public float taxiSpeed;
+        [Tooltip("Lift-off speed, VR (m/s).")]
+        public float rotateSpeed;
+        [Tooltip("Final approach speed, VREF (m/s); it touches down a little slower.")]
+        public float approachSpeed;
+        [Tooltip("Initial climb rate (m/s) and climb speed (m/s) after takeoff.")]
+        public float climbRate, climbSpeed;
 
         [Header("Gameplay points")]
         public ServicePoint[] points = Array.Empty<ServicePoint>();
@@ -178,6 +186,19 @@ namespace AirCity.Aircraft
 
         /// <summary>Distance from the main gear to the nose gear.</summary>
         public float Wheelbase => steeringPivot.z;
+
+        /// <summary>A light ("small") aircraft, under 5.7 t: pushed back by hand, may turn round on a runway, and kept
+        /// off stands that turn small aircraft away (Stand.noSmallAircraft).</summary>
+        public bool Light => maxTakeoffMass < 5700f;
+
+        // flight figures, with fallbacks for types imported before they existed (light aircraft / jets)
+        public float TaxiSpeed => taxiSpeed > 0f ? taxiSpeed : Light ? 7f : 10f;
+        public float RotateSpeed => rotateSpeed > 0f ? rotateSpeed : Light ? 28f : 72f;
+        public float ApproachSpeed => approachSpeed > 0f ? approachSpeed : Light ? 33f : 70f;
+        /// <summary>A few knots under the approach speed.</summary>
+        public float TouchdownSpeed => ApproachSpeed - (Light ? 3f : 4f);
+        public float ClimbRate => climbRate > 0f ? climbRate : Light ? 3.6f : 12f;
+        public float ClimbSpeed => climbSpeed > 0f ? climbSpeed : Light ? 38f : 85f;
 
         /// <summary>Tightest turn at full steering, measured to the main-gear midpoint.</summary>
         public float MinTurnRadius => Wheelbase / Mathf.Tan(Mathf.Max(maxSteeringAngle, 1f) * Mathf.Deg2Rad);

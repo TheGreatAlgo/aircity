@@ -1,0 +1,88 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!1001 &1444296025102055246
+PrefabInstance:
+  m_ObjectHideFlags: 0
+  serializedVersion: 2
+  m_Modification:
+    serializedVersion: 3
+    m_TransformParent: {fileID: 0}
+    m_Modifications:
+    - target: {fileID: -8679921383154817045, guid: 0d0462641e56e4c8596fe9af0ec1257e, type: 3}
+      propertyPath: m_LocalPosition.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 0d0462641e56e4c8596fe9af0ec1257e, type: 3}
+      propertyPath: m_LocalPosition.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 0d0462641e56e4c8596fe9af0ec1257e, type: 3}
+      propertyPath: m_LocalPosition.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 0d0462641e56e4c8596fe9af0ec1257e, type: 3}
+      propertyPath: m_LocalRotation.w
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 0d0462641e56e4c8596fe9af0ec1257e, type: 3}
+      propertyPath: m_LocalRotation.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 0d0462641e56e4c8596fe9af0ec1257e, type: 3}
+      propertyPath: m_LocalRotation.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 0d0462641e56e4c8596fe9af0ec1257e, type: 3}
+      propertyPath: m_LocalRotation.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 0d0462641e56e4c8596fe9af0ec1257e, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 0d0462641e56e4c8596fe9af0ec1257e, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 0d0462641e56e4c8596fe9af0ec1257e, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 919132149155446097, guid: 0d0462641e56e4c8596fe9af0ec1257e, type: 3}
+      propertyPath: m_Name
+      value: TowerLarge
+      objectReference: {fileID: 0}
+    m_RemovedComponents: []
+    m_RemovedGameObjects: []
+    m_AddedGameObjects: []
+    m_AddedComponents:
+    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 0d0462641e56e4c8596fe9af0ec1257e, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 6693784558077598422}
+  m_SourcePrefab: {fileID: 100100000, guid: 0d0462641e56e4c8596fe9af0ec1257e, type: 3}
+--- !u!1 &1786313065298020895 stripped
+GameObject:
+  m_CorrespondingSourceObject: {fileID: 919132149155446097, guid: 0d0462641e56e4c8596fe9af0ec1257e, type: 3}
+  m_PrefabInstance: {fileID: 1444296025102055246}
+  m_PrefabAsset: {fileID: 0}
+--- !u!114 &6693784558077598422
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1786313065298020895}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a6ebc14b03b0247d785faa69708784f2, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: AirCity.Runtime::AirCity.Vehicles.VehicleLights
+  type: {fileID: -3326733738379100494, guid: 0ab5235766f9848189b0fb758fec1d67, type: 3}
+  glowMaterial: {fileID: 2100000, guid: 4fed08e6b89714b3aa6d2009bb7b6020, type: 2}
+  headlights: 0
+  beacon: 1
+  work: 0
+  markers: 1
+  flood: 1
+  onlyAtNight: 1
+  beaconOnlyAtNight: 1

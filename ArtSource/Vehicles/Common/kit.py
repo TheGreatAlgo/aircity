@@ -89,6 +89,13 @@ class Part:
         faces = list({f for v in res["verts"] for f in v.link_faces})
         return self._finish(faces, mat, bevel, segments, matrix)
 
+    def sphere(self, centre, r, mat, segs=24, rings=12, matrix=None):
+        """UV sphere (a radome, a lamp dome) centred on (right, forward, up)."""
+        res = bmesh.ops.create_uvsphere(self.bm, u_segments=segs, v_segments=rings, radius=r)
+        bmesh.ops.translate(self.bm, vec=V(*centre), verts=res["verts"])
+        faces = list({f for v in res["verts"] for f in v.link_faces})
+        return self._finish(faces, mat, 0.0, 2, matrix)
+
     def prism(self, profile, axis, start, length, mat, bevel=0.0, segments=2, matrix=None):
         """Extrude a closed 2D profile. axis "r": profile is (forward, up) points, extruded along right from
         `start` (right) by `length`; axis "f": (right, up) along forward; axis "z": (right, forward) along up."""

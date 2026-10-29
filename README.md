@@ -7,25 +7,31 @@ An airport-building game for PC and Mac (Unity 6, URP).
 1. Install **Unity 6000.6.7f1** through Unity Hub (see `ProjectSettings/ProjectVersion.txt`), plus **Git LFS**.
 2. `git lfs install && git clone https://github.com/TheGreatAlgo/aircity.git`
 3. Open the folder in Unity Hub, then open `Assets/AirCity/Scenes/Sandbox.unity` and press Play.
-   - **Toolbar:** the tools are along the bottom (Select, Runway, Taxiway, Road, Depot, Delete), with a strip above
+   - **Toolbar:** the tools are along the bottom (Select, Runway, Taxiway, Road, Depot, Stand, De-ice, Delete), with a strip above
      them for the tool's settings or the selection's actions. The world, maintenance and aircraft toggles are on the
      right. Every button shows its key, and the keys below all still work. **H** hides the HUD.
    - **Right-drag:** orbit · **Middle-drag / WASD:** pan · **Scroll:** zoom (towards the cursor) · **Q / E:** rotate ·
      **F:** re-centre
-   - **Click:** select an aircraft, runway, taxiway / road section, depot or apron · **Delete / Backspace:** remove the
+   - **Click:** select an aircraft, runway, taxiway / road section, depot, stand or apron · **Delete / Backspace:** remove the
      selection · **X:** delete tool (click anything to remove it; **Shift+click** removes a taxiway's whole run) ·
      **Esc:** back to Select · **G:** cycle the selected aircraft's dirt · **T:** taxi it
    - **N:** day / night · **+ / −:** dusk · **1:** beacons · **2:** strobes · **3:** landing + taxi lights ·
      **4:** logo lights · **R:** engines
-   - Airfield (panel top left): **B:** next build tool (select / runway / taxiway / road / depot) · runway tool: **drag** a
-     runway (snaps to 10° and 50 m, **Alt** for free) · taxiway and road tools: **click** points, **right-click**
-     ends the line · depot tool: **drag** from the door front the way the doors face · **V:** surface ·
-     **[ / ]:** width · **L:** lighting · **C:** weather (dry / rain / snow) · **K / J:** wear / repair ·
-     With a runway selected, the panel lists which aircraft can use it and why not.
+   - Airfield (panel top left): **B:** next build tool (select / runway / taxiway / road / depot / stand / de-icing
+     bay) · runway tool: **drag** a runway (snaps to 10° and 50 m, **Alt** for free) · taxiway and road tools:
+     **click** points, **right-click** ends the line · depot tool: **drag** from the door front the way the doors
+     face · stand tool: **click** beside a taxiway (it snaps to the stands beside it) · de-ice tool: **click** on a
+     taxiway · **V:** surface · **[ / ]:** width (stands: size code A–F) · **Z / Shift+Z:** stand angle / lean ·
+     **I:** push-back / taxi-out · **L:** lighting · **C:** weather (dry / rain / snow) · **K / J:** wear / repair ·
+     With a runway or stand selected, the panel lists which aircraft can use it and why not.
    - Maintenance (the depot west of the apron): **P:** plough (selected runway / all) · **M:** mow (selected grass
      strip / all) · **Shift+M:** mow the selected runway's verges · **, / .:** fewer / more snow ploughs in the
      selected depot (**Shift:** mowers) · **Y:** time speed 1×–60× · **O:** a 2 cm snowfall at once · **U:** grass
      and verges grow 6 cm at once. Snow and long grass also send the teams out by themselves.
+   - Push-back: select one of the jets parked nose-in on the stands south of the parallel taxiway and press
+     **Enter** (or **Push back** on the strip; **Shift** to face the other way). A tug comes from the depot,
+     picks up the nose wheel, pushes the jet round onto the taxiway and goes home. **Park** puts a selected
+     aircraft back on the nearest free stand. The depot's fleet strip sets its small and large tugs.
 
 ## Layout
 
@@ -34,7 +40,7 @@ Assets/AirCity/
   Aircraft/<Model>/        generated aircraft: Models/*.fbx, Textures/, <Model>.aircraft (AircraftType), <Model>.prefab
   Aircraft/Shared/         registration font shared by all aircraft
   Airfield/                ground textures (generated, CC0 sources) and the airfield materials
-  Vehicles/<Model>/        generated snow plough, mower and depot building: Models/*.fbx, Textures/, <Model>.vehicle
+  Vehicles/<Model>/        generated snow plough, mower, tugs, depot and control towers: Models/*.fbx, Textures/, <Model>.vehicle
                            (VehicleType), <Model>.prefab; Materials/ (light glow, spray)
   Liveries/                livery assets (airline paint schemes) and Logos/, usable on any aircraft type
   Shaders/                 aircraft outline / ground shadow / light glow; airfield surface / paint / light glow / fixture;
@@ -134,7 +140,7 @@ livery to `Aircraft/<Model>/Thumbnails/` (transparent PNGs for menus).
 ## Runways and taxiways
 
 An `Airport` holds the runways (child `Runway` objects), the taxiways and service roads (a child
-`TaxiwayNetwork`), aprons, the grass under them with the mown verges beside runways and taxiways, and its
+`TaxiwayNetwork`, which also holds the aircraft stands and de-icing bays that open onto them), aprons, the grass under them with the mown verges beside runways and taxiways, and its
 maintenance depots (child `MaintenanceDepot`s). Only their layout is saved: meshes, paint and lights are generated
 when they're enabled or changed, so runways can be any length and taxiways any shape.
 
@@ -176,8 +182,10 @@ rwy.StartPloughing();                         // the depot's ploughs come; close
 
 **AirCity ▸ Airfield ▸ Add Sandbox Airport** rebuilds the sandbox airport: a 2,800 m concrete runway with
 precision lighting and a parallel taxiway, a crossing 1,600 m asphalt runway, a 600 m dirt strip and a 700 m grass
-strip (overdue for mowing), on grass, with a depot of three snow ploughs and a mower on a small pad and service
-roads from it to the apron and the parallel taxiway.
+strip (overdue for mowing), on grass, with a depot of three snow ploughs, a mower and three tugs (two small, one
+large) on a small pad and service roads from it to the apron and the parallel taxiway. It also has a taxilane of
+jet stands (code C and E, square on and at 60°, one taxi-out) with four jets parked on them, a GA ramp of code A
+stands on the grass taxiway, and two de-icing bays at the 09 end.
 
 ### Snow ploughs and mowers
 
@@ -217,6 +225,22 @@ airport.Depot.Teams[0].Status   // "ploughing runway 09/27, pass 2 of 4 (40 %)"
   blades and brooms; clippings off the mower decks.
 - The vehicles and the depot come from `ArtSource/Vehicles` (see ArtSource/README.md); `VehicleSetup` makes their
   prefabs (**AirCity ▸ Vehicles ▸ Create Missing Prefabs**, also run by the airfield bootstrap).
+
+### Tugs and push-back
+
+Depots also keep towbarless tugs (`depot.SetTugs(small, large)`): `TugSmall` for aircraft of 10–100 t (regional
+and narrow-body) and `TugLarge` for 40–600 t (up to an A380). The aircraft's nose wheel goes into a cradle between
+the tug's rear legs, which lifts it, so tug and aircraft move as one.
+
+```csharp
+var job = airport.Maintenance.PushBack(aircraft, out string problem);   // null + the reason if it can't
+job.State   // Waiting, Coming, Lifting, Pushing, Lowering, Done
+```
+
+The smallest free tug that can move it drives out, turns in along the side of the stand, backs under the nose,
+lifts the wheel and pushes the aircraft straight back and round onto the taxiway centreline, facing the way that
+leads to a runway. Then it lowers the wheel and drives home. Light aircraft are pushed by hand (no tug); taxi-out
+stands don't need one. Details: Docs/systems/maintenance.md.
 
 ## Command line
 

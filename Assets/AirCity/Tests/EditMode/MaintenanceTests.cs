@@ -130,9 +130,9 @@ namespace AirCity.Tests.Airfield
             int t = net.SplitEdge(net.edges.First(x => x.a == b && x.b == c), new Vector3(0f, 0f, -200f));
             net.Connect(Node(0f, 0f, r), t, 15f, PavementSurface.Asphalt);
             int p = net.SplitEdge(net.edges.First(x => x.a == a && x.b == b), new Vector3(-300f, 0f, -200f));
-            net.Connect(Node(-300f, -312f), p, RunwayRules.RoadWidth, PavementSurface.Asphalt, false, true);
+            net.Connect(Node(-300f, -312f), p, RunwayRules.RoadWidth, PavementSurface.Asphalt, false, RoadClass.Service);
             // a pad in front of the depot, where the road ends
-            airport.aprons.Add(new ApronArea { centre = new Vector3(-300f, 0f, -312f), size = new Vector2(56f, 36f), surface = PavementSurface.Concrete });
+            airport.aprons.Add(ApronArea.Rect(new Vector2(-300f, -312f), new Vector2(56f, 36f), 0f, PavementSurface.Concrete));
             airport.BuildGround();
             net.Rebuild();
             var depot = AddDepot(airport, new Vector2(-300f, -330f), Vector2.up, ploughs, 0);
@@ -158,7 +158,7 @@ namespace AirCity.Tests.Airfield
 
             // the same for a taxiway run, removed while they are on their way to it
             foreach (var e in net.edges) e.snow = 4f;
-            var spur = net.edges.First(e => !e.road && net.At(e.a).x == 0f && net.At(e.b).x == 0f);
+            var spur = net.edges.First(e => !e.IsRoad && net.At(e.a).x == 0f && net.At(e.b).x == 0f);
             Assert.IsTrue(airport.Maintenance.Plough(spur));
             RunUntil(airport, () => team.state == VehicleTeam.State.Driving, 600f);
             Assert.IsTrue(team.Job != null && team.Job.Contains(spur), "on its way to the spur");
@@ -219,7 +219,7 @@ namespace AirCity.Tests.Airfield
             Assert.AreEqual(0f, depot.DoorOpenAmount(0), "doors shut");
             var net = airport.Taxiways;
             foreach (var e in net.edges) e.snow = 4f;
-            Assert.IsTrue(depot.Plough(net.edges.First(e => !e.road && e.a != e.b && net.Node(e.a).runway != null)));
+            Assert.IsTrue(depot.Plough(net.edges.First(e => !e.IsRoad && e.a != e.b && net.Node(e.a).runway != null)));
 
             var team = depot.Teams[0];
             float Along(Vector2 p) => Vector2.Dot(p - depot.Front, depot.Outward);
@@ -362,10 +362,10 @@ namespace AirCity.Tests.Airfield
             var net = airport.Taxiways;
             int a = net.AddNode(new Vector3(-200f, 0f, -150f));
             net.Connect(a, net.AddNode(new Vector3(-200f, 0f, 0f), r), 15f, PavementSurface.Asphalt, true);
-            net.Connect(a, net.AddNode(new Vector3(-200f, 0f, -260f)), RunwayRules.RoadWidth, PavementSurface.Asphalt, true, true);
+            net.Connect(a, net.AddNode(new Vector3(-200f, 0f, -260f)), RunwayRules.RoadWidth, PavementSurface.Asphalt, true, RoadClass.Service);
             net.Rebuild();
-            Assert.IsFalse(net.edges.First(e => e.road).lit, "roads are never lit");
-            Assert.IsFalse(net.edges.First(e => e.road).HasVerges, "roads have no verges");
+            Assert.IsFalse(net.edges.First(e => e.IsRoad).lit, "roads are never lit");
+            Assert.IsFalse(net.edges.First(e => e.IsRoad).HasVerges, "roads have no verges");
             AirfieldTests.CheckMesh(r.VergeMesh, "runway verges");
             AirfieldTests.CheckMesh(net.VergeMesh, "taxiway verges");
             var depot = AddDepot(airport, new Vector2(-200f, -272f), Vector2.up, 0, 1);
@@ -393,7 +393,7 @@ namespace AirCity.Tests.Airfield
             int a = net.AddNode(new Vector3(0f, 0f, 0f)), b = net.AddNode(new Vector3(400f, 0f, 0f));
             int c = net.AddNode(new Vector3(0f, 0f, -30f)), d = net.AddNode(new Vector3(400f, 0f, -30f));
             net.Connect(a, b, 15f, PavementSurface.Asphalt, true);
-            foreach (var (x, y) in new[] { (a, c), (c, d), (d, b) }) net.Connect(x, y, RunwayRules.RoadWidth, PavementSurface.Asphalt, false, true);
+            foreach (var (x, y) in new[] { (a, c), (c, d), (d, b) }) net.Connect(x, y, RunwayRules.RoadWidth, PavementSurface.Asphalt, false, RoadClass.Service);
             // a lit taxiway crossing the road
             net.Connect(net.AddNode(new Vector3(200f, 0f, -120f)), net.AddNode(new Vector3(200f, 0f, -60f)), 15f, PavementSurface.Asphalt, true);
             int crossing = net.AddNode(new Vector3(200f, 0f, 40f));
@@ -405,7 +405,7 @@ namespace AirCity.Tests.Airfield
             Assert.IsTrue(net.FindVehicleRoute(a, b).Contains(c), "vehicles prefer the road");
             CollectionAssert.AreEqual(new[] { a, net.nodes.First(n => Vector3.Distance(n.position, new Vector3(200f, 0f, 0f)) < 0.5f).id, b },
                 net.FindRoute(a, b, cessna), "aircraft keep to the taxiway");
-            net.RemoveEdge(net.edges.First(e => !e.road && (e.a == a || e.b == a)).id);
+            net.RemoveEdge(net.edges.First(e => !e.IsRoad && (e.a == a || e.b == a)).id);
             net.Rebuild();
             Assert.IsNull(net.FindRoute(a, b, cessna), "and never take the road");
             Assert.IsNotNull(net.FindVehicleRoute(a, b));

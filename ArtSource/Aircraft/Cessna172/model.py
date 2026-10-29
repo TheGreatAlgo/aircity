@@ -207,7 +207,9 @@ GEAR = {
 }
 
 # runway needs: C172S POH at maximum weight, sea level, 15 C, distances over a 50 ft obstacle
-PERFORMANCE = {"takeoff_distance": 497.0, "landing_distance": 407.0, "max_takeoff_mass": 1157.0, "unpaved": True}
+PERFORMANCE = {"takeoff_distance": 497.0, "landing_distance": 407.0, "max_takeoff_mass": 1157.0, "unpaved": True,
+               # m/s: taxi 14 kn, rotate (VR) 55 kn, approach 65 kn, climb 730 ft/min at Vy 74 kn
+               "taxi_speed": 7.0, "rotate_speed": 28.0, "approach_speed": 33.5, "climb_rate": 3.7, "climb_speed": 38.0}
 
 
 def _side(s, z, sign):

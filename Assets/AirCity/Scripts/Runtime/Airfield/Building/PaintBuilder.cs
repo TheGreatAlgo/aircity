@@ -28,10 +28,14 @@ namespace AirCity.Airfield.Building
     {
         public static readonly Color White = new Color(0.92f, 0.92f, 0.9f, 0.96f);
         public static readonly Color Yellow = new Color(0.96f, 0.72f, 0.1f, 0.96f);
+        /// <summary>Apron safety lines: stand boundaries and the de-icing bays' vehicle limits.</summary>
+        public static readonly Color Red = new Color(0.62f, 0.05f, 0.04f, 0.96f);
 
-        // keep in sync with ArtSource/Airfield/textures.py (CHARS, CELL, PX_PER_M)
-        const string GlyphChars = "0123456789LCR";
-        const float GlyphPxPerM = 24f, AtlasW = 1024f, AtlasH = 512f, CellW = 128f, CellH = 256f;
+        // keep in sync with ArtSource/Airfield/textures.py (CHARS, CELL, PX_PER_M, ROWS)
+        const string GlyphChars = "0123456789LCRABDEF";
+        const float GlyphPxPerM = 24f, AtlasW = 1024f, AtlasH = 1024f, CellW = 128f, CellH = 256f;
+        /// <summary>Height of a glyph at its atlas scale (metres): runway designators.</summary>
+        public const float GlyphHeight = 9f;
 
         public readonly MeshData mesh = new MeshData();
         public RunwayFrame frame = RunwayFrame.None;
@@ -110,17 +114,48 @@ namespace AirCity.Airfield.Building
                 Box(a + d * (s + dash * 0.5f), d, halfWidth, dash * 0.5f, color);
         }
 
-        /// <summary>A runway designation character, 9 m tall, read facing "up".</summary>
-        public void Glyph(Vector2 centre, Vector2 up, char c, Color color)
+        /// <summary>Dashes along a polyline (a sampled curve), laid out like Dashes; each dash bends with the line.</summary>
+        public void Dashes(IList<Vector2> points, float halfWidth, float dash, float gap, Color color)
+        {
+            int n = points.Count;
+            if (n < 2) return;
+            var at = new float[n];
+            for (int i = 1; i < n; i++) at[i] = at[i - 1] + (points[i] - points[i - 1]).magnitude;
+            float len = at[n - 1];
+            if (len < dash) return;
+            int count = Mathf.FloorToInt((len + gap) / (dash + gap));
+            float s = (len - (count * (dash + gap) - gap)) * 0.5f;
+            var piece = new List<Vector2>();
+            Vector2 Point(float d)
+            {
+                int i = 1;
+                while (i < n - 1 && at[i] < d) i++;
+                float seg = at[i] - at[i - 1];
+                return Vector2.Lerp(points[i - 1], points[i], seg > 1e-6f ? (d - at[i - 1]) / seg : 0f);
+            }
+            for (int k = 0; k < count; k++, s += dash + gap)
+            {
+                piece.Clear();
+                piece.Add(Point(s));
+                for (int i = 1; i < n - 1; i++)
+                    if (at[i] > s && at[i] < s + dash) piece.Add(points[i]);
+                piece.Add(Point(s + dash));
+                Strip(piece, halfWidth, color);
+            }
+        }
+
+        /// <summary>A character `height` metres tall (runway designators: 9 m), read facing "up".</summary>
+        public void Glyph(Vector2 centre, Vector2 up, char c, Color color, float height = GlyphHeight)
         {
             int index = GlyphChars.IndexOf(c);
             if (index < 0) return;
             up = up.normalized;
             var right = Geo.Right(up);
-            float hw = CellW / GlyphPxPerM * 0.5f, hh = CellH / GlyphPxPerM * 0.5f;
+            float scale = height / GlyphHeight;
+            float hw = CellW / GlyphPxPerM * 0.5f * scale, hh = CellH / GlyphPxPerM * 0.5f * scale;
             int col = index % 8, row = index / 8;
             var atlas = new Vector4((col + 0.5f) * CellW / AtlasW, 1f - (row + 0.5f) * CellH / AtlasH,
-                GlyphPxPerM / AtlasW, GlyphPxPerM / AtlasH);
+                GlyphPxPerM / AtlasW / scale, GlyphPxPerM / AtlasH / scale);
             var box = new Vector4(hw, hh, 0f, 1f);
             int b = mesh.Count;
             foreach (var (sx, sy) in Corners)
@@ -131,12 +166,22 @@ namespace AirCity.Airfield.Building
             mesh.Quad(0, b, b + 1, b + 2, b + 3);
         }
 
-        /// <summary>Several glyphs side by side (e.g. "27"), centred.</summary>
-        public void Text(Vector2 centre, Vector2 up, string text, float pitch, Color color)
+        /// <summary>Several glyphs side by side (e.g. "27"), centred, `pitch` metres apart.</summary>
+        public void Text(Vector2 centre, Vector2 up, string text, float pitch, Color color, float height = GlyphHeight)
         {
             var right = Geo.Right(up.normalized);
             for (int i = 0; i < text.Length; i++)
-                Glyph(centre + right * ((i - (text.Length - 1) * 0.5f) * pitch), up, text[i], color);
+                Glyph(centre + right * ((i - (text.Length - 1) * 0.5f) * pitch), up, text[i], color, height);
+        }
+
+        /// <summary>A straight line from a to b, its ends squared off `extend` metres beyond the points (so the
+        /// sides of a box meet at the corners).</summary>
+        public void Line(Vector2 a, Vector2 b, float halfWidth, Color color, float extend = 0f)
+        {
+            var d = b - a;
+            float len = d.magnitude;
+            if (len < 1e-3f) return;
+            Box((a + b) * 0.5f, d / len, halfWidth, len * 0.5f + extend, color);
         }
 
         public Mesh Apply(Mesh m, string name) => mesh.Apply(m, name, true, 4);

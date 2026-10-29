@@ -6,7 +6,7 @@ using UnityEngine.Rendering;
 namespace AirCity.Vehicles
 {
     /// <summary>
-    /// A vehicle's (or the depot's) lights, from its type's light points, drawn by AirCity/VehicleLightGlow in one
+    /// A vehicle's (or a building's) lights, from its type's light points, drawn by AirCity/VehicleLightGlow in one
     /// draw call per vehicle: a glow per lamp that stays a few pixels wide however far the camera is, beacons that
     /// rotate on the GPU, and at night pools of light on the ground where the head, work and flood lights point.
     /// Which groups are on goes in the renderer's shader user value (all vehicles share one material).
@@ -25,6 +25,8 @@ namespace AirCity.Vehicles
         public bool headlights = true, beacon, work, markers = true, flood = true;
         [Tooltip("Headlights, work and flood lights only at night.")]
         public bool onlyAtNight = true;
+        [Tooltip("The beacon (and the markers with it) only at night: a control tower's aerodrome beacon.")]
+        public bool beaconOnlyAtNight;
 
         MeshRenderer glowRenderer;
 
@@ -34,9 +36,11 @@ namespace AirCity.Vehicles
         {
             get
             {
-                bool night = !onlyAtNight || AircraftLights.Glow > 0.3f;
-                return (headlights && night ? 1u : 0u) | (beacon ? 2u : 0u) | (work && night ? 4u : 0u) |
-                       (markers && (beacon || night) ? 8u : 0u) | (flood && night ? 16u : 0u) | (Phase << 8);
+                bool dark = AircraftLights.Glow > 0.3f;
+                bool night = !onlyAtNight || dark;
+                bool turning = beacon && (dark || !beaconOnlyAtNight);
+                return (headlights && night ? 1u : 0u) | (turning ? 2u : 0u) | (work && night ? 4u : 0u) |
+                       (markers && (turning || night) ? 8u : 0u) | (flood && night ? 16u : 0u) | (Phase << 8);
             }
         }
 

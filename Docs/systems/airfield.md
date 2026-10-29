@@ -1,7 +1,7 @@
-# Airfield: runways, taxiways, aprons, weather
+# Airfield: runways, taxiways, stands, aprons, weather
 
-An `Airport` builds its runways, taxiways, service roads, aprons, verges and ground at runtime from a small saved
-layout. Only the layout data is serialized; every mesh, paint mark and light is regenerated when something is enabled
+An `Airport` builds its runways, taxiways, service roads, stands and de-icing bays, aprons, verges and ground at
+runtime from a small saved layout. Only the layout data is serialized; every mesh, paint mark and light is regenerated when something is enabled
 or changed. Things that change all the time (wear, snow, grass length, ploughs or mowers at work) are pushed into
 vertex channels, never rebuilt. Gameplay rules (lengths, widths, closures, wear, verge widths) live in one place,
 `RunwayRules`, and are tested.
@@ -10,7 +10,7 @@ Design choices the user made (2026-10-23):
 
 | Topic | Choice |
 |---|---|
-| Placement | any angle, with a 10° snap |
+| Placement | any angle, free by default; Shift gives 10° / 5 m steps (2026-10-27: the user found always-on snapping too much) |
 | Taxiways | straight segments with automatic curves and fillets |
 | Lengths | real-world distances |
 | Surfaces | dirt, grass, asphalt, concrete; they differ by wear, weather and upkeep, with no weight limits; jets need pavement |
@@ -20,13 +20,27 @@ Design choices the user made (2026-10-23):
 | Service roads | vehicle-only, white markings, give way at taxiways; aircraft never use them |
 | Terrain | flattening under runways is deferred (the ground is flat) |
 
+Stands, 2026-10-24:
+
+| Topic | Choice |
+|---|---|
+| Attaching | stands open onto either side of any taxiway; there is no separate apron-lane object (a taxiway lined with stands *is* the apron taxilane). Since 2026-10-27 stands can be built first, anywhere, and connected afterwards by a taxiway laid along their front line ("most people place the stands first") |
+| Angles | any angle from 25° to 155° to the front line (90° square on, past it leaning the other way); 90°, 60°, 45° and 30° are one click, keeping the lean; Shift+scroll turns it (2026-10-27) |
+| Sizes | ICAO codes A–F by wingspan; each stand shows its code (painted letter), the largest aircraft it takes |
+| Leaving | per stand: push-back (nose in) or taxi-out (nose out, needs about twice the room) |
+| Grass | a surface choice, for codes A and B only |
+| De-icing | drive-through bays on a taxiway, with lanes for the trucks either side |
+| Old apron rectangles | kept as open tarmac (`ApronArea`); since 2026-10-26 aprons are free-placed polygons |
+| Later | hangars and jet bridges attach to stands; aircraft parking and taxiing to them |
+
 ## Where it lives
 
 | Path | Role |
 |---|---|
 | `Scripts/Runtime/Airfield/Airport.cs` | Root: materials, aprons, ground, weather (`Condition`, `groundSnow`), `timeScale`, `Simulate`, runway and depot add / remove, `Depots`, `Maintenance`, `Pavement` |
 | `Runway.cs` | One runway: thresholds, surface, width, lighting, wear, snow, grass, verge grass, letter; `Check(type)`; rebuild |
-| `TaxiwayNetwork.cs` | Taxiway and service-road graph (`TaxiwayNode`, `TaxiwayEdge`), editing (`Connect` splits crossings), routing (aircraft; vehicles with roads preferred and aprons crossable), `Run` (chains of sections for the depots' teams) |
+| `TaxiwayNetwork.cs` | Taxiway and service-road graph (`TaxiwayNode`, `TaxiwayEdge`), editing (`Connect` splits crossings), routing (aircraft; vehicles with roads preferred and aprons crossable), `Run` (chains of sections for the depots' teams); stands (`AddStand`, `Layout`, `Fits`, `CheckStand`, `StandsFor`) |
+| `Stand.cs` | `Stand` (saved: kind, number, code, surface, exit, position, heading) and `StandLayout` (pad, clearances, stop bar, taxi-out hairpin, frontage, `ParkPosition`) |
 | `Pavement.cs` | Where there's pavement to drive on, from the surface meshes, in a 16 m grid (the ploughs' turns) |
 | `RunwayRules.cs` | All gameplay constants and rules: widths, required length, `Check`, snow, grass, wear, designators |
 | `StripWork.cs` | `SurfaceValues` (per-owner shader state) and `StripWork` (the ploughing / mowing pass pattern) |
@@ -37,7 +51,8 @@ Design choices the user made (2026-10-23):
 | `Building/PaintBuilder.cs` | Paint marks: boxes, strips, dashes, SDF glyphs; `RunwayFrame` |
 | `Building/LightBuilder.cs` | Light glows plus fixture hardware (elevated / inset lights, PAPI units, barrettes, cones) |
 | `Building/RunwayBuilder.cs` | ICAO Annex 14 runway layout: surface, shoulders, blast pads, markings, lights |
-| `Building/TaxiwayBuilder.cs` | Graph to geometry: curves, junction fillets, centrelines, holding positions, edge lights, stop bars; road markings and give-way lines; taxiway verges |
+| `Building/TaxiwayBuilder.cs` | Graph to geometry: curves, junction fillets, centrelines, holding positions, edge lights, stop bars; road markings and give-way lines; taxiway verges (left out where stands open onto a side) |
+| `Building/StandBuilder.cs` | Stand and de-icing bay pads and paint: lead-in / lead-out lines, stop bars, red boundaries, numbers and code letters |
 | `Shaders/AirfieldCommon.hlsl` | Shared lighting wrapper, weather globals, `TouchdownRubber`, `SnowCoverage`, `StripWorked` |
 | `Shaders/AirfieldSurface.shader` | Pavement, dirt, grass: world-space photo textures, joints, rubber, wear, wet, snow, grass length / stripes |
 | `Shaders/AirfieldPaint.shader` | Paint: SDF coverage, rubber, wear, hidden under snow except where ploughed |
@@ -46,7 +61,18 @@ Design choices the user made (2026-10-23):
 | `Scripts/Editor/Airfield/AirfieldSetup.cs` | Creates the materials (missing ones only) and builds the sandbox airport (`Bootstrap`) |
 | `Scripts/Editor/Airfield/AirfieldTexturePostprocessor.cs` | Import settings for `Airfield/Textures` |
 | `ArtSource/Airfield/textures.py` | Generates ground textures and the glyph atlas (see [assets/airfield-textures.md](../assets/airfield-textures.md)) |
-| `Tests/EditMode/AirfieldTests.cs`, `MaintenanceTests.cs` | Rules, geometry, routing, snow / ploughing, grass / mowing, vehicles; runs, depots, avoidance, verges, roads |
+| `Tests/EditMode/AirfieldTests.cs`, `StandTests.cs`, `MaintenanceTests.cs` | Rules, geometry, routing, snow / ploughing, grass / mowing, vehicles; runs, depots, avoidance, verges, roads |
+
+Roads and aprons, 2026-10-26:
+
+| Topic | Choice |
+|---|---|
+| Road classes | `RoadClass` Service / Street / Highway, told apart in the data now (`RunwayRules.Road`); only service roads can be built until there is road traffic |
+| Aprons | free-placed polygons of any surface: click corners, or drag a rectangle |
+| Roads on aprons | one Road tool, no modes: across a paved apron a road is only its paint, elsewhere it lays its own pavement (which a road will need in tunnels and on bridges) |
+| Taxiways on aprons | unchanged: they still lay their own strip (paint-only taxilanes may follow) |
+| Where roads live | service roads stay edges of the taxiway network: they cross taxiways at grade and the depots' vehicles drive both. Where streets and highways live is decided when road traffic comes |
+| Tunnels and bridges | later: nodes get a height, and only edges at one level split where they cross |
 
 ## Data model
 
@@ -61,14 +87,22 @@ Design choices the user made (2026-10-23):
 - **`TaxiwayNetwork`** (a child, auto-created by `Airport.Taxiways`):
   - **Nodes:** `id`, `position`, and an optional `runway` (the node sits on that runway's centreline).
   - **Edges:** `a`, `b`, `width`, `surface`, `lit`, `wear`, `snow`, `grass`, `road`, `vergeGrass`, plus transient
-    `work`, `stripes`, `vergeWork` and `vergeStripes`. A `road` edge is a service road: 7 m (`RunwayRules.RoadWidth`),
-    never lit, no verges, and aircraft never route on it.
+    `work`, `stripes`, `vergeWork` and `vergeStripes`. `road` is a `RoadClass`: `None` is a taxiway, anything else
+    a road (`IsRoad`), never lit, with no verges, and aircraft never route on it. (It was a bool; saved `1`s load
+    as `Service`.)
   - **Verges:** paved taxiways (`HasVerges`) have mown grass out to `RunwayRules.TaxiwayVerge(width)`.
   - **Splitting:** `Connect(a, b, ...)` splits existing edges where they cross and adds runway nodes where the new
     edge crosses a runway, so the graph always matches the pavement.
-- **`ApronArea`** structs on the Airport: plain rectangles with no stands yet.
-- **Surface submeshes are indexed by `PavementSurface`** (Dirt 0, Asphalt 1, Concrete 2, Grass 3) for taxiways and
-  aprons. Runways use submesh 0 for their own surface and submesh 1 for shoulders and blast pads (asphalt).
+  - **Stands:** `stands` (see [Stands and de-icing bays](#stands-and-de-icing-bays)).
+- **`ApronArea`** on the Airport (`aprons`): an `outline` (a simple polygon, corners counter-clockwise, Airport
+  space) and a `surface`. Stands draw over them; roads run under paved ones. Built with `Airport.AddApron(corners,
+  surface)` (null if `ApronProblem` objects: under three corners, crossing edges, under 100 m², or overlapping an
+  apron it mustn't). Aprons of one surface may overlap and merge (world-mapped texture, identical pixels); asphalt
+  and concrete may not overlap each other, nor dirt and grass; paved ones cover unpaved ones. Scenes saved with the
+  old rectangle (`centre`, `size`, `rotation`) get an outline in `BuildGround` (`Migrate`). The mesh is ear-clipped
+  (`Geo.Triangulate`, `SurfaceBuilder.Polygon`).
+- **Surface submeshes are indexed by `PavementSurface`** (Dirt 0, Asphalt 1, Concrete 2, Grass 3) for taxiways,
+  stands and aprons. Runways use submesh 0 for their own surface and submesh 1 for shoulders and blast pads (asphalt).
 - **Verges** are separate meshes (a "Verges" part on each runway and on the taxiway network), drawn with the
   GrassStrip material, one owner per runway / edge, with their own `SurfaceState`.
 
@@ -96,7 +130,8 @@ and mowing stripes like a grass strip.
 
 ## Service roads
 
-Edges with `road = true` in the taxiway network:
+Edges with `road = RoadClass.Service` in the taxiway network (streets and highways would draw the same way for
+now; their lanes and widths are in `RunwayRules.Road`: street 2 × 3.25 m, highway 4 × 3.75 m plus 3 m shoulders):
 
 - **Routing:** aircraft never use them (`FindRoute` leaves them out). Vehicles prefer them: in `VehicleRoute` a road
   metre costs 1, a taxiway 1.25, an apron crossing 1.4 and a runway 1.6.
@@ -107,6 +142,110 @@ Edges with `road = true` in the taxiway network:
   the driver. Before a runway, a solid stop line at the holding distance. Taxiway centrelines never connect across
   a road arm.
 - **Never lit:** `SetLit` and `Connect` keep roads unlit.
+- **On aprons:** road straights, road-only bends and road-only junctions sit at `AirfieldHeights.Road`, under paved
+  aprons and over unpaved ones. So across a concrete apron only the white paint shows, and across a grass one the
+  road's own asphalt does. Nothing is cut: an apron added, moved or removed needs no road rebuild. A junction with a
+  taxiway stays at taxiway height. The road's paint still takes its section's snow: until a plough has been along
+  it, the markings on a snowy apron are hidden even though the apron itself shows only light snow.
+- **Junctions of roads only** (`RoadJunctionPaint`): edge lines follow every kerb fillet round, carrying straight
+  on across the far side of a T. If exactly one road runs straight through (two arms 150° or more apart:
+  `MainRoad`), it has priority: its centre dashes cross the junction and only the other roads give way, the
+  double dashed line at the main road's edge plus 0.5 m. At a crossroads of two straight roads, or a junction
+  where none runs through, every arm gives way (the user's choice) and no dashes cross the middle.
+- **Bends:** two road sections meeting at an angle become a curve (radius 2.5 × width) with edge lines and centre
+  dashes along the arc (`PaintBuilder.Dashes` over a polyline).
+- **Stands** (`RoadAccess`): a road whose pavement comes within 1 m of a stand pad's edge, along 3 m or more, is a
+  way in for vehicles: at the head of a parking stand (side 0, where the nose points) or either side (-1 / 1),
+  never the taxiway edge; de-icing bays only at their sides. Roads may touch pads but never run across them
+  (`StandAcross`, half a metre's slack), and stands can't be built over roads (`Fits`). The tug uses a head road
+  (maintenance.md). Inside the pad vehicles plan their own way; stands are never a shortcut. The stand panel says
+  which road serves it.
+- **Vehicles across aprons:** straight lines between nodes on one apron are kept only where the line stays on it
+  (`ApronArea.Crossable`), so routes go round the inside corner of an L-shaped apron.
+
+## Stands and de-icing bays
+
+A `Stand` (in `TaxiwayNetwork.stands`) is an aircraft parking stand (`StandKind.Parking`) or a drive-through de-icing
+bay (`StandKind.DeIcing`). It stands on its own, built in the taxiway network's rebuild into its surface and paint
+meshes, and is **connected** when a taxiway runs along its front line.
+
+**Saved data.** `kind`, `number` (painted: stands 1, 2, ..., bays D1, D2, ...; the lowest free number for its kind),
+`code` (`SizeCode` A–F), `surface`, `exit` (`PushBack` / `TaxiOut`), `noSmallAircraft` (it turns light aircraft,
+under 5.7 t, away: `StandProblem.NoSmallAircraft`; so a Cessna doesn't take a jet stand), and its front line: `position` (where its
+centreline crosses the front line, the taxilane centreline; a bay's middle), `front` (the front line's bearing),
+`lane` (the taxilane width it's laid out for; 0 = its code's, `RunwayRules.TaxiwayWidthFor`), plus `heading` (its
+centreline's bearing away from the front line; a bay's direction of travel). It stores no edge id.
+`TaxiwayNetwork.Connection` finds a taxiway section running along the front line (within 0.02 in sine and 0.75 m)
+past `position`. `Layout` always lays the stand out on its own front line, for its own taxilane (`Stand.Lane`), and
+only links it to that section (`edge`; null with none), its pad running in under the section's pavement. So
+connecting, splitting, rejoining or removing a taxiway never moves a stand (the user saw stands jump outwards when
+connected, 2026-10-27). A stand laid out for a narrower taxilane than the taxiway it's connected to keeps aircraft
+only that taxilane's clearance away, so the section takes aircraft up to that code only (`LaneLimits`, used by taxi
+routing and `CheckStand`; the panels say so). Unconnected stands are refused by
+`CheckStand` (`StandProblem.NotConnected`), so nothing parks on them, and push-back says why.
+Building: `AddStand(kind, onCentreline, bearing, ...)` puts one against the taxiway at a point; `Add(stand)` adds one
+framed with `Stand.Frame(front, lane)`, connected or not. Stands saved before front lines existed (no `framed` flag)
+take theirs from the taxiway they sit on when first laid out (else square on).
+A taxiway may run along a stand's front line but not across its pad (`Fits`, `StandAcross(a, b, width, road: false)`).
+
+**Layout (`StandLayout.Of`).** It's computed from the code and the taxiway, never stored:
+
+- **Frame:** s along the stand's axis from `entry`, x to its right. The distance from the taxiway centreline is
+  `s * sin + x * k`.
+- **Pad:** x0..x1 across, from under the taxiway (half width − 1 m, hidden) out to `far`. Its sides stay parallel to
+  the axis, so stands of one angle side by side tile exactly and their slab joints (uv0 in the stand frame) line up.
+- **Width:** wingspan + stand clearance (`StandClearance`: 3 / 4.5 / 7.5 m).
+- **Depth:** the design aircraft (`StandLength`, the code's longest) parks with its nearest corner exactly
+  `TaxilaneClearance` from the taxiway centreline (by the *taxiway's* code). So angled stands sit further out:
+  `(clearance + span/2 · |cos|) / sin`.
+- **Push-back:** nose away from the taxiway. The stop bar is where the nose gear stops (`NoseGearSetback`, 12% of
+  the length behind the nose).
+- **Taxi-out:** nose towards the taxiway. Aircraft arrive along the taxiway on the stand's acute side and turn onto
+  a track two turn radii (`StandTurnRadius`) to that side. They run out along it, U-turn onto the stand centreline
+  beyond the stop bar, and come down it. They leave straight on, turning the short way onto the taxiway (back the
+  way they came). The pad widens to hold the whole hairpin: the gear track, and the wingtips and tailplane plus
+  half the clearance wherever they're beyond the taxilane clearance. That's about twice a push-back stand's width.
+- **De-icing bay:** a rectangle centred on the taxiway, wingspan + 2 × clearance + 2 × `DeIcingVehicleLane` (8 m)
+  wide, the aircraft's length plus room fore and aft long. The aircraft is centred with its nose the way it's
+  heading. Always paved.
+- **Angles:** parking stands need 25° or more to the taxiway (`MinSin`). Bays must run along it (within 3°).
+- **Fits:** a pad mustn't overlap another stand's (sharing an edge is fine, separating-axis test on the quads),
+  a runway with its shoulders, or a road (touching one is fine). The tool and `EditStand` enforce it. `AddStand` doesn't check, so code that places
+  stands calls `Fits`.
+
+**Gameplay.**
+
+- `RunwayRules.CheckStand(type, code, surface, taxiwayWidth, taxiwaySurface)` checks, in order: wingspan code ≤ the
+  stand's, length ≤ `StandLength`, pavement unless the type takes unpaved runways, and the taxiway it opens onto
+  (`CanTaxi`).
+- `net.CheckStand(stand, type)` and `net.StandsFor(type, kind)` wrap it.
+- `layout.ParkPosition(type)` gives where an aircraft's origin (main gear) stands with its nose gear on the stop
+  bar, with `layout.nose` the way it faces. That's for parking aircraft, and later for jet bridges (on the nose's
+  left) and hangars (beyond `far`).
+
+**Paint** (paved stands only, `StandBuilder`):
+
+- **Lead-in lines** (yellow): push-back stands get a curve of `StandTurnRadius` off the taxiway centreline, from both
+  directions when within 15° of square. Taxi-out stands get the hairpin, the stop bar, then on as the lead-out turn.
+- **Stop bar** for the nose gear.
+- **Red boundary** round the parked design aircraft (half span + clearance/4), so neighbours' boxes don't touch.
+- **Labels:** at the entrance the number (yellow, on the reader's left) and the code letter (white, right), 2.4 m
+  (A) to 7 m (F) tall.
+- **De-icing bays:** red lines either side at half span + clearance (the trucks' limit while an aircraft moves),
+  the stop bar, and "D1" and the code beside the taxiway at the entrance.
+- **Unpaved taxiways:** stand lines stop at their edge.
+
+**Taxiway changes along a stand.** `Frontage` gives the stretch of each side a stand covers. On it, the taxiway
+leaves out its verges (split round the stand) and edge lights.
+
+**Not done yet:**
+
+- Mowers still mow the full verge passes, driving over the pad.
+- Stands have no wear or snow state of their own; like aprons they show light snow only.
+- Aircraft don't park or taxi by themselves yet. A tug can push one back off a push-back stand onto the taxiway
+  (`Maintenance.PushBack`, see [maintenance.md](maintenance.md#tugs-and-push-back)).
+- Stands don't move when their taxiway's nodes are moved (nothing moves nodes yet), and a taxiway moved off a
+  stand's front line leaves it unconnected.
 
 ## Gameplay rules (RunwayRules)
 
@@ -206,7 +345,10 @@ below the 3 cm aircraft contact shadow:
 | Ground | 0 |
 | Runway verges / taxiway verges | 0.004 / 0.006 |
 | Shoulder | 0.010 |
-| Apron | 0.015 |
+| Unpaved aprons (dirt, grass) | 0.011 |
+| Roads (straights, road-only bends and junctions) | 0.013 |
+| Paved aprons | 0.015 |
+| Stand pads and de-icing bays | 0.0175 |
 | Taxiway | 0.020 |
 | Runway | 0.024, + 0.002 × `Runway.Layer` for crossing runways |
 | Paint | 0.031 |
@@ -218,7 +360,7 @@ below the 3 cm aircraft contact shadow:
 
 | Channel | Contents |
 |---|---|
-| uv0 | (x across, s along). Junction, apron and ground use world xz. Verges: x from the pavement edge. |
+| uv0 | (x across, s along). Junction, apron and ground use world xz. Verges: x from the pavement edge. Stands: their own frame. |
 | uv1 | (`AirfieldKind`, runway length). A length of 0 means no tyre rubber. |
 | color | r wear, g snow cm, b grass cm, a fringe coverage |
 | uv4 | work: see `StripWorked` |
@@ -304,8 +446,25 @@ vertex layout section.
 **Add a material property.** Materials are created once by `AirfieldSetup.CreateMaterials` (missing ones only, so
 hand-tuning survives). To pick up new defaults, delete the `.mat` (keep the `.meta`) and rerun the bootstrap.
 
-**Add a service road.** `net.Connect(a, b, RunwayRules.RoadWidth, PavementSurface.Asphalt, false, road: true)`,
+**Add a service road.** `net.Connect(a, b, RunwayRules.RoadWidth, PavementSurface.Asphalt, false, RoadClass.Service)`,
 then `net.Rebuild()`; in the sandbox, build mode **Road**.
+
+**Add an apron.** `airport.AddApron(corners, PavementSurface.Concrete)` (rebuilds the ground; null if
+`airport.ApronProblem(corners, surface)` says why not), or `ApronArea.Rect(centre, size, rotation, surface)` into
+`airport.aprons` plus `BuildGround()`. In the sandbox, the **Apron** tool.
+
+**Add a stand or de-icing bay.**
+
+1. `net.AddStand(StandKind.Parking, pointOnCentreline, bearingAwayFromTaxiway, SizeCode.C, PavementSurface.Concrete,
+   StandExit.PushBack)`, or `StandKind.DeIcing` with the bearing along the taxiway.
+2. Check `net.Fits(net.Layout(stand))`.
+3. `net.Rebuild()`.
+
+In the sandbox, use the **Stand** / **De-ice** tools. Neighbours at one angle sit `(x1 − x0) / sin` apart along the
+taxiway.
+
+**Add a stand marking.** Edit `StandBuilder` (stand frame: `l.At(x, s)`). New characters need the glyph atlas (see
+[airfield-textures.md](../assets/airfield-textures.md)).
 
 **Rebuild the sandbox airport.** Run **AirCity ▸ Airfield ▸ Add Sandbox Airport**, or the batch command in
 [dev-tools.md](dev-tools.md). It contains:
@@ -316,7 +475,16 @@ then `net.Rebuild()`; in the sandbox, build mode **Road**.
 - A 700 m grass strip 06/24, grown to 19 cm, with a grass taxiway.
 - Verges at various lengths (the main runway's at 14 cm, nearly due).
 - The depot west of the apron (3 ploughs, 1 mower inside) on a small pad, with service roads east to the apron and
-  north across the dirt taxiway to the parallel taxiway.
+  north across the dirt taxiway to the parallel taxiway. The east road runs on across the main apron as paint
+  only, round the south of the parked aircraft and up its east side, and then (a T) east along the heads of the
+  code C stands south of the taxilane: their tugs come that way.
+- Stands:
+  - A 23 m concrete taxilane east of the apron, from the apron to the parallel taxiway. To its south: four code C
+    stands and one code E (push-back, square on). To its north: three code C stands at 60° and one code C taxi-out
+    stand.
+  - A GA ramp on the grass taxiway: three code A grass stands and two code A asphalt taxi-out stands.
+  - Two code C de-icing bays (D1, D2) on a bypass beside the parallel taxiway at the 09 end, for westbound
+    departures.
 
 ## Invariants and gotchas
 
@@ -333,6 +501,9 @@ then `net.Rebuild()`; in the sandbox, build mode **Road**.
   taxiway objects at identity under the Airport).
 - **Taxiway coordinates:** an edge's strip frame starts at node a (uv0.y = s from a). The edge's work state and
   paint `frame` rely on this.
+- **Stands find their taxiway on every rebuild** from their position. Anything that edits the graph and can
+  remove the last section under a stand must go through `RemoveOrphans` (`RemoveEdge(s)`, `RemoveNode` do).
+- **Glyph atlas twins:** `PaintBuilder.GlyphChars` / atlas size and `textures.py` `CHARS` / `ROWS` must agree.
 - **Runway nodes:** a taxiway node on a runway is re-snapped to the centreline on every taxiway rebuild.
   `ForgetRunway` turns its nodes into ordinary junctions when the runway is removed.
 - **Rebuild order:** after `Capture`, call `RefreshState()`. Otherwise uv4 (work) stays empty until the next state
@@ -360,6 +531,20 @@ then `net.Rebuild()`; in the sandbox, build mode **Road**.
 | `TaxiRouting_*` | routes respect width and surface |
 | `SandboxAirport_*` | no down-facing or NaN triangles (surfaces, paint, verges), depot and road present |
 | `Vehicles_*` | vehicle import |
+
+`StandTests`:
+
+| Test | What it checks |
+|---|---|
+| `Rules_*` | codes, surfaces, the taxiway check, `StandsFor`, numbering, stands kept off runways |
+| `PushBackStands_*` | at 90 / 60 / 45 / 30° both sides: the parked aircraft's nearest corner on the clearance line, neighbours tile, overlaps refused, shallow angles and off-taxiway points refused, meshes face up |
+| `TaxiOutStands_*` | nose out, wider than push-back, the hairpin from the taxiway centreline to the stop bar is continuous and on the pad, wingtips on the pad beyond the taxilane clearance |
+| `DeIcingBays_*` | along the taxiway only, always paved, size, stop bar, no edge lights in it, no overlaps |
+| `Stands_StayOnTheirTaxiway_AndStayPutWhenItGoes` | verge split round a stand; survives a crossing splitting its section and the rejoin; stays put, unconnected, when its taxiway goes; reconnects; picking |
+| `Stands_BuiltFirstThenConnectedByATaxiwayAlongTheirFront` | a free stand builds, is refused by aircraft, can't be crossed; a taxiway along its front connects it at its width; an angled one doesn't |
+| `Stands_SavedBeforeFrontLines_TakeTheirTaxiways` | old saves frame from their taxiway |
+| `Stands_TakeAnyAngleEitherWay` | 25°..155° to the taxiway, too shallow refused |
+| `SandboxStands_*` | every sandbox stand attached and fitting; which take the jet and the Cessna |
 
 Commands are in [dev-tools.md](dev-tools.md). Look at results with SceneCapture or a temporary editor script that
 calls `SceneCapture.Capture(cam, path, w, h)`; delete the script afterwards.

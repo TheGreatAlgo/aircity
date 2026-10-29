@@ -1,0 +1,147 @@
+{
+  "name": "TowerMedium",
+  "displayName": "Control tower (medium)",
+  "kind": "Tower",
+  "bounds": {
+    "min": [
+      -8.64,
+      0.0,
+      -11.15
+    ],
+    "max": [
+      9.6038,
+      38.01,
+      1.6
+    ]
+  },
+  "wheelbase": 0.0,
+  "wheels": [],
+  "spinners": [],
+  "lights": [
+    {
+      "name": "Beacon_White",
+      "type": "Beacon",
+      "position": [
+        2.5,
+        35.34,
+        -4.3
+      ],
+      "direction": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "color": "#FFFFFF",
+      "size": 1.4,
+      "phase": 0.0
+    },
+    {
+      "name": "Beacon_Green",
+      "type": "Beacon",
+      "position": [
+        2.5,
+        35.34,
+        -4.3
+      ],
+      "direction": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "color": "#30FF70",
+      "size": 1.4,
+      "phase": 0.5
+    },
+    {
+      "name": "Obstruction",
+      "type": "Marker",
+      "position": [
+        6.1,
+        37.91,
+        -7.0
+      ],
+      "direction": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "color": "#FF2A1A",
+      "size": 1.0,
+      "phase": 0.0
+    },
+    {
+      "name": "Obstruction_Head_L",
+      "type": "Marker",
+      "position": [
+        -0.2,
+        26.05,
+        -5.5
+      ],
+      "direction": [
+        -1.0,
+        0.0,
+        0.0
+      ],
+      "color": "#FF2A1A",
+      "size": 0.9,
+      "phase": 0.0
+    },
+    {
+      "name": "Obstruction_Head_R",
+      "type": "Marker",
+      "position": [
+        9.2,
+        26.05,
+        -5.5
+      ],
+      "direction": [
+        1.0,
+        0.0,
+        0.0
+      ],
+      "color": "#FF2A1A",
+      "size": 0.9,
+      "phase": 0.0
+    },
+    {
+      "name": "Flood_Entrance",
+      "type": "Flood",
+      "position": [
+        -5.0,
+        2.85,
+        0.9
+      ],
+      "direction": [
+        0.0,
+        -1.0,
+        0.6
+      ],
+      "color": "#FFF1D8",
+      "size": 1.0,
+      "phase": 0.0
+    },
+    {
+      "name": "Flood_Front",
+      "type": "Flood",
+      "position": [
+        -2.0,
+        6.9,
+        0.45
+      ],
+      "direction": [
+        0.0,
+        -1.0,
+        0.6
+      ],
+      "color": "#FFF1D8",
+      "size": 1.0,
+      "phase": 0.0
+    }
+  ],
+  "work": {},
+  "parking": [
+    0.0,
+    0.0,
+    0.0
+  ]
+}

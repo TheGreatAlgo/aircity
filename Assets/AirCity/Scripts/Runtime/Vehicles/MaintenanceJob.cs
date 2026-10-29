@@ -328,7 +328,7 @@ namespace AirCity.Vehicles
         public override string ToString()
         {
             string what = runway != null ? "runway " + runway.Designation
-                : $"{(edges[0].road ? "road" : "taxiway")} {EndNodes.start}-{EndNodes.end}" + (edges.Count > 1 ? $" ({edges.Count} sections)" : "");
+                : $"{(edges[0].IsRoad ? "road" : "taxiway")} {EndNodes.start}-{EndNodes.end}" + (edges.Count > 1 ? $" ({edges.Count} sections)" : "");
             return verge ? what + " verges" : what;
         }
     }

@@ -8,7 +8,8 @@ using Pose = AirCity.Vehicles.VehicleManeuver.Pose;
 namespace AirCity.Vehicles
 {
     /// <summary>
-    /// A team of identical vehicles (one to four snow ploughs, or mowers) from a depot. It works one job at a time
+    /// A team of identical vehicles (one to four snow ploughs, or mowers; a tug works alone, see VehicleTeam.Tow.cs)
+    /// from a depot. It works one job at a time
     /// (MaintenanceJob): the vehicles drive out of their garage bays one after another as the roller doors go
     /// up, form up in single file on the road or taxiway in front, fan out into echelon on the
     /// strip and work it pass by pass (StripWork); then take the next job or drive home, where each backs into its
@@ -23,7 +24,7 @@ namespace AirCity.Vehicles
     /// turned round only at their ends, on pavement for the ploughs (VehicleManeuver). Simulated in game seconds
     /// without visuals (tests); the depot gives it Vehicle instances to place.
     /// </summary>
-    public sealed class VehicleTeam
+    public sealed partial class VehicleTeam
     {
         public enum State { Parked, Driving, Working, Returning }
 
@@ -51,6 +52,10 @@ namespace AirCity.Vehicles
         readonly List<(float from, float to)> zones = new List<(float, float)>();
         float finishAt;
         internal float stuck;                   // game seconds the lead has stood behind a parked aircraft
+        internal float heldByAircraft;          // game seconds one of them has stood held up by an aircraft
+        internal float standoff, backedFor;     // game seconds head to head with an aircraft, and backed off
+        internal float backedTotal;             // game seconds since it first backed off
+        internal Aircraft.Aircraft backedFrom;  // the aircraft it backed off from
 
         public VehicleTeam(MaintenanceDepot depot, VehicleType type, int size, int firstBay, string name)
         {
@@ -69,7 +74,7 @@ namespace AirCity.Vehicles
         public float Gap => type.Gap;
         /// <summary>Free for a job: parked, or on the way home and not yet back in the yard.</summary>
         public bool Idle => state == State.Parked ||
-                            (state == State.Returning && Job == null && pos[0] < path.Length - 1f && Min(pos) >= 0f);
+                            (state == State.Returning && Job == null && Tow == null && pos[0] < path.Length - 1f && Min(pos) >= 0f);
         public float Speed => vel[0];
         /// <summary>Out of the depot (or on the way out / in).</summary>
         public bool Active => state != State.Parked;
@@ -81,6 +86,7 @@ namespace AirCity.Vehicles
         {
             get
             {
+                if (Tow != null) return TowStatus;
                 string s = state switch
                 {
                     State.Parked => "parked",
@@ -145,6 +151,19 @@ namespace AirCity.Vehicles
         }
 
         internal Vector2 Where(int i, float d, out Vector2 facing) => Where(i, d, out facing, out _, out _);
+
+        /// <summary>Where vehicle i will be through its next turn with reversing in it (a zone), every `step` metres,
+        /// once it's within `ahead` metres of it: other teams keep off that ground until it's through.</summary>
+        internal void Claim(int i, float ahead, float step, List<(Vector2 p, Vector2 facing)> into)
+        {
+            float d = pos[i];
+            foreach (var (z0, z1) in zones)
+            {
+                if (d > z1 || d < z0 - ahead) continue;
+                for (float x = Mathf.Max(d, z0); x <= z1; x += step) into.Add((Where(i, x, out var f), f));
+                return;
+            }
+        }
         internal float Position(int i) => pos[i];
         internal float Velocity(int i) => vel[i];
         /// <summary>On its own way out of or into the depot (not the shared path).</summary>
@@ -186,54 +205,7 @@ namespace AirCity.Vehicles
 
             // the route to the strip: from the depot's way onto the network, or from where the team is
             var targets = Targets(net, job);
-            List<Vector2> route;
-            if (parked)
-            {
-                path.Clear();
-                Pose merge;
-                if (depot.TryAccess(net, out var q, out int na, out int nb))
-                {
-                    var starts = new List<(int, float)> { (na, Vector2.Distance(q, net.At(na))) };
-                    if (nb >= 0) starts.Add((nb, Vector2.Distance(q, net.At(nb))));
-                    var nodes = FindRoute(net, starts, targets, q);
-                    route = Points(net, nodes, q);
-                    // they fall into line a little way along the road, out of the yard
-                    float ahead = Mathf.Max(0f, 32f - Vector2.Dot(q - depot.Front, depot.Outward));
-                    var at = q;
-                    var dir = depot.Outward;
-                    int next = 1;
-                    while (next < route.Count)
-                    {
-                        var seg = route[next] - at;
-                        float len = seg.magnitude;
-                        if (len > 0.25f) dir = seg / len;
-                        if (len > ahead + 8f)
-                        {
-                            at += dir * ahead;
-                            break;
-                        }
-                        ahead = Mathf.Max(0f, ahead - len);
-                        at = route[next++];
-                    }
-                    merge = new Pose(at, dir);
-                    route.RemoveRange(0, Mathf.Min(next, route.Count));
-                }
-                else
-                {
-                    var p = depot.Front + depot.Outward * 30f;
-                    route = Points(net, FindRoute(net, Nearest(net, p, 4, 1.5f), targets, p), null);
-                    merge = new Pose(p, route.Count > 0 ? route[0] - p : depot.Outward);
-                }
-                path.Start(merge.p, type.transitSpeed);
-                path.LineTo(merge.p + merge.facing, type.transitSpeed);
-                PlanDepartures(merge);
-                for (int i = 0; i < size; i++)
-                {
-                    pos[i] = Start(i);
-                    vel[i] = 0f;
-                }
-            }
-            else route = Points(net, FindRoute(net, FromHere(net), targets, path.End), null);
+            var route = parked ? LeaveDepot(net, targets) : Points(net, FindRoute(net, FromHere(net), targets, path.End), null);
             Follow(route);
 
             // which end the team comes in at: the passes start there
@@ -470,12 +442,16 @@ namespace AirCity.Vehicles
         // ------------------------------------------------------------------ routing
 
         /// <summary>Start nodes from the end of the path: the two ends of the edge it's on (the one behind costs a
-        /// turn round), and the nearest nodes across country.</summary>
+        /// turn round), and the nearest nodes across country, but not one whose straight line passes within
+        /// AcrossCountryClear of a parked aircraft (vehicles go between parked aircraft only into the stand they work
+        /// on).</summary>
         List<(int, float)> FromHere(TaxiwayNetwork net)
         {
             var p = path.End;
             var facing = path.EndFacing;
             var starts = Nearest(net, p, 4, 1.5f);
+            var near = depot.Airport != null ? depot.Airport.Maintenance.RouteBlocked(type, AcrossCountryClear) : null;
+            if (near != null) starts.RemoveAll(x => near(p, net.At(x.Item1)));
             if (net.TryNearestEdge(Geo.X0Z(p), 20f, out var e, out _))
                 foreach (int n in new[] { e.a, e.b })
                 {
@@ -496,7 +472,8 @@ namespace AirCity.Vehicles
         }
 
         /// <summary>The vehicles' route from `from` (through one of the start nodes), around parked aircraft if
-        /// there's a way (else straight through: they'll wait).</summary>
+        /// there's a way: from a start it can reach clear of them if there is one, else (boxed in where it is) from
+        /// any; else straight through: they'll wait.</summary>
         List<int> FindRoute(TaxiwayNetwork net, List<(int node, float cost)> starts, ICollection<int> targets, Vector2 from)
         {
             if (starts.Count == 0 || targets.Count == 0) return new List<int>();
@@ -506,9 +483,20 @@ namespace AirCity.Vehicles
             {
                 var clear = starts.FindAll(x => !blocked(from, net.At(x.node)));
                 if (clear.Count > 0) route = net.VehicleRoute(clear, targets, blocked);
+                route ??= net.VehicleRoute(starts, targets, blocked);
             }
             return route ?? net.VehicleRoute(starts, targets, null) ?? new List<int>();
         }
+
+        /// <summary>Across country (off the taxiways) vehicles keep this much further from parked aircraft (metres).</summary>
+        const float AcrossCountryClear = 10f;
+
+        /// <summary>How far right of the centreline vehicles keep at most (metres): on roads, and on taxiways and
+        /// runways (far enough to pass a narrow-body taxiing the other way, clear of its fuselage).</summary>
+        internal const float RoadKeepRight = 3.6f, MaxKeepRight = 6f;
+
+        /// <summary>How far right of the centreline of pavement this wide it keeps (at most `cap`).</summary>
+        internal float KeepRight(float width, float cap = MaxKeepRight) => Mathf.Clamp(width * 0.5f - type.Width * 0.5f - 0.4f, 0f, cap);
 
         /// <summary>Route nodes as points, each stretch pushed to the right of the way it's driven (keeping right,
         /// so oncoming vehicles can pass where it's wide enough). `from` is an extra first point (on an edge).</summary>
@@ -523,20 +511,28 @@ namespace AirCity.Vehicles
             for (int i = 0; i < pts.Count - 1; i++)
             {
                 int ia = i - offset, ib = i + 1 - offset;
-                float w = 0f;
+                float w = 0f, cap = MaxKeepRight;
                 if (ia >= 0)
                 {
                     int a = nodes[ia], b = nodes[ib];
                     var e = net.edges.Find(x => (x.a == a && x.b == b) || (x.a == b && x.b == a));
-                    if (e != null) w = e.width;
+                    if (e != null)
+                    {
+                        w = e.width;
+                        if (e.IsRoad) cap = RoadKeepRight;
+                    }
                     else
                     {
                         var r = net.Node(a).runway;
                         if (r != null && r == net.Node(b).runway) w = r.width;
                     }
                 }
-                else if (net.TryNearestEdge(Geo.X0Z(pts[0]), 2f, out var e0, out _)) w = e0.width;
-                keep.Add(Mathf.Clamp(w * 0.5f - type.Width * 0.5f - 0.4f, 0f, 3.6f));
+                else if (net.TryNearestEdge(Geo.X0Z(pts[0]), 2f, out var e0, out _))
+                {
+                    w = e0.width;
+                    if (e0.IsRoad) cap = RoadKeepRight;
+                }
+                keep.Add(KeepRight(w, cap));
             }
             var o = new List<Vector2>(pts.Count);
             for (int i = 0; i < pts.Count; i++)
@@ -587,6 +583,56 @@ namespace AirCity.Vehicles
         }
 
         // ------------------------------------------------------------------ the depot
+
+        /// <summary>Start from the depot: each vehicle's way out of its bay to where they fall into line (a little way
+        /// along the road in front, out of the yard), and the route from there on to one of the target nodes.</summary>
+        List<Vector2> LeaveDepot(TaxiwayNetwork net, ICollection<int> targets)
+        {
+            path.Clear();
+            Pose merge;
+            List<Vector2> route;
+            if (depot.TryAccess(net, out var q, out int na, out int nb))
+            {
+                var starts = new List<(int, float)> { (na, Vector2.Distance(q, net.At(na))) };
+                if (nb >= 0) starts.Add((nb, Vector2.Distance(q, net.At(nb))));
+                var nodes = FindRoute(net, starts, targets, q);
+                route = Points(net, nodes, q);
+                float ahead = Mathf.Max(0f, 32f - Vector2.Dot(q - depot.Front, depot.Outward));
+                var at = q;
+                var dir = depot.Outward;
+                int next = 1;
+                while (next < route.Count)
+                {
+                    var seg = route[next] - at;
+                    float len = seg.magnitude;
+                    if (len > 0.25f) dir = seg / len;
+                    if (len > ahead + 8f)
+                    {
+                        at += dir * ahead;
+                        break;
+                    }
+                    ahead = Mathf.Max(0f, ahead - len);
+                    at = route[next++];
+                }
+                merge = new Pose(at, dir);
+                route.RemoveRange(0, Mathf.Min(next, route.Count));
+            }
+            else
+            {
+                var p = depot.Front + depot.Outward * 30f;
+                route = Points(net, FindRoute(net, Nearest(net, p, 4, 1.5f), targets, p), null);
+                merge = new Pose(p, route.Count > 0 ? route[0] - p : depot.Outward);
+            }
+            path.Start(merge.p, type.transitSpeed);
+            path.LineTo(merge.p + merge.facing, type.transitSpeed);
+            PlanDepartures(merge);
+            for (int i = 0; i < size; i++)
+            {
+                pos[i] = Start(i);
+                vel[i] = 0f;
+            }
+            return route;
+        }
 
         /// <summary>Each vehicle's way from its bay: straight out of the door, then a turn onto the road.</summary>
         void PlanDepartures(Pose merge)
@@ -698,6 +744,11 @@ namespace AirCity.Vehicles
         {
             stuck = 0f;
             if (Min(pos) < 0f) return;
+            if (Tow != null)
+            {
+                RerouteTow();
+                return;
+            }
             if (Job != null)
             {
                 if (marks.Count > 0 && pos[0] >= marks[0].switchAt - 1f) return;
@@ -720,10 +771,65 @@ namespace AirCity.Vehicles
             }
         }
 
+        /// <summary>Backing off from a taxiing aircraft it met head to head: where the reverse ends (timeline), or -1.</summary>
+        float backOffTo = -1f;
+
+        internal bool BackingOff => backOffTo >= 0f;
+        /// <summary>Has backed off as far as it was going and stands there.</summary>
+        internal bool BackedOff => backOffTo >= 0f && pos[0] >= backOffTo - 0.3f && vel[0] < 0.1f;
+
+        /// <summary>
+        /// Met a taxiing aircraft (at `at`, facing `heading`, its fuselage `halfWidth` wide each side) that waits for
+        /// it, in its way: pull aside, away from the aircraft and out to `clear` metres beside its line, on the side
+        /// it's on, `metres` along (backing up, or driving forward if it was backing towards it; a lone vehicle on its
+        /// way to an aircraft or home, not in a stand or on a strip), wait there and then plan its way on again
+        /// (EndBackOff). Again from there if the aircraft still waits. False if it can't.
+        /// </summary>
+        internal bool BackOff(float metres, Vector2 at, Vector2 heading, float clear)
+        {
+            if (size != 1 || Min(pos) < 0f || Job != null || (BackingOff && !BackedOff)) return false;
+            if (Tow != null ? Tow.State != TowState.Coming || pos[0] >= enterAt - 1f : state != State.Returning) return false;
+            var p = Where(0, pos[0], out var facing, out _, out _);
+            // away from the aircraft: backing up if it faces it
+            bool reverse = Vector2.Dot(facing, at - p) > 0f;
+            var travel = reverse ? -facing : facing;
+            var right = Geo.Right(heading);
+            float beside = Vector2.Dot(p - at, right);
+            var side = beside >= 0f ? right : -right;
+            float more = Mathf.Max(0f, clear + type.Width * 0.5f - Mathf.Abs(beside));
+            var to = p + travel * Mathf.Max(metres, 3f * type.turnRadius) + side * more;
+            Rebase();
+            zones.Clear();
+            marks.Clear();
+            path.TurnTo(travel, to, travel, type.turnRadius, reverse ? ReverseSpeed : YardSpeed, reverse);
+            backOffTo = path.Length;
+            // the way into the stand is planned again afterwards
+            if (Tow != null) enterAt = hitchAt = pushTo = clearAt = float.MaxValue;
+            return true;
+        }
+
+        /// <summary>Backed off and the aircraft is by: plan the way on from here.</summary>
+        internal void EndBackOff()
+        {
+            backOffTo = -1f;
+            standoff = backedFor = backedTotal = 0f;
+            backedFrom = null;
+            if (Tow != null)
+            {
+                RerouteTow();
+                return;
+            }
+            Rebase();
+            zones.Clear();
+            PlanHome();
+            state = State.Returning;
+        }
+
         /// <summary>The job has gone (its runway or taxiways were removed): give it up and drive home from where the
         /// team is. Waits (false) while one of them is still on its way out of the yard.</summary>
         public bool Recall()
         {
+            if (Tow != null) return RecallTow();
             if (Job == null) return true;
             if (Min(pos) < 0f) return false;
             Job.Release(false);
@@ -741,6 +847,7 @@ namespace AirCity.Vehicles
         {
             Job?.Release(false);
             Job = null;
+            DropTow();
         }
 
         // ------------------------------------------------------------------ simulation
@@ -761,6 +868,8 @@ namespace AirCity.Vehicles
                     if (pos[i] < z0 && pos[i - 1] > wait && pos[i - 1] < z1 + type.Length + ZoneClearance)
                         h = Mathf.Min(h, Mathf.Max(wait, pos[i]));
                 }
+            if (Tow != null) h = Mathf.Min(h, TowHold());
+            if (backOffTo >= 0f) h = Mathf.Min(h, backOffTo);
             if (Job == null && arrivals.Length > 0)
             {
                 if (i > 0 && !Home(i - 1)) h = Mathf.Min(h, Mathf.Max(L - HomeHoldBack, pos[i]));
@@ -828,7 +937,7 @@ namespace AirCity.Vehicles
             }
             WantDoors();
 
-            bool finished = false;
+            bool finished = Tow != null && StepTow(dt);
             if (Job != null)
             {
                 UpdateWork();
@@ -840,7 +949,7 @@ namespace AirCity.Vehicles
                     finished = true;
                 }
             }
-            if (Job == null && arrivals.Length > 0)
+            if (Job == null && Tow == null && arrivals.Length > 0)
             {
                 bool home = true;
                 for (int i = 0; i < size; i++) home &= Home(i);
@@ -913,6 +1022,12 @@ namespace AirCity.Vehicles
                 float steer = parked ? 0f : -Mathf.Atan(curvature * type.wheelbase * gear) * Mathf.Rad2Deg;
                 v.Place(airport.TransformPoint(Geo.X0Z(p)), airport.TransformDirection(Geo.X0Z(facing)),
                     parked ? 0f : vel[i] * gear, steer, dt);
+                if (type.IsTug)
+                {
+                    v.SetLift(Tow != null ? Tow.Lift : 0f);
+                    v.SetState(!parked, Tow != null && Tow.State >= TowState.Lifting && Tow.State <= TowState.Lowering, 0f);
+                    continue;
+                }
                 bool working = state == State.Working && Job != null && Job.work.Pass >= 0 && WorkingAt(pos[i]);
                 float amount = !working ? 0f : type.Work == WorkKind.Plough ? Mathf.Clamp01(Job.Snow / 3f) + 0.15f : 0.8f;
                 v.SetState(!parked, working, amount);
@@ -941,7 +1056,7 @@ namespace AirCity.Vehicles
         /// <summary>Positions, speeds and what holds each vehicle back (for debugging).</summary>
         public string Describe()
         {
-            var sb = new System.Text.StringBuilder($"{name} {state} path {path.Length:0} m, {zones.Count} zones");
+            var sb = new System.Text.StringBuilder($"{name} {state} path {path.Length:0} m, {zones.Count} zones {string.Join(",", zones.ConvertAll(z => $"{z.from:0}-{z.to:0}"))}");
             for (int i = 0; i < size; i++)
                 sb.Append($" | {i}: at {pos[i]:0.0} ({Start(i):0}..{End(i):0}) v {vel[i]:0.0} hold {Hold(i):0.0} cap {cap[i]:0.0}" +
                           $"{(blockedBy[i] != null ? " for " + blockedBy[i] : "")} door {(depot.Inside(firstBay + i) ? depot.DoorOpenAmount(firstBay + i).ToString("0.00") : "-")}");

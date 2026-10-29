@@ -9,7 +9,7 @@ ArtSource/README.md. When you change a system, update its doc in `Docs/` in the 
   and namespaces `AirCity.<Area>` (editor code: `AirCity.EditorTools.<Area>`). Tests go in `Assets/AirCity/Tests/EditMode`.
 - Input uses the Input System package only (`activeInputHandler` = new). Don't use `UnityEngine.Input`.
 - Art is generated, not hand-edited: aircraft come from `ArtSource/Aircraft` (one shared pipeline in `Common/`,
-  a `model.py` + `parts.py` per type), vehicles and the depot from `ArtSource/Vehicles`. Everything under
+  a `model.py` + `parts.py` per type), vehicles, the depot and the control towers from `ArtSource/Vehicles`. Everything under
   `Assets/AirCity/Aircraft/<Model>/Models|Textures`, `Assets/AirCity/Vehicles/<Model>/Models|Textures`,
   `*.aircraft`, `*.vehicle`, `*.regfont` and the airline logos in `Liveries/Logos` (those named in `airlines.LOGOS`) is
   overwritten on regeneration.
@@ -24,7 +24,15 @@ ArtSource/README.md. When you change a system, update its doc in `Docs/` in the 
   seconds, no visuals needed: tests run it headless), and every team is stepped together by `AirportMaintenance`
   (which also keeps them clear of aircraft and each other); `Vehicle` only shows where the team has them. The pass
   pattern lives in `StripWork` and is mirrored in `AirfieldCommon.hlsl` `StripWorked`: change both together.
-- Service roads are `TaxiwayEdge`s with `road = true`: aircraft routing must keep leaving them out.
+- Roads are `TaxiwayEdge`s with `road` set to a `RoadClass` (`Service` now; `Street` / `Highway` reserved, see
+  `RunwayRules.Road`): aircraft routing must keep leaving every class out. Road pavement sits under paved aprons
+  (`AirfieldHeights.Road`), so across an apron a road is only paint. Aprons are polygons (`ApronArea.outline`).
+- Flights (`Assets/AirCity/Scripts/Runtime/Traffic`, `airport.Traffic`) are simulated in game seconds like the teams
+  (tests run them headless). Routes come from `TaxiPlanner` over the taxiway graph (never roads or aprons); every
+  clearance (runways, junctions, one-way sections) goes through `AirTraffic`. Runways are used into
+  `Airport.windFrom`. See `Docs/systems/traffic.md`.
+- Stands keep their own front line (`Stand.position` / `front` / `lane`) and are connected by whichever taxiway runs
+  along it (`TaxiwayNetwork.Connection`); `StandLayout.edge` is null for an unconnected stand, so check it.
 - Hot per-pixel or per-entity work goes in Burst jobs (see `AircraftLiveryCompositor`). Runtime-made textures go
   through `Bc1TextureBuilder`, not `Texture2D.Compress` (which is slow and main-thread only).
 

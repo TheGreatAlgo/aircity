@@ -7,7 +7,9 @@ namespace AirCity.Vehicles
 {
     /// <summary>
     /// A maintenance depot: a garage whose snow ploughs and mowers live inside, one per roller door (more park in a
-    /// row outside along the front). Vehicles of a kind work together in teams of up to maxTeam (an echelon of
+    /// row outside along the front), and the airport's aircraft tugs (small ones for regional and narrow-body
+    /// aircraft, large ones for everything up to an A380), which come out to push aircraft back off their stands
+    /// (AirportMaintenance.PushBack). Vehicles of a kind work together in teams of up to maxTeam (an echelon of
     /// ploughs clears a runway in a few passes; a single plough needs many), so buying vehicles makes ploughing and
     /// mowing faster, and more than a team's worth lets two jobs be done at once. An airport can have several
     /// depots; the jobs (AirportMaintenance) go to the nearest free team.
@@ -31,6 +33,9 @@ namespace AirCity.Vehicles
         [Tooltip("Ploughs work in echelon teams of up to this many.")]
         [Range(1, 6)] public int maxPloughTeam = 4;
         [Range(1, 4)] public int maxMowerTeam = 3;
+        [Tooltip("Towbarless tugs for aircraft of 10 to 100 t, and for 40 to 600 t (each works alone).")]
+        [Min(0)] public int smallTugs = 2;
+        [Min(0)] public int largeTugs = 1;
         [Tooltip("Send ploughs and mowers by themselves when snow builds up or grass gets long (any depot with this on " +
                  "turns it on for the airport).")]
         public bool autoDispatch = true;
@@ -41,6 +46,8 @@ namespace AirCity.Vehicles
         [Tooltip("The building's type: its doors and the hall the vehicles park in.")]
         public VehicleType buildingType;
         public GameObject ploughPrefab, mowerPrefab, buildingPrefab;
+        public VehicleType smallTugType, largeTugType;
+        public GameObject smallTugPrefab, largeTugPrefab;
 
         /// <summary>Bays outside (beyond the doors) are this far apart; vehicles park this far from the back wall.</summary>
         const float BaySpacing = 8.5f, BackClearance = 0.8f, DoorTime = 5f;
@@ -49,7 +56,7 @@ namespace AirCity.Vehicles
         const float DefaultBack = -23.5f;
 
         readonly List<VehicleTeam> teams = new List<VehicleTeam>();
-        int builtPloughs = -1, builtMowers = -1;
+        int builtPloughs = -1, builtMowers = -1, builtSmallTugs = -1, builtLargeTugs = -1;
         GameObject building;
         Transform[] doorParts = new Transform[0];
         float[] doorOpen = new float[0];
@@ -76,6 +83,16 @@ namespace AirCity.Vehicles
             this.ploughPrefab = ploughPrefab;
             this.mowerPrefab = mowerPrefab;
             this.buildingPrefab = buildingPrefab;
+            builtPloughs = -1;     // form the teams again with them
+        }
+
+        public void SetTugAssets(VehicleType small, VehicleType large, GameObject smallPrefab, GameObject largePrefab)
+        {
+            smallTugType = small;
+            largeTugType = large;
+            smallTugPrefab = smallPrefab;
+            largeTugPrefab = largePrefab;
+            builtPloughs = -1;
         }
 
         // ------------------------------------------------------------------ layout (Airport space)
@@ -150,7 +167,7 @@ namespace AirCity.Vehicles
             foreach (var e in net.edges)
             {
                 var c = Geo.ClosestOnSegment(from, net.At(e.a), net.At(e.b), out _);
-                float d = Vector2.Distance(c, from) * (e.road ? 0.8f : 1f);
+                float d = Vector2.Distance(c, from) * (e.IsRoad ? 0.8f : 1f);
                 // only what's in front of the building
                 if (Vector2.Dot(c - Front, Outward) < -2f) continue;
                 if (d < best)
@@ -247,11 +264,19 @@ namespace AirCity.Vehicles
             EnsureTeams();
         }
 
-        /// <summary>(Re)form teams when the fleet changed: full teams first, the rest in a smaller one. Teams out on
-        /// a job give it back (it's queued again).</summary>
+        public void SetTugs(int small, int large)
+        {
+            smallTugs = Mathf.Max(0, small);
+            largeTugs = Mathf.Max(0, large);
+            EnsureTeams();
+        }
+
+        /// <summary>(Re)form teams when the fleet changed: full teams first, the rest in a smaller one; each tug on its
+        /// own. Teams out on a job give it back (it's queued again; a push-back that hasn't started waits for another
+        /// tug).</summary>
         internal void EnsureTeams()
         {
-            if (builtPloughs == snowPloughs && builtMowers == mowers && teams.Count > 0 == (snowPloughs + mowers > 0)) return;
+            if (builtPloughs == snowPloughs && builtMowers == mowers && builtSmallTugs == smallTugs && builtLargeTugs == largeTugs) return;
             var airport = Airport;
             foreach (var t in teams)
             {
@@ -276,8 +301,12 @@ namespace AirCity.Vehicles
             }
             Form(ploughType, snowPloughs, maxPloughTeam, "snow team");
             Form(mowerType, mowers, maxMowerTeam, "mowing team");
+            Form(smallTugType, smallTugs, 1, "tug");
+            Form(largeTugType, largeTugs, 1, "large tug");
             builtPloughs = snowPloughs;
             builtMowers = mowers;
+            builtSmallTugs = smallTugs;
+            builtLargeTugs = largeTugs;
         }
 
         // ------------------------------------------------------------------ jobs (the airport's queue)
@@ -298,7 +327,7 @@ namespace AirCity.Vehicles
 
         void OnEnable()
         {
-            builtPloughs = builtMowers = -1;
+            builtPloughs = builtMowers = builtSmallTugs = builtLargeTugs = -1;
             if (buildingPrefab != null && building == null)
             {
                 building = Instantiate(buildingPrefab, transform);
@@ -322,6 +351,7 @@ namespace AirCity.Vehicles
 
         void OnDisable()
         {
+            builtPloughs = -1;
             foreach (var t in teams)
             {
                 t.Abandon();
@@ -363,7 +393,8 @@ namespace AirCity.Vehicles
 
         void SpawnVehicles(VehicleTeam t)
         {
-            var prefab = t.type == ploughType ? ploughPrefab : mowerPrefab;
+            var prefab = t.type == ploughType ? ploughPrefab : t.type == mowerType ? mowerPrefab
+                : t.type == smallTugType ? smallTugPrefab : t.type == largeTugType ? largeTugPrefab : null;
             if (prefab == null || t.vehicles.Count == t.size) return;
             for (int i = t.vehicles.Count; i < t.size; i++)
             {

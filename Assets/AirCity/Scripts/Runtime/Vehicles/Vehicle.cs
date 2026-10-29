@@ -5,9 +5,9 @@ using UnityEngine;
 namespace AirCity.Vehicles
 {
     /// <summary>
-    /// The visible side of a maintenance vehicle: placed each frame by its team (Place), it rolls and steers its
-    /// wheels, spins its broom, switches its lights and throws snow or grass clippings while it works. Wheels and
-    /// spinners are found by the names in the vehicle type.
+    /// The visible side of a maintenance vehicle or a tug: placed each frame by its team (Place), it rolls and steers
+    /// its wheels, spins its broom, raises a tug's cradle, switches its lights and throws snow or grass clippings
+    /// while it works. Wheels, spinners and the cradle are found by the names in the vehicle type.
     /// </summary>
     [DisallowMultipleComponent]
     public class Vehicle : MonoBehaviour
@@ -36,6 +36,9 @@ namespace AirCity.Vehicles
 
         public WheelPart[] wheels = Array.Empty<WheelPart>();
         public SpinnerPart[] spinners = Array.Empty<SpinnerPart>();
+        [Tooltip("Tugs: the cradle that lifts the nose wheel, and where it sits lowered.")]
+        public Transform liftPart;
+        public Vector3 liftRest;
 
         float[] roll;
         float spin, spinSpeed;
@@ -60,6 +63,15 @@ namespace AirCity.Vehicles
                 if (byName.TryGetValue(sp.name, out var t))
                     s.Add(new SpinnerPart { transform = t, rest = t.localRotation, axis = sp.axis, rpm = sp.rpm });
             spinners = s.ToArray();
+            liftPart = !string.IsNullOrEmpty(type.liftPart) && byName.TryGetValue(type.liftPart, out var lift) ? lift : null;
+            liftRest = liftPart != null ? liftPart.localPosition : Vector3.zero;
+        }
+
+        /// <summary>A tug's cradle: 0 lowered .. 1 raised by the type's lift height.</summary>
+        public void SetLift(float amount)
+        {
+            if (liftPart != null && type != null)
+                liftPart.localPosition = liftRest + Vector3.up * (type.liftHeight * Mathf.Clamp01(amount));
         }
 
         /// <summary>

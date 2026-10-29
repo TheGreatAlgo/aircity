@@ -1,0 +1,62 @@
+{
+  "name": "TowerSmall",
+  "displayName": "Control tower (small)",
+  "kind": "Tower",
+  "bounds": {
+    "min": [
+      -7.305,
+      0.0,
+      -7.74
+    ],
+    "max": [
+      5.14,
+      13.59,
+      1.25
+    ]
+  },
+  "wheelbase": 0.0,
+  "wheels": [],
+  "spinners": [],
+  "lights": [
+    {
+      "name": "Flood_Front",
+      "type": "Flood",
+      "position": [
+        0.0,
+        5.95,
+        0.45
+      ],
+      "direction": [
+        0.0,
+        -1.0,
+        0.6
+      ],
+      "color": "#FFF1D8",
+      "size": 1.0,
+      "phase": 0.0
+    },
+    {
+      "name": "Obstruction",
+      "type": "Marker",
+      "position": [
+        -0.1,
+        13.49,
+        -5.3
+      ],
+      "direction": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "color": "#FF2A1A",
+      "size": 0.9,
+      "phase": 0.0
+    }
+  ],
+  "work": {},
+  "parking": [
+    0.0,
+    0.0,
+    0.0
+  ]
+}

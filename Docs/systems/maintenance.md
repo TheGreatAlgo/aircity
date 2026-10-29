@@ -1,4 +1,4 @@
-# Maintenance: depots, snow ploughs, mowers
+# Maintenance: depots, snow ploughs, mowers, tugs
 
 An airport can have several `MaintenanceDepot`s. Each owns snow ploughs and mowers, which park inside its garage, one
 behind each roller door. Vehicles of a kind work together as a team in echelon. A starting airport may own a single
@@ -33,14 +33,20 @@ The user's choices (2026-10-23):
   vehicles park inside, the doors roll up, and they come out straight onto a service road, a taxiway or an apron.
 - **Service roads:** vehicle-only roads with white markings and give-way lines at taxiways. Aircraft never use
   them; vehicles prefer them.
+- **Tugs (2026-10-26):** one vehicle that both pushes back and tows, in two sizes: a small one for small airports
+  and narrow-bodies, a full-size one for the big aircraft. The user picked **towbarless** tugs (no towbar
+  tractor) and, for this round, a working push-back in the sandbox. Towing between stands and dispatching tugs
+  automatically need aircraft that taxi, so they come later. See [Tugs and push-back](#tugs-and-push-back).
 
 ## Where it lives
 
 | Path | Role |
 |---|---|
 | `Scripts/Runtime/Vehicles/AirportMaintenance.cs` | The airport's job queue, auto-dispatch, dispatch to the nearest free team, stepping every team together, keeping vehicles clear of aircraft and each other |
-| `MaintenanceDepot.cs` | One depot: fleet (`snowPloughs`, `mowers`, `maxPloughTeam` 4, `maxMowerTeam` 3), teams, bays (inside behind the doors, then a row outside), roller doors, `TryAccess` (where it joins the network), spawning vehicles |
+| `MaintenanceDepot.cs` | One depot: fleet (`snowPloughs`, `mowers`, `maxPloughTeam` 4, `maxMowerTeam` 3, `smallTugs`, `largeTugs`), teams, bays (inside behind the doors, then a row outside), roller doors, `TryAccess` (where it joins the network), spawning vehicles |
 | `VehicleTeam.cs` | One team: plans its paths (each vehicle's way out, the shared path to and along the job, each one's way home), simulates every vehicle along them, reports progress to the job, places its vehicles |
+| `VehicleTeam.Tow.cs` | A tug's push-back (a team of one): the way into the stand and under the nose, lift, push, lower, moving the aircraft |
+| `TowJob.cs` | `TowJob` (an aircraft to push back, its tug, `TowState`) and `PushBackPath` (the aircraft's way off the stand, with the steering wound on and off) |
 | `MaintenanceJob.cs` | One job: a runway, or a run of taxiway / road sections (a polyline), or their verges; strip frame `At(s, x)`, `Lane`, `Locate`; per-section `StripWork` views for runs |
 | `VehicleManeuver.cs` | Turning round: a forward Dubins turn, or turns with reversing through candidate poses, checked against the pavement |
 | `VehiclePath.cs` | Sampled ground path with a spread (0 single file .. 1 echelon), a speed limit and a gear (forwards / reversing) per point; `LineTo`, `TurnTo` (Dubins, either gear), `Through` (rounded route, concentric lanes), `Keep`, `SetSpread` |
@@ -51,7 +57,7 @@ The user's choices (2026-10-23):
 | `Airfield/Pavement.cs` | Where there's pavement (runways with shoulders and blast pads, taxiways, roads, junctions, aprons), from the generated meshes |
 | `Shaders/VehicleLightGlow.shader` | Lamp glows, rotating beacons, ground pools |
 | `Scripts/Editor/Vehicles/*` | `.vehicle` importer, model postprocessor (doors in every LOD), `VehicleSetup` (prefabs and materials) |
-| `ArtSource/Vehicles/` | Blender pipeline for the models: see [assets/SnowPlough.md](../assets/SnowPlough.md), [Mower.md](../assets/Mower.md), [Depot.md](../assets/Depot.md) |
+| `ArtSource/Vehicles/` | Blender pipeline for the models: see [assets/SnowPlough.md](../assets/SnowPlough.md), [Mower.md](../assets/Mower.md), [Tugs.md](../assets/Tugs.md), [Depot.md](../assets/Depot.md) (the control towers share it: [ControlTowers.md](../assets/ControlTowers.md)) |
 
 ## API
 
@@ -64,6 +70,8 @@ work.Mow(grassRunway);  work.Mow(grassEdge);  work.MowVerges(runway);  work.MowV
 airport.Depots                             // every enabled MaintenanceDepot; airport.Depot = the first
 airport.AddDepot(front, outward, copyAssetsFrom);  airport.RemoveDepot(depot);
 depot.SetFleet(ploughs: 3, mowers: 1);     // re-forms teams; jobs in progress go back on the queue
+depot.SetTugs(small: 2, large: 1);         // towbarless tugs, each its own team
+work.PushBack(aircraft, out string problem);  // see "Tugs and push-back"
 depot.Plough(runway) ...                   // the same as airport.Maintenance.Plough
 runway.StartPloughing() / StartMowing()    // the same, via the airport's maintenance
 depot.Teams[i].Status                      // "ploughing runway 09/27, pass 2 of 4 (40 %)", "(waiting for aircraft)"
@@ -97,7 +105,7 @@ airport.Simulate(gameSeconds)              // weather, grass and verges, then Ma
      counting as nearer), pushed about 30 m along the route out of the yard.
    - **Route:** `TaxiwayNetwork.VehicleRoute`, the cheapest route over the network:
      - roads ×1, taxiways ×1.25, runway segments ×1.6;
-     - aprons ×1.4, straight across between nodes on the same apron;
+     - aprons ×1.4, straight across between nodes on the same apron where the line stays on it;
      - stretches through a parked aircraft are left out (`AirportMaintenance.RouteBlocked`).
 
      Each stretch keeps right of its centreline where it's wide enough for an oncoming vehicle to pass.
@@ -141,6 +149,74 @@ airport.Simulate(gameSeconds)              // weather, grass and verges, then Ma
    The team then takes the next job or goes home. `Abandon()` hands the job back unfinished, for example when the
    fleet changes (`Requeue`).
 
+## Tugs and push-back
+
+`TugSmall` (10–100 t: turboprops, regional jets, A320 / 737) and `TugLarge` (40–600 t, up to an A380) are
+towbarless tugs, `VehicleKind.Tug`. Both are a U from above: the aircraft's nose wheel goes between the legs, onto a
+cradle that grips it and lifts it (`liftHeight`), so tug and aircraft move as one. The cradle's nose-wheel point is
+**on the tug's rear axle line** (`VehicleType.cradle` = origin), so a tug's pose *is* the nose gear's pose. Which
+aircraft a tug takes is by mass: `VehicleType.CanTow(type)` checks `minTowMass` ≤ `maxTakeoffMass` ≤ `maxTowMass`.
+Nothing is a per-model number in code. Light aircraft (the Cessna) are below both tugs: they're pushed by hand.
+
+Tugs live in the depot like the other vehicles (`depot.SetTugs(small, large)`); each is a `VehicleTeam` of one.
+
+```csharp
+var job = airport.Maintenance.PushBack(aircraft, out string problem);           // null + problem if it can't
+var job = airport.Maintenance.PushBack(aircraft, out problem, otherWay: true);  // face the other way along the taxiway
+airport.Maintenance.TowOf(aircraft);   // the push-back waiting or under way, or null
+airport.Maintenance.Tows;              // all of them; job.State / job.Status / job.Tug
+job.HoldPush = true;                   // the tug picks up the nose wheel and waits (job.ReadyToPush) until cleared
+```
+
+A departing flight sets `HoldPush`: the tug comes at once, and the flight clears the push when its way is free
+([traffic.md](traffic.md)).
+
+**Refusals** (`problem`): not on a stand; a taxi-out stand; not parked nose-in; no room to turn onto the taxiway;
+another aircraft (or where a push-back under way will leave one) in the way; light aircraft; no tug big enough;
+no tugs at all.
+
+**The path (`PushBackPath.Plan`).**
+
+1. Straight back along the stand's centreline, then round onto the taxiway's centreline, facing the way the
+   aircraft will taxi.
+2. **Which way:** the way whose end of the stand's section leads on to a runway, by route length (an
+   aircraft route that doesn't go back through the section). Ties and dead ends fall back to the smaller turn.
+   `otherWay` takes the second choice.
+3. **The turn:** the curvature ramps up over 0.8 of a wheelbase of main-gear travel, holds, and ramps down. So the
+   nose-wheel steering (and the tug's heading) never jumps. Radius from 1.4 wheelbases down to what
+   `maxSteeringAngle` (capped at 65°) allows, the widest that fits between the stand and the taxiway.
+4. It's planned for the **main gear** (the aircraft's origin). The nose gear's way, which the tug drives
+   backwards, follows from it. `Sample(d)` gives the aircraft's pose and nose-wheel direction for the tug's
+   distance `d` along the nose path.
+5. **Clearance** against other aircraft is checked against their **outlines** (`AirportMaintenance.Outline`:
+   fuselage, wings, tailplane boxes from the type's size), not bounding rectangles. Rectangles round two
+   A320s' wings overlap where the real aircraft pass on a taxilane.
+
+**A push-back (`VehicleTeam.TakeTow`, `TowState`).**
+
+1. **Waiting:** no free tug that can move it. `DispatchTows` picks the smallest that can, then the nearest.
+2. **Coming:** from the depot along the network to the stand's section, then into the stand **along its side
+   line** (the side clearer of other aircraft' footprints, then the nearer), a quarter turn across the front of
+   the stand, on past the nose, and a reversing quarter turn into line behind the nose wheel. Then straight
+   back under the nose at a crawl (`HitchSpeed` 0.6 m/s). **By road:** if a service road runs across the stand's
+   head (`TaxiwayNetwork.RoadAccess`, side 0), the tug routes to that road instead, drives along it in its lane to
+   a turn's radius past the stand's centreline (from whichever way it can, preferring the way it arrives), backs a
+   quarter turn round into the stand, facing out, and backs straight on to the nose wheel (`RoadIn`, `BackIn`,
+   `BackInFromRoad`). It never uses the taxiway to get there.
+3. **Lifting** (8 s): the cradle (`Vehicle.SetLift`) and the aircraft's nose rise together.
+4. **Pushing:** the tug backs along the nose path at `workSpeed` (1.3 / 1.1 m/s). Each step it puts the aircraft
+   where the nose wheel is (`PlaceAircraft`). It also turns the aircraft's wheels and steers its nose gear the way
+   the tug faces, through `AircraftGroundMotion.Drive`.
+5. **Lowering** (6 s), then **Done:** the tug drives on out from under the nose and goes home like any vehicle.
+   The aircraft is left on the taxiway centreline, ready to taxi (aircraft don't taxi yet).
+
+**Edge cases.**
+
+- An aircraft deleted mid-push: the tug lets go and goes home (`Recall`).
+- A fleet change: a push-back that hasn't started waits for another tug. One already moving is left where it is,
+  nose down (`DropTow`).
+- `RouteBlocked` counts where push-backs under way will leave their aircraft, so other vehicles plan round them.
+
 ### Keeping clear (AirportMaintenance.Avoid)
 
 - **Footprints:**
@@ -151,12 +227,43 @@ airport.Simulate(gameSeconds)              // weather, grass and verges, then Ma
   for.
 - **Teams:** a team ignores its own vehicles on the shared path, since it keeps their spacing itself. In the yard
   (each on its own way out or in) they count.
+- **Turns with reversing claim their ground:** within 40 m of one (a `zone`), a vehicle's footprints through the
+  whole manoeuvre (grown 1.5 m) are obstacles for other teams. Without it, a vehicle following another found the
+  one ahead backing round into it.
+- **Tugs** keep only 0.3 m from aircraft, not 2.5 m, and from the aircraft's outline (fuselage, wings, tailplane:
+  `Outline`), not its bounding rectangle: they work under them and pass close by noses and tails. They ignore the aircraft they're coming
+  for or holding. Inside the stand they ignore parked aircraft too, since the way round was planned clear of them.
+  While pushing, the towed aircraft's footprint also stops at other vehicles.
+- **Taxiing aircraft** (flights, [traffic.md](traffic.md)) stop for vehicles 12 m ahead of their fuselage. A
+  vehicle an aircraft has stopped for (`AirTraffic.WaitsFor`) goes on, keeping clear of its fuselage only, so the
+  two never wait for each other. Aircraft in the air (over 3 m up) are not obstacles.
+- **Giving way to aircraft:** vehicles stop short of the ground a taxiing aircraft's fuselage will sweep as far as
+  it's cleared, coming the other way or across (`AirTraffic.Tracks`), but for the 10 m of it they're already on, and
+  of an aircraft's whole push-back while it's pushed (the pushing tug excepted). A tug pushing an aircraft back has
+  the right of way over ground other vehicles have claimed for a turn. A flight that has stopped on its way
+  (`AirTraffic.Holding`) is passed under the wings, clear of the fuselage; so is any aircraft once a vehicle has been
+  held up by aircraft for 30 s (`UnderWingAfter`). `RouteBlocked` lets a vehicle stopped inside an aircraft's
+  clearance re-plan a way that leads away from it.
+- **Backing off:** a vehicle that meets a taxiing aircraft head to head (it's in the aircraft's way, the aircraft
+  waits for it, and its own way runs into the fuselage) goes 15 m straight back the way it came after 4 s
+  (`VehicleTeam.BackOff`: backing up, or driving forward out of a turn it was backing round; a lone vehicle on its
+  way to an aircraft or home, not in a stand or on a strip), again if the aircraft still waits for it, and plans its
+  way on 3 s after that aircraft has gone by (its tail behind the vehicle), gone 80 m away or stopped taxiing, or
+  after 180 s (`EndBackOff`). Typically in a corner, where the aircraft cuts the inside the vehicle keeps right on.
+  Going on as soon as the aircraft stopped waiting just met it again a few metres on. Vehicles ignore the track of an aircraft that waits for
+  them (they go on, out of its way), not everyone's.
+- **Keeping right:** routes are offset right of the centreline by up to 6 m on taxiways and runways
+  (`VehicleTeam.MaxKeepRight`), enough to pass a narrow-body's fuselage, and 3.6 m on roads.
 - **Right of way:** when two vehicles each stop for the other, the one with right of way goes:
+  - one turning round with reversing (it claimed the ground) goes first;
   - working beats driving to a job, which beats going home;
-  - otherwise the earlier team goes first;
+  - otherwise the one in front goes (the other is behind it, along the way it is moving: it may be backing),
+    else the earlier team;
   - within a team, the lower index goes first.
 - **Parked aircraft:**
-  - Routes avoid parked aircraft when planned.
+  - Routes avoid parked aircraft when planned, allowing for the keep-right offset. From a taxiway a route starts
+    along it, never straight across to the nearest nodes (that ran between parked jets' wingtips and tails); vehicles
+    go between parked aircraft only into the stand they work on.
   - A team stood behind a parked aircraft for 20 s re-plans, on the way to a job or home, never on the strip.
   - A moving aircraft (its `AircraftGroundMotion.groundSpeed` isn't 0) is just waited for: it doesn't give way.
 
@@ -293,8 +400,13 @@ imported `VehicleType` (the importer overwrites it on the next regenerate).
   destroys them. A depot's serialized state is just the fleet counts and asset references.
 - **Planning cost:** a turn search builds up to 400 trial paths. Runs and depots plan once per job; it's cheap for
   the sandbox but would want caching for big networks.
+- **Tug cradle on the rear axle:** gameplay puts the tug's origin on the aircraft's nose-gear point. A new tug model
+  must keep its cradle's wheel position on the rear axle line (`TOW["cradle"]` = origin).
 - **Not yet:**
   - Two wide vehicles meeting head-on on a road too narrow to pass: the one with right of way squeezes past.
+  - Towing between stands or to a hangar, and dispatching push-backs automatically (aircraft don't taxi yet).
+  - Two push-backs whose aircraft end up nose to nose on the same taxilane can box in one tug: aircraft don't
+    taxi away yet, so it waits for good.
   - Runway-crossing clearances.
   - Turning room on runway ends: runway passes still U-turn on the grass beyond the end, as before.
 - **Bends and junctions:** taxiway verges stop short of junctions and bends so neighbouring bands never overlap.
@@ -317,3 +429,14 @@ imported `VehicleType` (the importer overwrites it on the next regenerate).
 | `Verges_GrowAndAreMownInStripes` | verge growth, auto-dispatch, cut with stripes, the runway stays open |
 | `Roads_CarryVehiclesNotAircraft` | routing, crossing splits, white markings |
 | `Vehicles_ImportWithLightsWheelsAndWork` | types and prefabs (in `AirfieldTests`) |
+
+`TugTests`:
+
+| Test | What it checks |
+|---|---|
+| `Tugs_TwoSizesWithACradleOnTheRearAxle` | sizes, masses, cradle on the rear axle, lift part, lights, prefabs |
+| `PushBack_StraightBackThenRoundOntoTheTaxiwayFacingTheRunway` | 90° and 60° stands: on the centreline facing the runway, smooth steering within the limit, `otherWay` |
+| `PushBack_TugComesFromTheDepotPushesAndGoesHome` | the whole cycle: off the neighbours and its own jet's wings, nose wheel held in the cradle, aircraft on the taxiway, tug parked |
+| `PushBack_TwoAtOnceGoToTheSmallTugThenTheLargeOne` | dispatch by size, two tugs out at once never touching |
+| `PushBack_SaysWhyNot` | light aircraft, taxi-out stand, off a stand, aircraft in the way, no tugs |
+| `PushBack_TheAircraftGoingAwaySendsTheTugHome` | deleted mid-push |

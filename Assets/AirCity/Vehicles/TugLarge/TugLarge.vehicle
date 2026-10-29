@@ -1,0 +1,271 @@
+{
+  "name": "TugLarge",
+  "displayName": "Towbarless tug (wide-body)",
+  "kind": "Tug",
+  "bounds": {
+    "min": [
+      -2.34,
+      -0.0212,
+      -2.38
+    ],
+    "max": [
+      2.18,
+      2.52,
+      7.73
+    ]
+  },
+  "wheelbase": 4.6,
+  "wheels": [
+    {
+      "name": "Wheel_FL",
+      "centre": [
+        -1.71,
+        0.6,
+        4.6
+      ],
+      "radius": 0.6,
+      "steerable": true
+    },
+    {
+      "name": "Wheel_FR",
+      "centre": [
+        1.71,
+        0.6,
+        4.6
+      ],
+      "radius": 0.6,
+      "steerable": true
+    },
+    {
+      "name": "Wheel_RL",
+      "centre": [
+        -1.71,
+        0.6,
+        0.0
+      ],
+      "radius": 0.6,
+      "steerable": false
+    },
+    {
+      "name": "Wheel_RR",
+      "centre": [
+        1.71,
+        0.6,
+        0.0
+      ],
+      "radius": 0.6,
+      "steerable": false
+    }
+  ],
+  "spinners": [],
+  "lights": [
+    {
+      "name": "Beacon",
+      "type": "Beacon",
+      "position": [
+        -1.84,
+        2.43,
+        7.15
+      ],
+      "direction": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "color": "#FF9A10",
+      "size": 1.1,
+      "phase": 0.0
+    },
+    {
+      "name": "Beacon_Rear",
+      "type": "Beacon",
+      "position": [
+        1.7,
+        1.7,
+        -1.6
+      ],
+      "direction": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "color": "#FF9A10",
+      "size": 1.1,
+      "phase": 0.41
+    },
+    {
+      "name": "Headlight_L",
+      "type": "Head",
+      "position": [
+        -1.75,
+        1.18,
+        7.555
+      ],
+      "direction": [
+        0.0,
+        -0.05,
+        1.0
+      ],
+      "color": "#FFF4E0",
+      "size": 0.85,
+      "phase": 0.0
+    },
+    {
+      "name": "Headlight_R",
+      "type": "Head",
+      "position": [
+        1.75,
+        1.18,
+        7.555
+      ],
+      "direction": [
+        0.0,
+        -0.05,
+        1.0
+      ],
+      "color": "#FFF4E0",
+      "size": 0.85,
+      "phase": 0.0
+    },
+    {
+      "name": "Tail_L",
+      "type": "Tail",
+      "position": [
+        -1.87,
+        1.22,
+        -2.302
+      ],
+      "direction": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "color": "#FF1A12",
+      "size": 0.65,
+      "phase": 0.0
+    },
+    {
+      "name": "Tail_R",
+      "type": "Tail",
+      "position": [
+        1.87,
+        1.22,
+        -2.302
+      ],
+      "direction": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "color": "#FF1A12",
+      "size": 0.65,
+      "phase": 0.0
+    },
+    {
+      "name": "Work_L",
+      "type": "Work",
+      "position": [
+        -1.22,
+        1.62,
+        1.5
+      ],
+      "direction": [
+        0.15,
+        -0.65,
+        -0.75
+      ],
+      "color": "#FFFFFF",
+      "size": 0.8,
+      "phase": 0.0
+    },
+    {
+      "name": "Work_R",
+      "type": "Work",
+      "position": [
+        1.22,
+        1.62,
+        1.5
+      ],
+      "direction": [
+        -0.15,
+        -0.65,
+        -0.75
+      ],
+      "color": "#FFFFFF",
+      "size": 0.8,
+      "phase": 0.0
+    },
+    {
+      "name": "Marker_L",
+      "type": "Marker",
+      "position": [
+        -2.16,
+        1.02,
+        -1.7
+      ],
+      "direction": [
+        -1.0,
+        0.0,
+        0.0
+      ],
+      "color": "#FF8A10",
+      "size": 0.5,
+      "phase": 0.0
+    },
+    {
+      "name": "Marker_R",
+      "type": "Marker",
+      "position": [
+        2.16,
+        1.02,
+        -1.7
+      ],
+      "direction": [
+        1.0,
+        0.0,
+        0.0
+      ],
+      "color": "#FF8A10",
+      "size": 0.5,
+      "phase": 0.0
+    }
+  ],
+  "work": {
+    "laneWidth": 4.3,
+    "workSpeed": 1.1,
+    "transitSpeed": 7.0,
+    "turnRadius": 7.5,
+    "sprayPoint": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "sprayDirection": [
+      0.0,
+      0.0,
+      -1.0
+    ],
+    "broomPoint": [
+      0.0,
+      0.0,
+      0.0
+    ]
+  },
+  "parking": [
+    0.0,
+    0.0,
+    0.0
+  ],
+  "tow": {
+    "minMass": 40000.0,
+    "maxMass": 600000.0,
+    "cradle": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "lift": 0.3,
+    "opening": 1.84,
+    "part": "Cradle"
+  }
+}

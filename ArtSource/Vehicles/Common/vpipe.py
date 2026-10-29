@@ -346,6 +346,8 @@ def write_profile(model, objs, path):
         "work": {k: (to_unity(v) if isinstance(v, (tuple, list)) else v) for k, v in getattr(model, "WORK", {}).items()},
         "parking": to_unity(getattr(model, "PARKING", (0, 0, 0))),
     }
+    if hasattr(model, "TOW"):
+        data["tow"] = {k: (to_unity(v) if isinstance(v, (tuple, list)) else v) for k, v in model.TOW.items()}
     if hasattr(model, "DOOR_PARTS"):
         data["doors"] = [{"name": n, "position": to_unity(p), "width": w, "height": h} for n, p, w, h in model.DOOR_PARTS]
     if hasattr(model, "INTERIOR"):

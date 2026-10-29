@@ -683,7 +683,12 @@ def write_profile(model, paths, px_per_m, reg, font, bounds):
         "performance": {"takeoffDistance": model.PERFORMANCE["takeoff_distance"],
                         "landingDistance": model.PERFORMANCE["landing_distance"],
                         "maxTakeoffMass": model.PERFORMANCE["max_takeoff_mass"],
-                        "unpavedRunways": model.PERFORMANCE["unpaved"]},
+                        "unpavedRunways": model.PERFORMANCE["unpaved"],
+                        "taxiSpeed": model.PERFORMANCE["taxi_speed"],
+                        "rotateSpeed": model.PERFORMANCE["rotate_speed"],
+                        "approachSpeed": model.PERFORMANCE["approach_speed"],
+                        "climbRate": model.PERFORMANCE["climb_rate"],
+                        "climbSpeed": model.PERFORMANCE["climb_speed"]},
         "points": [{"name": n, "type": t, "position": to_unity(pos), "normal": to_unity(nrm), "size": list(size)}
                    for t, n, pos, nrm, size in model.POINTS],
         "lights": [{"name": n, "type": t, "position": to_unity(pos), "direction": to_unity(d), "spread": spread,

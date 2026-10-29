@@ -2,8 +2,9 @@
 
 AirCity is an airport-building game for PC and Mac: Unity 6000.6.7f1, URP, minimum spec around an RTX 3060, up to
 about 100 aircraft. It's the real game, not a prototype. It's early: there's a sandbox scene with aircraft,
-generated airfields and service roads, weather, and maintenance depots with their vehicles. There's no gameplay loop yet: aircraft don't fly or taxi on
-their own, there's no economy, no terrain and no real UI.
+generated airfields and service roads, aircraft stands and de-icing bays, weather, maintenance depots with their vehicles, and air
+traffic: aircraft taxi, take off and land on their own, held apart by a tower. There's no gameplay loop yet: no
+schedule or economy, no terrain and no real UI.
 
 Read this page, then the system doc for whatever you're touching. The repo's `CLAUDE.md` has conventions and
 gotchas, and `README.md` / `ArtSource/README.md` are the human-facing guides.
@@ -14,11 +15,12 @@ gotchas, and `README.md` / `ArtSource/README.md` are the human-facing guides.
 |---|---|
 | [systems/aircraft.md](systems/aircraft.md) | aircraft models, the Blender pipeline, `AircraftType`, prefabs, lights, LODs |
 | [systems/liveries.md](systems/liveries.md) | paint schemes, registrations, tail logos, the runtime compositor |
-| [systems/airfield.md](systems/airfield.md) | runways, taxiways, service roads, aprons, verges, runway rules, weather (snow, rain, grass), airfield shaders |
-| [systems/maintenance.md](systems/maintenance.md) | depots, snow ploughs, mowers, teams, jobs and dispatch, turning round, keeping clear, the ploughing / mowing pass pattern |
+| [systems/airfield.md](systems/airfield.md) | runways, taxiways, service roads, stands and de-icing bays, aprons, verges, runway rules, weather (snow, rain, grass), airfield shaders |
+| [systems/maintenance.md](systems/maintenance.md) | depots, snow ploughs, mowers, tugs and push-back, teams, jobs and dispatch, turning round, keeping clear, the ploughing / mowing pass pattern |
+| [systems/traffic.md](systems/traffic.md) | flights: taxi route planning, holds and clearances, takeoffs, landings, go-arounds, the wind, the sandbox's traffic controls |
 | [systems/dev-tools.md](systems/dev-tools.md) | batch commands, tests, captures, the sandbox controls |
 | [assets/Cessna172.md](assets/Cessna172.md), [assets/Narrowbody.md](assets/Narrowbody.md) | one aircraft type |
-| [assets/SnowPlough.md](assets/SnowPlough.md), [assets/Mower.md](assets/Mower.md), [assets/Depot.md](assets/Depot.md) | one vehicle / building |
+| [assets/SnowPlough.md](assets/SnowPlough.md), [assets/Mower.md](assets/Mower.md), [assets/Tugs.md](assets/Tugs.md), [assets/Depot.md](assets/Depot.md), [assets/ControlTowers.md](assets/ControlTowers.md) | one vehicle / building |
 | [assets/airfield-textures.md](assets/airfield-textures.md) | ground textures and airfield materials |
 
 ## Architecture in one screen
@@ -33,18 +35,21 @@ Scripts/Runtime  (assembly AirCity.Runtime)
   Aircraft/   Aircraft (picking, outline), AircraftType (data), AircraftLights, AircraftGroundMotion,
               AircraftControlSurfaces, Liveries/ (applier, compositor: Burst + BC1)
   Airfield/   Airport ─┬─ Runway (child objects)          rules: RunwayRules     state: SurfaceState/SurfaceValues
-                       ├─ TaxiwayNetwork (taxiways + service roads, routing)   Building/*Builder regenerate meshes
+                       ├─ TaxiwayNetwork (taxiways + service roads, routing, Stands)   Building/*Builder regenerate meshes
                        ├─ MaintenanceDepots (Vehicles/)    StripWork = ploughing / mowing pattern (C# + HLSL twins)
-                       └─ Maintenance (AirportMaintenance: queue, dispatch, avoidance), Pavement (drivable map)
+                       ├─ Maintenance (AirportMaintenance: queue, dispatch, avoidance), Pavement (drivable map)
+                       └─ Traffic (AirTraffic: flights, the tower; windFrom picks the runways' direction)
+  Traffic/    AirTraffic ─► Flight (one aircraft's movement) ; TaxiPlanner ─► TaxiRoute (TaxiPath + holds + sections)
   Vehicles/   AirportMaintenance ─► MaintenanceDepot ─► VehicleTeam (paths + per-vehicle simulation,
-              VehicleManeuver turns) ─► Vehicle (visual), VehicleLights
-  Dev/        DevOrbitCamera, DevSandboxControls (aircraft keys), DevAirfieldTool (airfield / depot tools + panel),
+              VehicleManeuver turns; a tug's push-back in VehicleTeam.Tow) ─► Vehicle (visual), VehicleLights
+              TowJob + PushBackPath (an aircraft's way off its stand)
+  Dev/        DevOrbitCamera, DevSandboxControls (aircraft keys), DevTrafficControls (flights, routes drawn), DevAirfieldTool (airfield / depot tools + panel),
               DevToolbar + DevGui (the HUD: tool bar, context strip, sidebar), DevOutlines (hover / selection outlines)
   Rendering/  Bc1TextureBuilder
 Scripts/Editor   (AirCity.Editor): importers (.aircraft, .vehicle, .regfont), asset postprocessors, *Setup (prefabs,
                  materials, sandbox), SceneCapture
 Shaders/  Aircraft{LightGlow,Outline,GroundShadow}, Airfield{Surface,Paint,LightGlow,Fixture,Common.hlsl}, VehicleLightGlow
-Tests/EditMode   AircraftTypeTests, AircraftLiveryTests, AirfieldTests, MaintenanceTests: 52 tests, all passing as of 2026-10-24
+Tests/EditMode   AircraftTypeTests, AircraftLiveryTests, AirfieldTests, StandTests, MaintenanceTests, TowerTests, TugTests, TrafficTests
 ```
 
 ## Principles that hold everywhere
@@ -84,5 +89,7 @@ Tests/EditMode   AircraftTypeTests, AircraftLiveryTests, AirfieldTests, Maintena
 |---|---|
 | Aircraft | Done: Cessna 172 (code A) and an A320-class twinjet (code C), with liveries, lights, LODs |
 | Airfield | Done: four surfaces, runway rules, ICAO markings and lights, taxiway graph and routing, service roads, mown verges, wear, rain, snow, grass |
+| Stands | Started 2026-10-24: parking stands (codes A–F, 90/60/45/30°, push-back or taxi-out, grass for A/B) and drive-through de-icing bays, snapped onto taxiways with automatic paint; next: hangars, jet bridges, aircraft parking at stands |
 | Maintenance | Done: several depots (vehicles parked inside, roller doors), plough teams in echelon, mowers (strips and verges), taxiway runs turned on the pavement, automatic dispatch to the nearest team, keeping clear of aircraft and each other, night lights |
-| Not started | aircraft movement / ATC / gameplay loop; economy and costs; terrain and flattening; stands and terminals; a real build UI; rotary snow blower (not wanted for now) |
+| Tugs | Started 2026-10-26: towbarless tugs in two sizes (narrow-body, up to A380) that live at the depot and push aircraft back off push-back stands onto the taxiway (`Maintenance.PushBack`); next: towing between stands / to hangars, automatic push-backs once aircraft taxi |
+| Not started | aircraft movement / ATC / gameplay loop; economy and costs; terrain and flattening; terminals, hangars and jet bridges; a real build UI; rotary snow blower (not wanted for now) |

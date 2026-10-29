@@ -51,6 +51,7 @@ hook in.
 | `Scripts/Editor/Dev/SceneCapture.cs` | Batch render of a scene to PNG (`-captureLod`, `-captureNight`, `-captureSelect`) |
 | `Scripts/Runtime/Dev/DevSandboxControls.cs` | Sandbox keys: lights, engines (`rpm`), taxi (`Drive`), dirt, day/night (`AircraftLights.Glow`) |
 | `Scripts/Runtime/Airfield/RunwayRules.cs`, `Runway.cs`, `TaxiwayNetwork.cs` | Consumers of `takeoffDistance` / `landingDistance` (with surface / weather factors), `SizeCode`, `unpavedRunways`, `maxTakeoffMass` (wear) |
+| `Scripts/Runtime/Traffic/*` | Consumers of the flight figures `taxiSpeed`, `rotateSpeed`, `approachSpeed`, `climbRate`, `climbSpeed` (m/s; `PERFORMANCE` keys `taxi_speed` … `climb_speed`), plus `Wheelbase`, `maxSteeringAngle`, `bounds`; see [traffic.md](traffic.md) |
 | `Assets/AirCity/Shaders/AircraftLightGlow.shader` | Fixed-pixel-size additive light glows |
 | `Assets/AirCity/Shaders/AircraftOutline.shader` | Inverted-hull hover / selection outline |
 | `Assets/AirCity/Shaders/AircraftGroundShadow.shader` | Multiplicative contact shadow quad |

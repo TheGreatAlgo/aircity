@@ -11,7 +11,7 @@ namespace AirCity.EditorTools.Vehicles
     /// Imports &lt;Model&gt;.vehicle (JSON written by the vehicle pipeline in ArtSource/Vehicles) as a
     /// <see cref="VehicleType"/>. Positions are already in Unity space (+Z forward, +X right).
     /// </summary>
-    [ScriptedImporter(2, "vehicle")]
+    [ScriptedImporter(3, "vehicle")]
     public class VehicleTypeImporter : ScriptedImporter
     {
 #pragma warning disable 0649   // assigned by JsonUtility
@@ -29,6 +29,14 @@ namespace AirCity.EditorTools.Vehicles
         }
 
         [Serializable]
+        class TowJson
+        {
+            public float minMass, maxMass, lift, opening;
+            public float[] cradle;
+            public string part;
+        }
+
+        [Serializable]
         class TypeJson
         {
             public string name, displayName, kind;
@@ -38,6 +46,7 @@ namespace AirCity.EditorTools.Vehicles
             public SpinnerJson[] spinners;
             public LightJson[] lights;
             public WorkJson work;
+            public TowJson tow;
             public DoorJson[] doors;
             public BoundsJson interior;
         }
@@ -106,6 +115,15 @@ namespace AirCity.EditorTools.Vehicles
                 t.sprayPoint = V3(json.work.sprayPoint);
                 t.sprayDirection = V3(json.work.sprayDirection).normalized;
                 t.broomPoint = V3(json.work.broomPoint);
+            }
+            if (json.tow != null && json.tow.maxMass > 0f)
+            {
+                t.minTowMass = json.tow.minMass;
+                t.maxTowMass = json.tow.maxMass;
+                t.cradle = V3(json.tow.cradle);
+                t.liftHeight = json.tow.lift;
+                t.cradleOpening = json.tow.opening;
+                t.liftPart = json.tow.part;
             }
             ctx.AddObjectToAsset("type", t);
             ctx.SetMainObject(t);

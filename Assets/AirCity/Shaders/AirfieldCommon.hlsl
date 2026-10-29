@@ -18,6 +18,7 @@ float _AirfieldSnow;
 #define KIND_GROUND 4
 #define KIND_JUNCTION 5
 #define KIND_VERGE 6
+#define KIND_STAND 7
 
 half4 AirfieldShade(float3 positionWS, float4 positionCS, half3 normalWS, half3 albedo, half smoothness,
                     half occlusion, half alpha, half fogFactor)

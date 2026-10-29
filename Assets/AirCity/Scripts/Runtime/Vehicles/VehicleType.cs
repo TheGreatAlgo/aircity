@@ -1,4 +1,5 @@
 using System;
+using AirCity.Aircraft;
 using AirCity.Airfield;
 using UnityEngine;
 
@@ -10,6 +11,11 @@ namespace AirCity.Vehicles
         Mower = 1,
         /// <summary>Not a vehicle: the maintenance depot building (it shares the pipeline for its model and lights).</summary>
         Depot = 2,
+        /// <summary>Not a vehicle: a control tower (TowerSmall / TowerMedium / TowerLarge), sharing the pipeline too.</summary>
+        Tower = 3,
+        /// <summary>A towbarless aircraft tug (TugSmall / TugLarge): picks up an aircraft's nose wheel to push it back
+        /// off its stand or tow it.</summary>
+        Tug = 4,
     }
 
     public enum VehicleLightType
@@ -18,11 +24,12 @@ namespace AirCity.Vehicles
         Head = 0,
         /// <summary>Tail lights (red, backward); on with the headlights.</summary>
         Tail = 1,
-        /// <summary>Rotating amber beacon, on whenever the vehicle is out on the airfield.</summary>
+        /// <summary>Rotating amber beacon, on whenever the vehicle is out on the airfield (a tower's aerodrome beacon:
+        /// a white and a green lamp half a turn apart).</summary>
         Beacon = 2,
         /// <summary>Work lights aimed at the blade, broom or mower decks (white).</summary>
         Work = 3,
-        /// <summary>Steady amber markers at the blade ends / mower wing tips.</summary>
+        /// <summary>Steady amber markers at the blade ends / mower wing tips (a tower's red obstruction lights).</summary>
         Marker = 4,
         /// <summary>Building flood lights (white, down onto the forecourt).</summary>
         Flood = 5,
@@ -70,7 +77,8 @@ namespace AirCity.Vehicles
     /// <summary>
     /// A ground vehicle (or the depot building), imported from ArtSource/Vehicles' &lt;Model&gt;.vehicle. Unity space:
     /// origin on the ground under the rear axle, +Z forward, +X right. Gameplay (teams, StripWork) reads the
-    /// work figures from here: a team's lane width, speeds and turn radius.
+    /// work figures from here: a team's lane width, speeds and turn radius; a tug's push-back speed (workSpeed)
+    /// and which aircraft it takes.
     /// </summary>
     public class VehicleType : ScriptableObject
     {
@@ -102,6 +110,27 @@ namespace AirCity.Vehicles
         public Vector3 sprayDirection = Vector3.left;
         [Tooltip("Where the broom kicks up snow (local; zero = no broom).")]
         public Vector3 broomPoint;
+
+        [Header("Towing (tugs)")]
+        [Tooltip("The lightest and heaviest aircraft it moves (maximum takeoff mass, kg).")]
+        public float minTowMass;
+        public float maxTowMass;
+        [Tooltip("Where the aircraft's nose wheel stands in the cradle (local, on the ground): on the rear axle line.")]
+        public Vector3 cradle;
+        [Tooltip("How far the cradle lifts the nose wheel (metres).")]
+        public float liftHeight;
+        [Tooltip("Width of the opening between the legs that the nose wheel goes into (metres).")]
+        public float cradleOpening;
+        [Tooltip("The cradle part, raised by liftHeight while it holds a nose wheel.")]
+        public string liftPart;
+
+        /// <summary>The depot and the control towers: placed, never driven.</summary>
+        public bool IsBuilding => kind == VehicleKind.Depot || kind == VehicleKind.Tower;
+        public bool IsTug => kind == VehicleKind.Tug;
+
+        /// <summary>Can this tug push back or tow an aircraft of a type (by its maximum takeoff mass)?</summary>
+        public bool CanTow(AircraftType aircraft) =>
+            IsTug && aircraft != null && aircraft.maxTakeoffMass >= minTowMass && aircraft.maxTakeoffMass <= maxTowMass;
 
         public float Length => bounds.size.z;
         public float Width => bounds.size.x;

@@ -169,9 +169,10 @@ def build_macro():
 # ============================================================== runway glyphs
 
 # Runway designation characters, drawn as strokes on a 3 x 9 m box (x right, y up = away from the threshold).
-# Keep CHARS, CELL, PX_PER_M and the atlas size in sync with PaintBuilder.cs (GlyphChars, CellW / CellH, GlyphPxPerM).
-CHARS = "0123456789LCR"
-CELL = (128, 256)            # pixels per cell; 8 x 2 cells in a 1024 x 512 atlas
+# Keep CHARS, CELL, PX_PER_M, ROWS and the atlas size in sync with PaintBuilder.cs (GlyphChars, CellW / CellH, GlyphPxPerM).
+CHARS = "0123456789LCRABDEF"   # runway designators; stand size codes and de-icing bay ids
+CELL = (128, 256)            # pixels per cell; 8 x 4 cells in a 1024 x 1024 atlas
+ROWS = 4
 PX_PER_M = 24.0
 BOX = (3.0, 9.0)
 STROKE = 0.8                 # metres (ICAO: about a quarter of the 3 m digit width)
@@ -223,6 +224,20 @@ def glyph_strokes(ch):
     if ch == "R":
         bowl = [(xl, yt), (1.05, yt)] + _arc(1.05, 6.95, xr - 1.05, 90, -90, ry=yt - 6.95) + [(xl, 5.2)]
         return [[(xl, yb), (xl, yt)], bowl, [(1.25, 5.2), (xr, yb)]]
+    if ch == "A":
+        return [[(xl, yb), (xc, yt), (xr, yb)], [(0.8, 3.3), (2.2, 3.3)]]
+    if ch == "B":
+        top = [(xl, yt), (1.15, yt)] + _arc(1.15, 6.75, xr - 0.15 - 1.15, 90, -90, ry=yt - 6.75) + [(xl, 4.8)]
+        bottom = [(xl, 4.8), (1.05, 4.8)] + _arc(1.05, (4.8 + yb) / 2, xr - 1.05, 90, -90, ry=(4.8 - yb) / 2) + [(xl, yb)]
+        return [[(xl, yb), (xl, yt)], top, bottom]
+    if ch == "D":
+        rd = xr - 1.2
+        return [[(xl, yb), (xl, yt), (1.2, yt)] + _arc(1.2, yt - rd, rd, 90, 0) + [(xr, yb + rd)]
+                + _arc(1.2, yb + rd, rd, 0, -90) + [(xl, yb)]]
+    if ch == "E":
+        return [[(xr, yt), (xl, yt), (xl, yb), (xr, yb)], [(xl, 4.7), (xr - 0.4, 4.7)]]
+    if ch == "F":
+        return [[(xr, yt), (xl, yt), (xl, yb)], [(xl, 4.7), (xr - 0.5, 4.7)]]
     raise ValueError(ch)
 
 
@@ -247,7 +262,7 @@ def glyph_sdf(ch):
 
 def build_glyphs():
     cw, chh = CELL
-    atlas = np.zeros((chh * 2, cw * 8))
+    atlas = np.zeros((chh * ROWS, cw * 8))
     for i, ch in enumerate(CHARS):
         col, row = i % 8, i // 8
         # row 0 = the atlas's top (v near 1 in Unity)

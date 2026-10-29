@@ -100,6 +100,8 @@ namespace AirCity.EditorTools.Dev
                 l.beacon = l.landing = l.taxi = l.logo = true;
                 l.UpdateState();   // no frame loop in batch mode
             }
+            foreach (var l in UnityEngine.Object.FindObjectsByType<AirCity.Vehicles.VehicleLights>(FindObjectsInactive.Exclude))
+                l.UpdateState();
         }
 
         /// <summary>Select the named aircraft and hover another of the same type, to show both outline styles.</summary>

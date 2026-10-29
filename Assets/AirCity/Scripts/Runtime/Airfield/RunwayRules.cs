@@ -48,6 +48,21 @@ namespace AirCity.Airfield
         };
     }
 
+    /// <summary>Why a stand can't take an aircraft (the first reason found).</summary>
+    public enum StandProblem
+    {
+        None = 0,
+        WingspanTooBig,
+        TooLong,
+        NeedsPavement,
+        /// <summary>The taxiway it opens onto is too narrow for the aircraft, or unpaved for a jet.</summary>
+        TaxiwayTooSmall,
+        /// <summary>No taxiway runs along its front line yet.</summary>
+        NotConnected,
+        /// <summary>It turns small (light) aircraft away (Stand.noSmallAircraft).</summary>
+        NoSmallAircraft,
+    }
+
     /// <summary>
     /// The rules runways and taxiways follow: ICAO widths by aircraft size code, the length an aircraft needs on a
     /// surface in some weather, designators from headings, and wear. Gameplay constants live here so they can be
@@ -213,8 +228,130 @@ namespace AirCity.Airfield
 
         // ------------------------------------------------------------------ service roads
 
-        /// <summary>Airside service road width: two 3.5 m lanes. Roads carry the airport's vehicles only.</summary>
+        /// <summary>Service road width: two 3.5 m lanes (Road(RoadClass.Service).Width).</summary>
         public const float RoadWidth = 7f;
+
+        /// <summary>A class of road: lanes (both ways together), lane width, hard shoulders, and who drives on it.</summary>
+        public readonly struct RoadSpec
+        {
+            public readonly int lanes;
+            public readonly float laneWidth, shoulder;
+            /// <summary>Inside the airport fence: the airport's own vehicles only. Landside roads carry road traffic.</summary>
+            public readonly bool airside;
+            /// <summary>Can be built yet (streets and highways come with road traffic).</summary>
+            public readonly bool buildable;
+
+            public RoadSpec(int lanes, float laneWidth, float shoulder, bool airside, bool buildable)
+            {
+                this.lanes = lanes;
+                this.laneWidth = laneWidth;
+                this.shoulder = shoulder;
+                this.airside = airside;
+                this.buildable = buildable;
+            }
+
+            /// <summary>Paved width, shoulders included (metres).</summary>
+            public float Width => lanes * laneWidth + 2f * shoulder;
+        }
+
+        /// <summary>
+        /// The road classes. Service: an airside apron / perimeter road, two 3.5 m lanes. Street: a landside two-lane
+        /// road, 3.25 m lanes. Highway: landside, two lanes each way at 3.75 m with 3 m hard shoulders.
+        /// </summary>
+        public static RoadSpec Road(RoadClass c) => c switch
+        {
+            RoadClass.Service => new RoadSpec(2, 3.5f, 0f, true, true),
+            RoadClass.Street => new RoadSpec(2, 3.25f, 0f, false, false),
+            RoadClass.Highway => new RoadSpec(4, 3.75f, 3f, false, false),
+            _ => default,
+        };
+
+        // ------------------------------------------------------------------ stands and de-icing bays
+
+        /// <summary>The size code a taxiway of this width serves (the widest code whose TaxiwayWidthFor it meets).</summary>
+        public static char TaxiwayCode(float width)
+        {
+            for (char c = 'F'; c > 'A'; c--)
+                if (width + 0.01f >= TaxiwayWidthFor(c)) return c;
+            return 'A';
+        }
+
+        /// <summary>The largest wingspan a stand of a size code takes (the code's upper limit).</summary>
+        public static float MaxWingspan(char code) => code switch
+        {
+            'A' => 15f,
+            'B' => 24f,
+            'C' => 36f,
+            'D' => 52f,
+            'E' => 65f,
+            _ => 80f,
+        };
+
+        /// <summary>The longest aircraft a stand of a size code is laid out for (metres): a Learjet 45 for A, a CRJ200
+        /// for B, an A321 / 737-10 for C, a 767-400 for D, a 777-9 for E, a 747-8 for F.</summary>
+        public static float StandLength(char code) => code switch
+        {
+            'A' => 18f,
+            'B' => 28f,
+            'C' => 45f,
+            'D' => 62f,
+            'E' => 77f,
+            _ => 77f,
+        };
+
+        /// <summary>Clearance between an aircraft on a stand and the aircraft on the next stand, buildings and other
+        /// objects (ICAO Annex 14 3.13.6).</summary>
+        public static float StandClearance(char code) => code switch
+        {
+            'A' or 'B' => 3f,
+            'C' => 4.5f,
+            _ => 7.5f,
+        };
+
+        /// <summary>From a taxiway's centreline to the nearest part of an aircraft parked beside it, for the code the
+        /// taxiway serves (ICAO Annex 14 Table 3-1, aircraft stand taxilane centre line to object).</summary>
+        public static float TaxilaneClearance(float taxiwayWidth) => TaxiwayCode(taxiwayWidth) switch
+        {
+            'A' => 12f,
+            'B' => 16.5f,
+            'C' => 24.5f,
+            'D' => 36f,
+            'E' => 42.5f,
+            _ => 50.5f,
+        };
+
+        /// <summary>Radius of the nose-gear lead-in and lead-out lines on a stand (metres): tighter than taxiway bends,
+        /// at walking pace.</summary>
+        public static float StandTurnRadius(char code) => code switch
+        {
+            'A' => 8f,
+            'B' => 12f,
+            'C' => 18f,
+            'D' => 26f,
+            'E' => 32f,
+            _ => 36f,
+        };
+
+        /// <summary>How far behind the nose the nose gear stops at the stop bar (a share of the length).</summary>
+        public const float NoseGearSetback = 0.12f;
+
+        /// <summary>De-icing bays: room either side of the wingtip clearance for the de-icing trucks (metres).</summary>
+        public const float DeIcingVehicleLane = 8f;
+
+        /// <summary>Stands on grass or dirt take light aircraft only: codes A and B.</summary>
+        public static bool StandSurfaceOk(char code, PavementSurface surface) => surface.IsPaved() || code <= 'B';
+
+        /// <summary>Can a stand of this code and surface, opening onto a taxiway of this width and surface, take this
+        /// aircraft type? Checks the wingspan, the length, pavement and the taxiway, in that order.</summary>
+        public static StandProblem CheckStand(AircraftType type, char code, PavementSurface surface, float taxiwayWidth,
+            PavementSurface taxiwaySurface)
+        {
+            if (type.SizeCode > code) return StandProblem.WingspanTooBig;
+            if (type.Length > StandLength(code) + 0.01f) return StandProblem.TooLong;
+            if (!surface.IsPaved() && !type.unpavedRunways) return StandProblem.NeedsPavement;
+            if (!CanTaxi(type, taxiwaySurface, taxiwayWidth)) return StandProblem.TaxiwayTooSmall;
+            return StandProblem.None;
+        }
 
         // ------------------------------------------------------------------ designators
 

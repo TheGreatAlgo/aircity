@@ -1,0 +1,150 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!1001 &8667302710363646453
+PrefabInstance:
+  m_ObjectHideFlags: 0
+  serializedVersion: 2
+  m_Modification:
+    serializedVersion: 3
+    m_TransformParent: {fileID: 0}
+    m_Modifications:
+    - target: {fileID: -8679921383154817045, guid: 9993245f30ce7436a8067b1d5c70c942, type: 3}
+      propertyPath: m_LocalPosition.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 9993245f30ce7436a8067b1d5c70c942, type: 3}
+      propertyPath: m_LocalPosition.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 9993245f30ce7436a8067b1d5c70c942, type: 3}
+      propertyPath: m_LocalPosition.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 9993245f30ce7436a8067b1d5c70c942, type: 3}
+      propertyPath: m_LocalRotation.w
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 9993245f30ce7436a8067b1d5c70c942, type: 3}
+      propertyPath: m_LocalRotation.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 9993245f30ce7436a8067b1d5c70c942, type: 3}
+      propertyPath: m_LocalRotation.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 9993245f30ce7436a8067b1d5c70c942, type: 3}
+      propertyPath: m_LocalRotation.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 9993245f30ce7436a8067b1d5c70c942, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 9993245f30ce7436a8067b1d5c70c942, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 9993245f30ce7436a8067b1d5c70c942, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 919132149155446097, guid: 9993245f30ce7436a8067b1d5c70c942, type: 3}
+      propertyPath: m_Name
+      value: TugSmall
+      objectReference: {fileID: 0}
+    m_RemovedComponents: []
+    m_RemovedGameObjects: []
+    m_AddedGameObjects: []
+    m_AddedComponents:
+    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 9993245f30ce7436a8067b1d5c70c942, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 554006365724640908}
+    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 9993245f30ce7436a8067b1d5c70c942, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 3313783250160231885}
+  m_SourcePrefab: {fileID: 100100000, guid: 9993245f30ce7436a8067b1d5c70c942, type: 3}
+--- !u!4 &231345620397897792 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: -324938149649591883, guid: 9993245f30ce7436a8067b1d5c70c942, type: 3}
+  m_PrefabInstance: {fileID: 8667302710363646453}
+  m_PrefabAsset: {fileID: 0}
+--- !u!4 &448775944459780819 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: -111975652298233050, guid: 9993245f30ce7436a8067b1d5c70c942, type: 3}
+  m_PrefabInstance: {fileID: 8667302710363646453}
+  m_PrefabAsset: {fileID: 0}
+--- !u!4 &2789836164607977238 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: 6845204051101896419, guid: 9993245f30ce7436a8067b1d5c70c942, type: 3}
+  m_PrefabInstance: {fileID: 8667302710363646453}
+  m_PrefabAsset: {fileID: 0}
+--- !u!4 &3052711131923007834 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: 5914661712164266159, guid: 9993245f30ce7436a8067b1d5c70c942, type: 3}
+  m_PrefabInstance: {fileID: 8667302710363646453}
+  m_PrefabAsset: {fileID: 0}
+--- !u!4 &3080097807878385330 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: -3245189568780204217, guid: 9993245f30ce7436a8067b1d5c70c942, type: 3}
+  m_PrefabInstance: {fileID: 8667302710363646453}
+  m_PrefabAsset: {fileID: 0}
+--- !u!1 &8397269596793230500 stripped
+GameObject:
+  m_CorrespondingSourceObject: {fileID: 919132149155446097, guid: 9993245f30ce7436a8067b1d5c70c942, type: 3}
+  m_PrefabInstance: {fileID: 8667302710363646453}
+  m_PrefabAsset: {fileID: 0}
+--- !u!114 &554006365724640908
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8397269596793230500}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a6ebc14b03b0247d785faa69708784f2, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: AirCity.Runtime::AirCity.Vehicles.VehicleLights
+  type: {fileID: -3326733738379100494, guid: 4c0180cb1875f43a78da5b6c9c67d45c, type: 3}
+  glowMaterial: {fileID: 2100000, guid: 4fed08e6b89714b3aa6d2009bb7b6020, type: 2}
+  headlights: 1
+  beacon: 0
+  work: 0
+  markers: 1
+  flood: 0
+  onlyAtNight: 1
+  beaconOnlyAtNight: 0
+--- !u!114 &3313783250160231885
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8397269596793230500}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9ad8ae71c30d84a3983265bf6e33c440, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: AirCity.Runtime::AirCity.Vehicles.Vehicle
+  type: {fileID: -3326733738379100494, guid: 4c0180cb1875f43a78da5b6c9c67d45c, type: 3}
+  sprayMaterial: {fileID: 2100000, guid: ab5847705c2794121880f17672bafde4, type: 2}
+  wheels:
+  - transform: {fileID: 3080097807878385330}
+    rest: {x: 0, y: 0, z: 0, w: 1}
+    radius: 0.4
+    steerable: 1
+  - transform: {fileID: 231345620397897792}
+    rest: {x: 0, y: 0, z: 0, w: 1}
+    radius: 0.4
+    steerable: 1
+  - transform: {fileID: 3052711131923007834}
+    rest: {x: 0, y: 0, z: 0, w: 1}
+    radius: 0.4
+    steerable: 0
+  - transform: {fileID: 448775944459780819}
+    rest: {x: 0, y: 0, z: 0, w: 1}
+    radius: 0.4
+    steerable: 0
+  spinners: []
+  liftPart: {fileID: 2789836164607977238}
+  liftRest: {x: 0, y: 0, z: 0}

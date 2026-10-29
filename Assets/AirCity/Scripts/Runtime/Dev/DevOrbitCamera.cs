@@ -47,7 +47,8 @@ namespace AirCity.Dev
                     Pan(-delta.x * distance * 0.0015f * panSpeed, -delta.y * distance * 0.0015f * panSpeed);
                 // the Input System reports a wheel notch as 1 on every platform; trackpads give fractions of one
                 float scroll = Mathf.Clamp(mouse.scroll.ReadValue().y, -4f, 4f);
-                if (Mathf.Abs(scroll) > 0.001f && !DevGui.PointerOverHud)
+                // Shift+scroll turns a stand being placed instead (DevAirfieldTool)
+                if (Mathf.Abs(scroll) > 0.001f && !DevGui.PointerOverHud && !DevAirfieldTool.TakesScroll)
                     targetDistance = Mathf.Clamp(targetDistance * Mathf.Pow(1f + zoomStep, -scroll), distanceLimits.x, distanceLimits.y);
             }
 

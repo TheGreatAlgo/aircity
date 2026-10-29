@@ -59,16 +59,61 @@ namespace AirCity.Airfield.Building
         }
 
         /// <summary>
+        /// A pad in a strip frame (stands, de-icing bays): x in [x0, x1], s from a near edge running straight from
+        /// (x0, near0) to (x1, near1) out to s = far, so an angled stand's pad meets the taxiway line. uv0 = (x, s).
+        /// With a fringe, the sides and the far end (and the near end, if fringeNear) get a coverage-0 ring.
+        /// </summary>
+        public void Pad(int submesh, Vector2 origin, Vector2 axis, float x0, float x1, float near0, float near1,
+            float far, float y, AirfieldKind kind, float fringe = 0f, bool fringeNear = false, float maxStep = 30f)
+        {
+            var right = Geo.Right(axis);
+            float Near(float x) => near0 + (x - x0) / Mathf.Max(x1 - x0, 1e-3f) * (near1 - near0);
+            var xs = new List<(float x, float a)>();
+            if (fringe > 0f) xs.Add((x0 - fringe, 0f));
+            xs.Add((x0, 1f));
+            xs.Add((x1, 1f));
+            if (fringe > 0f) xs.Add((x1 + fringe, 0f));
+            // rows as fractions from the near edge (0) to the far end (1), plus the fringe rows
+            float depth = far - Mathf.Min(near0, near1);
+            int steps = Mathf.Max(1, Mathf.CeilToInt(depth / maxStep));
+            var rows = new List<(float f, float pad, float a)>();
+            if (fringe > 0f && fringeNear) rows.Add((0f, -fringe, 0f));
+            for (int i = 0; i <= steps; i++) rows.Add((i / (float)steps, 0f, 1f));
+            if (fringe > 0f) rows.Add((1f, fringe, 0f));
+
+            int b = mesh.Count;
+            foreach (var (f, extra, ra) in rows)
+                foreach (var (x, xa) in xs)
+                {
+                    float s = Mathf.Lerp(Near(x), far, f) + extra;
+                    var p = origin + axis * s + right * x;
+                    mesh.Vertex(Geo.X0Z(p, y), Vector3.up, State(Mathf.Min(ra, xa)), new Vector4(x, s),
+                        new Vector4((float)kind, 0f));
+                }
+            int cols = xs.Count;
+            for (int j = 0; j < rows.Count - 1; j++)
+                for (int i = 0; i < cols - 1; i++)
+                {
+                    int a = b + j * cols + i;
+                    mesh.Quad(submesh, a, a + cols, a + cols + 1, a + 1);
+                }
+        }
+
+        /// <summary>
         /// The verges either side of a strip (AirfieldKind.Verge): grass from `gap` to `outer` metres from the
         /// centreline, for s in [s0, s1], with a ragged fringe along the outside and the ends. uv0.x is measured
         /// outwards from the pavement edge (negative on the left), so the mowers' pass pattern (StripWork) works
-        /// on the verges as on a strip whose pavement has been taken out.
+        /// on the verges as on a strip whose pavement has been taken out. side: -1 the left one only, 1 the right
+        /// one, 0 both.
         /// </summary>
-        public void Verges(int submesh, Vector2 origin, Vector2 axis, float s0, float s1, float gap, float outer, float y)
+        public void Verges(int submesh, Vector2 origin, Vector2 axis, float s0, float s1, float gap, float outer, float y,
+            int side = 0)
         {
             if (outer - gap < 0.5f || s1 - s0 < 0.5f) return;
-            Rect(submesh, origin, axis, s0, s1, -outer, -gap, y, AirfieldKind.Verge, 0f, Fringe, true, 60f, -gap, true, false);
-            Rect(submesh, origin, axis, s0, s1, gap, outer, y, AirfieldKind.Verge, 0f, Fringe, true, 60f, gap, false, true);
+            if (side <= 0)
+                Rect(submesh, origin, axis, s0, s1, -outer, -gap, y, AirfieldKind.Verge, 0f, Fringe, true, 60f, -gap, true, false);
+            if (side >= 0)
+                Rect(submesh, origin, axis, s0, s1, gap, outer, y, AirfieldKind.Verge, 0f, Fringe, true, 60f, gap, false, true);
         }
 
         /// <summary>A strip of constant half width along a polyline (a sampled curve). along starts at s0. dir0 / dir1
@@ -126,7 +171,27 @@ namespace AirCity.Airfield.Building
                 if (cross > 0f) mesh.Triangle(submesh, c, b + (i + 1) % n, b + i);
                 else mesh.Triangle(submesh, c, b + i, b + (i + 1) % n);
             }
-            if (fringe <= 0f) return;
+            if (fringe > 0f) FringeRing(submesh, outline, b, y, kind, fringe);
+        }
+
+        /// <summary>A simple polygon of any shape (ear-clipped), world-mapped like Fan, with the same optional fringe.
+        /// Its corners must run counter-clockwise from above for the fringe to go outside.</summary>
+        public void Polygon(int submesh, IList<Vector2> outline, float y, AirfieldKind kind, float fringe = 0f)
+        {
+            int n = outline.Count;
+            if (n < 3) return;
+            int b = mesh.Count;
+            foreach (var p in outline)
+                mesh.Vertex(Geo.X0Z(p, y), Vector3.up, State(), new Vector4(p.x, p.y), new Vector4((float)kind, 0f));
+            foreach (var (i, j, k) in Geo.Triangulate(outline)) UpTriangle(submesh, b + i, b + j, b + k);
+            if (fringe > 0f) FringeRing(submesh, outline, b, y, kind, fringe);
+        }
+
+        /// <summary>A ring of coverage-0 vertices `fringe` metres outside a counter-clockwise outline whose own
+        /// vertices start at b, joined to it.</summary>
+        void FringeRing(int submesh, IList<Vector2> outline, int b, float y, AirfieldKind kind, float fringe)
+        {
+            int n = outline.Count;
             int r = mesh.Count;
             for (int i = 0; i < n; i++)
             {

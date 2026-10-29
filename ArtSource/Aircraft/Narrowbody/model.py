@@ -217,7 +217,10 @@ GEAR = {"wheels": _wheels(), "steering_pivot": P(0, parts.NOSE_S, 0.0), "max_ste
 
 # runway needs: A320-200 airport-planning figures at maximum weight, sea level, ISA (field lengths). Jets
 # need a paved runway.
-PERFORMANCE = {"takeoff_distance": 2100.0, "landing_distance": 1500.0, "max_takeoff_mass": 78000.0, "unpaved": False}
+PERFORMANCE = {"takeoff_distance": 2100.0, "landing_distance": 1500.0, "max_takeoff_mass": 78000.0, "unpaved": False,
+               # m/s: taxi 20 kn on straights, rotate (VR) 145 kn, approach (VREF) 137 kn, initial climb
+               # 2,500 ft/min at 165 kn
+               "taxi_speed": 10.0, "rotate_speed": 74.0, "approach_speed": 70.5, "climb_rate": 12.7, "climb_speed": 85.0}
 
 
 def _side(s, z, sign):

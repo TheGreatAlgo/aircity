@@ -1,5 +1,7 @@
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using AirCity.Aircraft;
 using AirCity.Airfield;
 using AirCity.Dev;
 using AirCity.EditorTools.Aircraft;
@@ -173,6 +175,10 @@ namespace AirCity.EditorTools.Airfield
                 tool.ploughPrefab = VehicleSetup.Prefab("SnowPlough");
                 tool.mowerPrefab = VehicleSetup.Prefab("Mower");
                 tool.depotPrefab = VehicleSetup.Prefab("Depot");
+                tool.smallTugType = VehicleSetup.Type("TugSmall");
+                tool.largeTugType = VehicleSetup.Type("TugLarge");
+                tool.smallTugPrefab = VehicleSetup.Prefab("TugSmall");
+                tool.largeTugPrefab = VehicleSetup.Prefab("TugLarge");
             }
             EditorSceneManager.SaveScene(scene);
             Debug.Log("AirfieldSetup: sandbox airport added");
@@ -185,9 +191,9 @@ namespace AirCity.EditorTools.Airfield
             var airport = go.AddComponent<Airport>();
             AssignMaterials(airport);
             airport.groundSize = 20000f;
-            airport.aprons.Add(new ApronArea { centre = new Vector3(0f, 0f, 55f), size = new Vector2(240f, 180f), surface = PavementSurface.Concrete });
+            airport.aprons.Add(ApronArea.Rect(new Vector2(0f, 55f), new Vector2(240f, 180f), 0f, PavementSurface.Concrete));
             // a pad in front of the depot's doors (room to turn out of the doors onto the road and back in)
-            airport.aprons.Add(new ApronArea { centre = new Vector3(-195f, 0f, 52f), size = new Vector2(40f, 56f), surface = PavementSurface.Concrete });
+            airport.aprons.Add(ApronArea.Rect(new Vector2(-195f, 52f), new Vector2(40f, 56f), 0f, PavementSurface.Concrete));
             go.SetActive(true);
 
             var main = airport.AddRunway(new Vector3(-1400f, 0f, 480f), new Vector3(1400f, 0f, 480f), PavementSurface.Concrete, 45f,
@@ -238,9 +244,79 @@ namespace AirCity.EditorTools.Airfield
 
             // service roads from the depot's pad: east to the apron, and north across the dirt taxiway (give way)
             // to the parallel taxiway
-            net.Connect(Node(-180f, 52f), Node(-119f, 52f), RunwayRules.RoadWidth, asphalt, false, true);
+            net.Connect(Node(-180f, 52f), Node(-119f, 52f), RunwayRules.RoadWidth, asphalt, false, RoadClass.Service);
             net.Connect(Node(-195f, 78f), net.SplitEdge(net.edges.First(e => e.a == x1 && e.b == x2 || e.a == x2 && e.b == x1), new Vector3(-195f, 0f, 330f)),
-                RunwayRules.RoadWidth, asphalt, false, true);
+                RunwayRules.RoadWidth, asphalt, false, RoadClass.Service);
+            // on from the east road, an apron service road (only paint on the concrete) round the south of the parked
+            // aircraft and up the east side towards the jet stands' taxilane
+            int apronRoad = net.NearestNode(new Vector3(-119f, 0f, 52f), 1f).id;
+            foreach (var next in new[] { Node(-100f, 30f), Node(-100f, -20f), Node(100f, -20f), Node(100f, 70f) })
+            {
+                net.Connect(apronRoad, next, RunwayRules.RoadWidth, asphalt, false, RoadClass.Service);
+                apronRoad = next;
+            }
+
+            // stands: a concrete code E taxilane east of the apron with jet stands (push-back, square on to the south,
+            // at 60 degrees to the north, one taxi-out), a GA ramp on the grass taxiway (grass tie-downs, two
+            // taxi-out stands), and two de-icing bays on a bypass beside the parallel taxiway at the 09 end, where
+            // departures leave from
+            Stand PlaceStand(StandKind kind, float x, float z, float bearing, SizeCode code, PavementSurface s,
+                StandExit exit = StandExit.PushBack)
+            {
+                var st = net.AddStand(kind, new Vector3(x, 0f, z), bearing, code, s, exit);
+                if (st == null) Debug.LogError($"AirfieldSetup: no taxiway for the stand at {x}, {z}");
+                return st;
+            }
+            int lane0 = Node(110f, 100f), lane1 = Node(600f, 100f);
+            Line(23f, PavementSurface.Concrete, false, lane0, lane1, x4);
+            var concrete = PavementSurface.Concrete;
+            var parked = new List<Stand>();
+            var southRow = new List<Stand>();
+            foreach (float x in new[] { 165f, 205.5f, 246f, 286.5f })
+            {
+                var st = PlaceStand(StandKind.Parking, x, 100f, 180f, SizeCode.C, concrete);
+                southRow.Add(st);
+                if (x == 205.5f || x == 286.5f) parked.Add(st);
+            }
+            PlaceStand(StandKind.Parking, 343f, 100f, 180f, SizeCode.E, concrete);
+            foreach (float x in new[] { 200f, 246.8f, 293.6f })
+            {
+                var st = PlaceStand(StandKind.Parking, x, 100f, 30f, SizeCode.C, concrete);
+                if (x == 246.8f) parked.Add(st);
+            }
+            parked.Add(PlaceStand(StandKind.Parking, 405f, 100f, 0f, SizeCode.C, concrete, StandExit.TaxiOut));
+            // the jet stands keep small aircraft off them (they go to the GA ramp)
+            foreach (var st in net.stands)
+                if (st != null && st.kind == StandKind.Parking && st.code >= SizeCode.C) st.noSmallAircraft = true;
+
+            var gaFrom = new Vector2(grassExit.x, grassExit.z);
+            var gaDir = (new Vector2(-100f, -110f) - gaFrom).normalized;
+            float gaBearing = Mathf.Atan2(gaDir.x, gaDir.y) * Mathf.Rad2Deg;
+            foreach (float s in new[] { 40f, 58f, 76f })
+            {
+                var p = gaFrom + gaDir * s;
+                PlaceStand(StandKind.Parking, p.x, p.y, gaBearing - 90f, SizeCode.A, PavementSurface.Grass);
+            }
+            var gaOut = gaFrom + gaDir * 100f;
+            PlaceStand(StandKind.Parking, gaOut.x, gaOut.y, gaBearing - 45f, SizeCode.A, asphalt, StandExit.TaxiOut);
+            PlaceStand(StandKind.Parking, -100f, -80f, 90f, SizeCode.A, asphalt, StandExit.TaxiOut);
+
+            int SplitAt(float x, float z)
+            {
+                var at = new Vector3(x, 0f, z);
+                net.TryNearestEdge(at, 1f, out var edge, out _);
+                return net.SplitEdge(edge, at);
+            }
+            Line(w, asphalt, true, SplitAt(-1260f, 330f), Node(-1210f, 250f), Node(-1000f, 250f), SplitAt(-950f, 330f));
+            foreach (float x in new[] { -1150f, -1088f }) PlaceStand(StandKind.DeIcing, x, 250f, 270f, SizeCode.C, concrete);
+
+            // a service road along the heads of the code C stands south of the taxilane, on from the apron road: their
+            // way in for vehicles (tugs come along it and back in off it)
+            var head0 = net.Layout(southRow[0]);
+            var head3 = net.Layout(southRow[southRow.Count - 1]);
+            float headZ = head0.At(0f, head0.far).y + head0.axis.y * RunwayRules.RoadWidth * 0.5f;
+            float headEnd = Mathf.Max(head3.At(head3.x0, head3.far).x, head3.At(head3.x1, head3.far).x);
+            net.Connect(SplitAt(100f, headZ), Node(headEnd, headZ), RunwayRules.RoadWidth, asphalt, false, RoadClass.Service);
 
             // verges: the main runway's nearly due for mowing, the rest at various lengths
             main.vergeGrass = 14f;
@@ -260,10 +336,41 @@ namespace AirCity.EditorTools.Airfield
             VehicleSetup.Assign(depot);
             depot.snowPloughs = 3;
             depot.mowers = 1;
+            depot.smallTugs = 2;
+            depot.largeTugs = 1;
             depotGo.SetActive(true);
 
             airport.RunwaysChanged();
+            ParkAircraft(airport, parked);
             return airport;
+        }
+
+        /// <summary>A jet on each of these stands (children of the Airport, so they go with it), ready to push back.</summary>
+        static void ParkAircraft(Airport airport, List<Stand> stands)
+        {
+            var jet = AircraftSetup.AllTypes().FirstOrDefault(t => t.model == "Narrowbody");
+            var prefab = jet != null ? AircraftSetup.Prefab(jet) : null;
+            if (prefab == null) return;
+            var liveries = AircraftSetup.AllLiveries();
+            var net = airport.Taxiways;
+            var t = airport.transform;
+            for (int i = 0; i < stands.Count; i++)
+            {
+                var l = stands[i] != null ? net.Layout(stands[i]) : null;
+                if (l == null) continue;
+                var go = (GameObject)PrefabUtility.InstantiatePrefab(prefab, t);
+                go.name = $"Narrowbody on {stands[i].Name}";
+                var at = l.ParkPosition(jet);
+                go.transform.SetPositionAndRotation(t.TransformPoint(new Vector3(at.x, 0f, at.y)),
+                    Quaternion.LookRotation(t.TransformDirection(new Vector3(l.nose.x, 0f, l.nose.y)), Vector3.up));
+                var applier = go.GetComponent<AircraftLiveryApplier>();
+                if (applier != null && liveries.Length > 0)
+                {
+                    applier.liveryAsset = liveries[(i + 1) % liveries.Length];
+                    applier.dirt = 0.25f * (i % 3);
+                    applier.Apply();
+                }
+            }
         }
 
         static Vector3 Heading(float bearing)

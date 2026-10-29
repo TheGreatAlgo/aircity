@@ -93,7 +93,7 @@ blotches (so they tile over kilometres) and matches each set's mean colour. Glyp
 
 ## Vehicles
 
-`Vehicles/` builds the airport's maintenance vehicles and their depot in Blender, lighter than the aircraft pipeline:
+`Vehicles/` builds the airport's maintenance vehicles and tugs, their depot and the control towers in Blender, lighter than the aircraft pipeline:
 no liveries, one stage. Every material is a flat colour; the pipeline unwraps all the parts into one atlas, bakes
 the colours, metallic / smoothness and ambient occlusion with Cycles, and adds grime (road salt on the plough, grass
 on the mower). So a vehicle draws with one material.
@@ -109,17 +109,19 @@ $B -b --factory-startup --python build.py -- --model Mower --geometry --views fr
 |---|---|
 | `SnowPlough` | cab-forward 4x4 runway plough-sweeper: 6.1 m blade at 30°, angled mid-mount broom, air-blast nozzle |
 | `Mower` | cab tractor with a 4.6 m batwing rotary mower |
+| `TugSmall` / `TugLarge` | towbarless aircraft tugs (U-shaped, nose-wheel cradle between the rear legs) for narrow-bodies (6 m) and up to an A380 (10 m); shared parts in `Common/tug.py` |
 | `Depot` | steel-clad maintenance garage: four roller doors, office end, flood lights |
+| `TowerSmall` / `TowerMedium` / `TowerLarge` | control towers for a grass airfield (cab on a two-storey office, 13.6 m), a regional airport (square shaft, 38 m) and a hub (round Schiphol-like shaft, radome, 99 m); shared parts in `Common/tower.py` |
 
 Output: `Assets/AirCity/Vehicles/<Model>/Models/<Model>.fbx` (LOD0 = body + wheels / broom as separate movers,
 LOD1 / LOD2 merged and decimated), `Textures/<Model>_Albedo.png` and `_MetalGloss.png`, and `<Model>.vehicle`
 (VehicleType: bounds, wheels, spinners, lights, work figures).
 
-- Modelling helpers are in `Common/kit.py` (bevelled boxes, cylinders, prisms, lofts, truck wheels). Vehicle space
+- Modelling helpers are in `Common/kit.py` (bevelled boxes, cylinders, spheres, prisms, lofts, truck wheels). Vehicle space
   is Blender space as is: +X right, +Y forward, +Z up, origin on the ground under the rear axle. The FBX maps it to
   Unity +X right, +Y up, +Z forward, so there's no turn-around step (unlike aircraft).
 - A `model.py` provides `NAME`, `DISPLAY_NAME`, `KIND` (`AirCity.Vehicles.VehicleKind`), `MATS` (extra flat colours),
   `build()` → `[kit.Part]` (the body and each mover), `MOVERS`, `WHEELS`, `SPINNERS`, `LIGHTS` (type `Head`, `Tail`,
   `Beacon`, `Work`, `Marker` or `Flood`), `WORK` (lane width, speeds, turn radius, spray points), `LOD_RATIOS`,
-  `AO_DISTANCE`, optional `grime(pos, ao)`, and `VIEWS`.
+  `AO_DISTANCE`, optional `grime(pos, ao)`, optional `TOW` (tugs: tow masses, cradle point, lift, opening, lift part), and `VIEWS`.
 
