@@ -33,6 +33,13 @@ ArtSource/README.md. When you change a system, update its doc in `Docs/` in the 
   `Airport.windFrom`. See `Docs/systems/traffic.md`.
 - Stands keep their own front line (`Stand.position` / `front` / `lane`) and are connected by whichever taxiway runs
   along it (`TaxiwayNetwork.Connection`); `StandLayout.edge` is null for an unconnected stand, so check it.
+- Terminals (`Airport.terminals`) and jet bridges (`Stand.bridges`, saved in the stand's frame) never move each other:
+  a bridge is connected when its link root touches a terminal wall (`BridgeLayout.Connected`). Bridge numbers live in
+  `JetBridgeRules` and in the JetBridge model's `BRIDGE` (ArtSource/Vehicles/JetBridge): change both together
+  (`TerminalBridgeTests.Model_MatchesBridgeRules`). Departures wait for `Airport.Bridges.Clear` before the tug.
+  A stand's bridges park in list order, each clear of those before (`BridgeLayout.ParkAll`): a re-placed bridge goes last.
+  Two or three bridges share a head (`Stand.head`, `HeadLayout`): a bridge stands on it when its link root touches the
+  head's wall; the head has an upper storey only while an upper-deck bridge stands on it.
 - Hot per-pixel or per-entity work goes in Burst jobs (see `AircraftLiveryCompositor`). Runtime-made textures go
   through `Bc1TextureBuilder`, not `Texture2D.Compress` (which is slow and main-thread only).
 

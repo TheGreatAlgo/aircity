@@ -7,8 +7,8 @@ as an `AircraftType` ScriptableObject. Gameplay reads dimensions, wheels, servic
 from that asset only, never from mesh positions or per-model constants. One prefab per type carries the runtime
 components (picking/outline, livery, lights, ground motion, control surfaces, spinners). The scale target is ~100
 aircraft of mixed types, mostly zoomed out, so the far LOD is 2 draw calls, every material is shared, and light
-glows run on the GPU. Two types exist: `Cessna172` (see `Docs/assets/Cessna172.md`) and `Narrowbody`
-(`Docs/assets/Narrowbody.md`). Liveries are documented in `Docs/systems/liveries.md`; this doc covers only how they
+glows run on the GPU. Five types exist: `Cessna172` (see `Docs/assets/Cessna172.md`), `Narrowbody`
+(`Docs/assets/Narrowbody.md`), `Widebody` (`Docs/assets/Widebody.md`), `DoubleDeck` (`Docs/assets/DoubleDeck.md`) and `Quadjet` (`Docs/assets/Quadjet.md`). Liveries are documented in `Docs/systems/liveries.md`; this doc covers only how they
 hook in.
 
 ## Where it lives
@@ -116,7 +116,7 @@ Opens `work/stage1.blend` and `bake_maps.npz` (so it never re-runs `build()`), t
 | `Textures/<M>_Registration_Default.png`, `_RegistrationDirt.png` | registration patch (port = top half, starboard = bottom half) | `REG_TEX_W` × 2·half_h (dirt at ½) |
 | `Textures/<M>_Body_Default.png` | first entry of `airlines.LIVERIES`, composed in numpy | 2048² |
 | `Textures/<M>_GroundShadow.png` | `ground_shadow()` | 256² |
-| `<M>.aircraft` | `write_profile` (paint data + `GEAR`, `PERFORMANCE`, `POINTS`, `LIGHTS`, `bounds`, examples) | |
+| `<M>.aircraft` | `write_profile` (paint data + `GEAR`, `PERFORMANCE`, `POINTS`, `LIGHTS`, `bounds` from every vertex (`world_bounds`), `wingOutline` (`wing_outline`: the convex hull from above of the left wing's and engines' faces, by tag, outboard of the fuselage's side), examples) | |
 | `Models/<M>.fbx` | LODs + movers + `Collider` + `GroundShadow`, turned around and flattened | |
 | `../Shared/RegistrationFont.{png,regfont}`, `../../Liveries/Logos/*.png` | shared by all types | |
 
@@ -193,11 +193,11 @@ which stays outside the group. Heights are `LodHeights = { 0.18, 0.06, 0.002 }`,
 
 Measured in the test log (`Lods_CutTrianglesAndDrawCalls`, budget `maxDraws = {24, 4, 2}`):
 
-| LOD | Cessna172 | Narrowbody |
-|---|---|---|
-| 0 | 37,283 tris / 17 draws | 46,027 / 21 |
-| 1 | 9,729 / 4 | 10,399 / 2 |
-| 2 | 2,676 / 2 | 2,836 / 2 |
+| LOD | Cessna172 | Narrowbody | Widebody | DoubleDeck | Quadjet |
+|---|---|---|---|---|---|
+| 0 | 37,283 tris / 17 draws | 46,027 / 21 | 64,735 / 21 | 94,059 / 23 | 86,277 / 22 |
+| 1 | 9,729 / 4 | 10,399 / 2 | 13,196 / 2 | 17,154 / 2 | 15,754 / 2 |
+| 2 | 2,676 / 2 | 2,836 / 2 | 3,298 / 2 | 4,288 / 2 | 3,938 / 2 |
 
 Each renderer draws at most 3 submeshes: Body + Registration (LOD0 body only) + Trim. A far aircraft costs Body_LOD2
 (2 draws) + `GroundShadow` (1) + `LightGlows` (1). Textures are not LOD-switched: mips cover that.
@@ -312,7 +312,7 @@ editor must not be open on the project while batchmode runs. CLAUDE.md suggests 
    $U -batchmode -projectPath . -runTests -testPlatform EditMode -testResults "$PWD/Logs/editmode.xml" -logFile Logs/tests.log
    ```
 6. Add the model to the tests: `[TestFixture("<Model>")]` in `AircraftLiveryTests` and the `new[] { "Cessna172",
-   "Narrowbody" }` lists in `AircraftTypeTests`. Add a dimension check against the real aircraft.
+   "Narrowbody", "Widebody" }` lists in `AircraftTypeTests`. Add a dimension check against the real aircraft.
 7. Sandbox: `Bootstrap` creates `Sandbox.unity` only if it is missing. To add the new type to an existing sandbox, use
    **AirCity ▸ Dev ▸ Rebuild Sandbox Scene**, which overwrites the scene, then rerun
    `AirCity.EditorTools.Airfield.AirfieldSetup.Bootstrap` to put the airport back. Update the README aircraft and
@@ -395,9 +395,11 @@ and tie-downs. `_side(s, z, sign)` puts a point on the fuselage skin. Run stage 
 
 | Test | Guards |
 |---|---|
-| `AircraftTypeTests.Dimensions_MatchTheRealAircraftClass` | Span / length / height / wheelbase near the real aircraft; size codes A / C; nose ahead of the nose gear; tyres on y = 0 (logs the numbers) |
+| `AircraftTypeTests.Dimensions_MatchTheRealAircraftClass` | Span / length / height / wheelbase near the real aircraft; size codes A / C / E; nose ahead of the nose gear; tyres on y = 0 (logs the numbers) |
 | `…Model_MatchesTypeData` | Turn-around + flatten: wheel transforms within 5 cm of the data; mesh nose along +Z |
-| `…ServicePoints_AreOnTheCorrectSide` | Jet boards from the left (−X) and loads cargo on the right; L1 sill 2.5–3.6 m, front quarter; Cessna fuel on the wing top |
+| `…WingOutline_IsTheLeftWingFromTheFuselageToTheTip` | Every type's `wingOutline`: counter-clockwise, out to the wingtip, starting at the fuselage's side (not its centreline), within the length |
+| `…ServicePoints_AreOnTheCorrectSide` | Jets board from the left (−X) and load cargo on the right; L1 sill 2.5–3.6 m (Narrowbody) / 4.4–5.2 m (Widebody) / 4.9–5.4 m (Quadjet), front quarter; Cessna fuel on the wing top |
+| `…UpperDeckDoors_AreTwoMetresAboveTheMainDeck` | DoubleDeck: 10 main-deck and 6 upper-deck doors, told apart by sill height (> 2 m above the lowest, as `JetBridge.TryDoor` does), sills 4.9–5.3 / 7.7–8.1 m, numbered from the front; Quadjet: 10 main-deck doors (4.9–5.4 m) and no upper-deck boarding door (its upper-deck exit is painted only) |
 | `…NavigationLights_RedOnTheLeft` | Red nav light at x < −0.4·span, green at > +0.4·span; a beacon exists |
 | `…Prefab_HasEveryGameplayComponent` | All components present; every wheel found; nose gear; `MeshCollider` on layer `Aircraft`; ground-shadow shader; elevators / flaps / rudders found |
 | `…Picking_HitsTheAircraft` | `TryPick` hits from above the bounds centre and misses beside the aircraft |
@@ -407,7 +409,7 @@ and tie-downs. `_side(s, z, sign)` puts a point on the fuselage skin. Run stage 
 | `AircraftLiveryTests(<Model>).Profile_IsImportedCompletely` | 4 schemes, masks, detail, font, crops, dirt, logoUV, groundShadow, prefab |
 | `…Lods_CutTrianglesAndDrawCalls` | 3 LODs, falling triangle counts, draws ≤ {24, 4, 2}, no CPU mesh copies, no registration at LOD1/2, every renderer in exactly one LOD (except `GroundShadow` / `LightGlows`), CrossFade |
 | `…BodyTexture_MatchesGeneratorReference` | C# compositor matches numpy `paint.compose` (mean diff < 2.5/255) |
-| `…Fleet_100Aircraft_10Liveries_StaysWithinBudget` | 10 shared bodies, 100 registration textures, all DXT1, < 64 MB |
+| `…Fleet_100Aircraft_10Liveries_StaysWithinBudget` | 10 shared bodies, 100 registration textures, all DXT1, < 80 MB |
 | `AirfieldTests` | Runway / taxiway rules against both types |
 
 Run the tests (exit code 2 = failures; grep `Logs/tests.log` for `error CS`):

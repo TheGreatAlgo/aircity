@@ -241,8 +241,9 @@ no tugs at all.
   it's cleared, coming the other way or across (`AirTraffic.Tracks`), but for the 10 m of it they're already on, and
   of an aircraft's whole push-back while it's pushed (the pushing tug excepted). A tug pushing an aircraft back has
   the right of way over ground other vehicles have claimed for a turn. A flight that has stopped on its way
-  (`AirTraffic.Holding`) is passed under the wings, clear of the fuselage; so is any aircraft once a vehicle has been
-  held up by aircraft for 30 s (`UnderWingAfter`). `RouteBlocked` lets a vehicle stopped inside an aircraft's
+  (`AirTraffic.Holding`) is passed under the wings, clear of the fuselage; so is any aircraft on a flight once a
+  vehicle has been held up by aircraft for 30 s (`UnderWingAfter`). An aircraft moved any other way (it won't wait
+  for the vehicle) keeps its full clearance. `RouteBlocked` lets a vehicle stopped inside an aircraft's
   clearance re-plan a way that leads away from it.
 - **Backing off:** a vehicle that meets a taxiing aircraft head to head (it's in the aircraft's way, the aircraft
   waits for it, and its own way runs into the fuselage) goes 15 m straight back the way it came after 4 s

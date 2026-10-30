@@ -11,9 +11,9 @@ namespace AirCity.Dev
     /// <summary>
     /// The sandbox HUD's buttons (development only, not game UI), next to the camera's DevAirfieldTool and
     /// DevSandboxControls, whose keys still work:
-    ///   bottom: the tools (select, runway, taxiway, road, apron, depot, stand, de-icing bay | delete), and above them a
-    ///     strip for the tool on (surface, width, lights; a stand's code, angle and exit) or for what's selected
-    ///     (its upgrades, maintenance and Delete)
+    ///   bottom: the tools (select, runway, taxiway, road, apron, terminal, depot, stand, de-icing bay | delete), and
+    ///     above them a strip for the tool on (surface, width, lights; a stand's code, angle and exit; a terminal's
+    ///     floors) or for what's selected (its upgrades, maintenance, a stand's jet bridges, and Delete)
     ///   right: weather, time speed, day / night, snowfall and grass; maintenance; traffic (landings, auto traffic,
     ///     the wind); aircraft lights and engines
     ///   Delete / Backspace removes the selection (the aircraft or the airfield one, whichever came last)
@@ -35,6 +35,7 @@ namespace AirCity.Dev
             (DevTool.Taxiway, "Taxiway", "Click points to lay a taxiway; right-click ends it", null),
             (DevTool.Road, "Road", "Click points to lay an airside service road (across a paved apron it is just paint); right-click ends it", null),
             (DevTool.Apron, "Apron", "Click corners to lay an apron of any shape, or drag out a rectangle", null),
+            (DevTool.Terminal, "Terminal", "Click corners for a terminal building (or drag out a rectangle); select one and Shift+scroll to curve a wall", null),
             (DevTool.Depot, "Depot", "Drag from the doors outwards to build a maintenance depot", null),
             (DevTool.Stand, "Stand", "Click beside a taxiway to add an aircraft stand (it snaps to the stands beside it)", null),
             (DevTool.DeIcing, "De-ice", "Click on a taxiway to add a drive-through de-icing bay", null),
@@ -166,6 +167,13 @@ namespace AirCity.Dev
             }
         }
 
+        void Floors(int floors)
+        {
+            Text("Floors", DevGui.Small);
+            Stepper(floors.ToString(), () => airfield.StepFloors(-1), () => airfield.StepFloors(1), "Floors ([ / ])",
+                floors > 1, floors < Terminal.MaxFloors);
+        }
+
         void RunwayWidth(float width) =>
             Stepper($"{width:0} m", () => airfield.StepWidth(-1), () => airfield.StepWidth(1), "Width ([ / ])",
                 width > RunwayRules.RunwayWidths[0], width < RunwayRules.RunwayWidths[RunwayRules.RunwayWidths.Length - 1]);
@@ -228,6 +236,14 @@ namespace AirCity.Dev
                     var why = airfield.ApronProblemText;
                     Text(why != null ? $"{DevGui.Tag(DevGui.Danger)}{why}</color>"
                         : Joins(airfield.ApronCornerCount == 0 ? "click corners, or drag out a rectangle   Shift: 10° and 5 m steps"
+                            : "click the first corner or right-click to finish   Shift: 10° and 5 m steps   Esc drops it"), DevGui.Hint);
+                    return;
+                case DevTool.Terminal:
+                    Floors(airfield.TerminalFloors);
+                    Gap();
+                    var whyNot = airfield.ApronProblemText;
+                    Text(whyNot != null ? $"{DevGui.Tag(DevGui.Danger)}{whyNot}</color>"
+                        : Joins(airfield.ApronCornerCount == 0 ? "click corners, or drag out a rectangle   click a terminal to select it"
                             : "click the first corner or right-click to finish   Shift: 10° and 5 m steps   Esc drops it"), DevGui.Hint);
                     return;
                 case DevTool.Depot:
@@ -314,16 +330,58 @@ namespace AirCity.Dev
                     Text($"{DevGui.Tag(DevGui.Danger)}{airfield.ApronProblemText}</color>", DevGui.Hint);
                 }
             }
+            else if (airfield.SelectedTerminal != null)
+            {
+                Text(airfield.SelectionName, DevGui.Title);
+                Gap();
+                Floors(airfield.TerminalFloors);
+                Gap();
+                Chip("Delete", false, () => airfield.DeleteSelection(), "Remove the terminal", "Del", true);
+                Gap();
+                var why = airfield.ApronProblemText;
+                Text(why != null ? $"{DevGui.Tag(DevGui.Danger)}{why}</color>"
+                    : "Shift+scroll: bow the outlined wall out or in (Alt: finer)", DevGui.Hint);
+            }
             else if (airfield.SelectedStand != null)
             {
                 var st = airfield.SelectedStand;
                 Text(airfield.SelectionName, DevGui.Title);
                 Gap();
                 StandChips(st.DeIcing, st.surface);
+                if (!st.DeIcing)
+                {
+                    Gap();
+                    Text("Bridges", DevGui.Small);
+                    for (int n = 0; n <= JetBridgeRules.MaxPerStand; n++)
+                    {
+                        int count = n;
+                        Chip(n.ToString(), st.bridges.Count == n, () => airfield.SetBridgeCount(count),
+                            n == 0 ? "No jet bridges (0)" : $"{n} jet bridge{(n == 1 ? "" : "s")}, to doors L1{(n > 1 ? $"-L{n}" : "")}, placed where they reach");
+                    }
+                }
+                var b = airfield.SelectedBridge;
+                if (b != null)
+                {
+                    // the clicked bridge's door: side, deck, number along
+                    Gap();
+                    Text($"Bridge {b.DoorName}", DevGui.Small);
+                    Chip("Left", b.side == DoorSide.Left, () => airfield.ChangeBridgeDoor(DoorSide.Left, b.upper, b.door), "Serve a door on the left (port) side");
+                    Chip("Right", b.side == DoorSide.Right, () => airfield.ChangeBridgeDoor(DoorSide.Right, b.upper, b.door), "Serve a door on the right (starboard) side");
+                    Chip("Main", !b.upper, () => airfield.ChangeBridgeDoor(b.side, false, b.door), "Main-deck door");
+                    Chip("Upper", b.upper, () => airfield.ChangeBridgeDoor(b.side, true, b.door), "Upper-deck door (double-deck aircraft): a raised rotunda");
+                    Stepper(b.door.ToString(), () => airfield.ChangeBridgeDoor(b.side, b.upper, b.door - 1),
+                        () => airfield.ChangeBridgeDoor(b.side, b.upper, b.door + 1), "Which door, counted from the front", b.door > 1, b.door < 6);
+                }
                 Gap();
                 Chip("Delete", false, () => airfield.DeleteSelection(), "Remove it", "Del", true);
+                if (airfield.BridgeNote != null || st.bridges.Count > 0)
+                {
+                    Gap();
+                    Text(airfield.BridgeNote != null ? $"{DevGui.Tag(DevGui.Danger)}{airfield.BridgeNote}</color>"
+                        : b == null ? "click a rotunda (ring) to pick its door; drag it to move it" : "drag the rotunda to move it", DevGui.Hint);
+                }
             }
-            else Text("click a runway, taxiway, road, depot, stand, apron or aircraft to select it", DevGui.Hint);
+            else Text("click a runway, taxiway, road, depot, stand, apron, terminal or aircraft to select it", DevGui.Hint);
         }
 
         /// <summary>Size code, surface, and for parking stands the angle, lean and exit: for new stands, or the

@@ -38,6 +38,8 @@ Arrival:    Approach ─► Landing (the roll, until slow) ─► Taxi ─► Pa
             Approach ─► GoAround (no landing clearance 12 s out) ─► out of sight for 90 s ─► Approach (behind the others)
 ```
 
+- **Jet bridges:** a departure's docked jet bridges pull back first (`Airport.Bridges.Clear`, about 50 s); the
+  tug is asked for only once they are parked. See [airfield.md](airfield.md#terminals-and-jet-bridges).
 - **Push-back:** a tug is asked for at once (`AirportMaintenance.PushBack`, with `TowJob.HoldPush`); it comes,
   picks up the nose wheel and waits (`ReadyToPush`). The push itself is cleared only then (`StartBlocker`), so a
   departure waiting minutes for a tug claims no taxiways. After the push it waits for its tug to clear the first
@@ -194,6 +196,8 @@ the runway and in the air) and engines; the sandbox light / engine toggles apply
 - **Vehicles between parked aircraft:** a vehicle's way out from where it stands used to start straight across to
   the nearest nodes, between parked jets' wingtips and tails, where it stuck. From a taxiway it now starts along it;
   the parked-aircraft check (`RouteBlocked`) also allows for how far it keeps right.
-- **Soak test:** `SandboxScene_AutoTrafficKeepsMoving` runs the sandbox scene with auto traffic for game hours and
-  fails if the ground traffic stops for good, with every flight's and tug's state in the message. The traffic rules
-  above came out of it.
+- **Soak test:** `TrafficSoakTests.SandboxScene_AutoTrafficKeepsMoving` (`[Explicit]`: run it with
+  `-testFilter TrafficSoakTests`, minutes per seed) runs the sandbox scene with auto traffic for three game hours and
+  fails if the ground traffic stops for good or aircraft touch, with every flight's and vehicle's state in the
+  message. The traffic rules above came out of it. It doesn't pass every seed yet: see
+  [../taxi-todo.md](../taxi-todo.md).

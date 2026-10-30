@@ -114,6 +114,9 @@ namespace AirCity.Aircraft
 
         [Header("Dimensions")]
         public Bounds bounds;
+        [Tooltip("The left wing and its engines from above, outboard of the fuselage: a convex outline (x, z), " +
+                 "counter-clockwise; the right wing mirrors it. Empty: none known (the bounds' span stands in).")]
+        public Vector2[] wingOutline = Array.Empty<Vector2>();
         public Wheel[] wheels = Array.Empty<Wheel>();
         [Tooltip("Ground point of the nose-gear steering axis.")]
         public Vector3 steeringPivot;

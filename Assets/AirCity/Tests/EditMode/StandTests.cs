@@ -382,7 +382,9 @@ namespace AirCity.Tests.Airfield
             foreach (var l in net.Layouts())
                 Assert.IsTrue(net.Fits(l), $"{l.stand.Name} overlaps another");
             Assert.Greater(net.StandsFor(Type("Narrowbody")).Count, 5);
-            Assert.Greater(net.StandsFor(Type("Cessna172")).Count, net.StandsFor(Type("Narrowbody")).Count, "the GA ramp too");
+            var cessna = net.StandsFor(Type("Cessna172"));
+            Assert.Greater(cessna.Count, 3, "the GA ramp takes Cessnas");
+            Assert.IsEmpty(cessna.Intersect(net.StandsFor(Type("Narrowbody"))), "the jet stands turn small aircraft away");
             Assert.AreEqual(2, net.StandsFor(Type("Narrowbody"), StandKind.DeIcing).Count);
             var park = net.Layout(net.StandsFor(Type("Narrowbody"))[0]).ParkPosition(Type("Narrowbody"));
             Assert.IsTrue(float.IsFinite(park.x) && float.IsFinite(park.y));

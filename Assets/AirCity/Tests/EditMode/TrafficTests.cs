@@ -382,7 +382,7 @@ namespace AirCity.Tests.Airfield
             spawned.Add(airport.gameObject);
             airport.windFrom = wind;
             var jets = airport.GetComponentsInChildren<AirCity.Aircraft.Aircraft>();
-            Assert.AreEqual(4, jets.Length);
+            Assert.GreaterOrEqual(jets.Length, 4, "narrow-bodies and a wide-body (and the code F types once built)");
             foreach (var a in jets)
             {
                 var route = airport.Traffic.PreviewDeparture(a, out string problem);
@@ -438,13 +438,14 @@ namespace AirCity.Tests.Airfield
                 Assert.IsNotNull(f, $"{a.name}: {problem}");
                 flights.Add(f);
             }
+            int departures = flights.Count;
             for (int i = 0; i < 2; i++)
             {
                 var f = airport.Traffic.Arrive(Spare("Narrowbody", "Arrival " + i), out string problem);
                 Assert.IsNotNull(f, problem);
                 flights.Add(f);
             }
-            Assert.AreNotSame(flights[4].Route.stand.stand, flights[5].Route.stand.stand, "each to its own stand");
+            Assert.AreNotSame(flights[departures].Route.stand.stand, flights[departures + 1].Route.stand.stand, "each to its own stand");
             float maxWait = 0f;
             float t = RunUntil(airport, () => flights.All(f => f.Finished), 3600f, () =>
             {
@@ -459,7 +460,7 @@ namespace AirCity.Tests.Airfield
                 foreach (var f in flights) maxWait = Mathf.Max(maxWait, f.WaitedFor);
             });
             Assert.Less(t, 3600f, string.Join("; ", flights.Select(f => f.ToString())));
-            Assert.AreEqual(4, flights.Count(f => f.Phase == FlightPhase.Gone));
+            Assert.AreEqual(departures, flights.Count(f => f.Phase == FlightPhase.Gone));
             Assert.AreEqual(2, flights.Count(f => f.Phase == FlightPhase.Parked));
             // departures waiting for a tug don't hold up the arrivals, which land rather than circling
             Assert.LessOrEqual(flights.Sum(f => f.GoArounds), 2);

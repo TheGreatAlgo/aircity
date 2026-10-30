@@ -6,8 +6,8 @@ using UnityEngine;
 namespace AirCity.EditorTools.Vehicles
 {
     /// <summary>
-    /// Prefabs and materials for the maintenance vehicles, the tugs, the depot and the control towers (created once, then
-    /// hand-editable):
+    /// Prefabs and materials for the maintenance vehicles, the tugs, the depot, the control towers and the jet bridge
+    /// (created once, then hand-editable):
     ///   Assets/AirCity/Vehicles/&lt;Model&gt;/&lt;Model&gt;.prefab   model + Vehicle + VehicleLights (buildings: lights only)
     ///   Assets/AirCity/Vehicles/Materials                     the light glow and the snow / clippings spray
     ///   AirCity ▸ Vehicles ▸ Create Missing Prefabs
@@ -67,7 +67,7 @@ namespace AirCity.EditorTools.Vehicles
             AssetDatabase.SaveAssets();
         }
 
-        public static readonly string[] Models = { "SnowPlough", "Mower", "Depot", "TowerSmall", "TowerMedium", "TowerLarge", "TugSmall", "TugLarge" };
+        public static readonly string[] Models = { "SnowPlough", "Mower", "Depot", "TowerSmall", "TowerMedium", "TowerLarge", "TugSmall", "TugLarge", "JetBridge" };
         /// <summary>The control towers, smallest first: a grass airfield's, a regional airport's, a hub's.</summary>
         public static readonly string[] Towers = { "TowerSmall", "TowerMedium", "TowerLarge" };
 

@@ -112,6 +112,7 @@ $B -b --factory-startup --python build.py -- --model Mower --geometry --views fr
 | `TugSmall` / `TugLarge` | towbarless aircraft tugs (U-shaped, nose-wheel cradle between the rear legs) for narrow-bodies (6 m) and up to an A380 (10 m); shared parts in `Common/tug.py` |
 | `Depot` | steel-clad maintenance garage: four roller doors, office end, flood lights |
 | `TowerSmall` / `TowerMedium` / `TowerLarge` | control towers for a grass airfield (cab on a two-storey office, 13.6 m), a regional airport (square shaft, 38 m) and a hub (round Schiphol-like shaft, radome, 99 m); shared parts in `Common/tower.py` |
+| `JetBridge` | apron-drive passenger boarding bridge: rotunda on a column, three telescoping tunnels, wheel bogie on two legs, cab with canopy, link corridor and column, plus a 7 m rotunda and column for upper-deck (A380) bridges; separate parts the game assembles, no LODs |
 
 Output: `Assets/AirCity/Vehicles/<Model>/Models/<Model>.fbx` (LOD0 = body + wheels / broom as separate movers,
 LOD1 / LOD2 merged and decimated), `Textures/<Model>_Albedo.png` and `_MetalGloss.png`, and `<Model>.vehicle`
@@ -124,4 +125,9 @@ LOD1 / LOD2 merged and decimated), `Textures/<Model>_Albedo.png` and `_MetalGlos
   `build()` → `[kit.Part]` (the body and each mover), `MOVERS`, `WHEELS`, `SPINNERS`, `LIGHTS` (type `Head`, `Tail`,
   `Beacon`, `Work`, `Marker` or `Flood`), `WORK` (lane width, speeds, turn radius, spray points), `LOD_RATIOS`,
   `AO_DISTANCE`, optional `grime(pos, ao)`, optional `TOW` (tugs: tow masses, cradle point, lift, opening, lift part), and `VIEWS`.
+- Optional, for a model the game assembles part by part (the jet bridge): `LOD_RATIOS = None` (no LODs: the
+  static parts merge into the first part, which keeps its name), `BOUNDS` (the profile's bounds when the parts are
+  laid out apart for the bake), `STRETCH` (`{part: "f" | "z" | "r"}`: parts the game scales along that axis;
+  their UVs collapse after the bake so the texture doesn't vary along it), `BRIDGE` (written into the `.vehicle` as
+  `"bridge"`), and `preview_pose(view)` (places the parts before each preview render).
 

@@ -16,6 +16,8 @@ namespace AirCity.Vehicles
         /// <summary>A towbarless aircraft tug (TugSmall / TugLarge): picks up an aircraft's nose wheel to push it back
         /// off its stand or tow it.</summary>
         Tug = 4,
+        /// <summary>Not a vehicle: a passenger boarding bridge (JetBridge), its parts placed by BridgeRig.</summary>
+        JetBridge = 5,
     }
 
     public enum VehicleLightType
@@ -66,6 +68,20 @@ namespace AirCity.Vehicles
         public float width, height;
     }
 
+    /// <summary>The jet bridge model's dimensions (its .vehicle's "bridge"); the game's rules are JetBridgeRules, and a
+    /// test checks the two agree.</summary>
+    [Serializable]
+    public struct JetBridgeDimensions
+    {
+        public float rotundaFloor, rotundaRadius, tunnelStart, sectionLength, cabReach, cabWidth, driveFromEnd, linkWidth, yokeBottom;
+        /// <summary>The raised rotunda's floor (upper-deck bridges); 0 in a model built before it had one.</summary>
+        public float upperFloor;
+        /// <summary>The cab's underside and roof rim, and the link's, from their floors.</summary>
+        public float cabBottom, cabTop, linkBottom, linkTop;
+        /// <summary>A bridge head's width, underside and parapet; its upper storey's underside, and how much wider it is.</summary>
+        public float headWidth, headBottom, headTop, headUpperBottom, headUpperWider;
+    }
+
     [Serializable]
     public struct VehicleSpinner
     {
@@ -111,6 +127,9 @@ namespace AirCity.Vehicles
         [Tooltip("Where the broom kicks up snow (local; zero = no broom).")]
         public Vector3 broomPoint;
 
+        [Header("Jet bridge")]
+        public JetBridgeDimensions bridge;
+
         [Header("Towing (tugs)")]
         [Tooltip("The lightest and heaviest aircraft it moves (maximum takeoff mass, kg).")]
         public float minTowMass;
@@ -124,8 +143,8 @@ namespace AirCity.Vehicles
         [Tooltip("The cradle part, raised by liftHeight while it holds a nose wheel.")]
         public string liftPart;
 
-        /// <summary>The depot and the control towers: placed, never driven.</summary>
-        public bool IsBuilding => kind == VehicleKind.Depot || kind == VehicleKind.Tower;
+        /// <summary>The depot, the control towers and the jet bridges: placed, never driven.</summary>
+        public bool IsBuilding => kind == VehicleKind.Depot || kind == VehicleKind.Tower || kind == VehicleKind.JetBridge;
         public bool IsTug => kind == VehicleKind.Tug;
 
         /// <summary>Can this tug push back or tow an aircraft of a type (by its maximum takeoff mass)?</summary>

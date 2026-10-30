@@ -40,7 +40,14 @@ Stands, 2026-10-24:
 | `Scripts/Runtime/Airfield/Airport.cs` | Root: materials, aprons, ground, weather (`Condition`, `groundSnow`), `timeScale`, `Simulate`, runway and depot add / remove, `Depots`, `Maintenance`, `Pavement` |
 | `Runway.cs` | One runway: thresholds, surface, width, lighting, wear, snow, grass, verge grass, letter; `Check(type)`; rebuild |
 | `TaxiwayNetwork.cs` | Taxiway and service-road graph (`TaxiwayNode`, `TaxiwayEdge`), editing (`Connect` splits crossings), routing (aircraft; vehicles with roads preferred and aprons crossable), `Run` (chains of sections for the depots' teams); stands (`AddStand`, `Layout`, `Fits`, `CheckStand`, `StandsFor`) |
-| `Stand.cs` | `Stand` (saved: kind, number, code, surface, exit, position, heading) and `StandLayout` (pad, clearances, stop bar, taxi-out hairpin, frontage, `ParkPosition`) |
+| `Stand.cs` | `Stand` (saved: kind, number, code, surface, exit, position, heading, `bridges`, `head`) and `StandLayout` (pad, clearances, stop bar, taxi-out hairpin, frontage, `ParkPosition`) |
+| `Terminal.cs` | `Terminal` (saved: corners, a bulge per edge, floors): outline with arcs, `Contains`, `ClosestOnWall` |
+| `JetBridge.cs` | `JetBridge` (saved per stand: door, rotunda, root), `BridgeHead` (saved per stand), `JetBridgeRules`, `BridgePose`, `BridgeLayout` (`Dock`, `Parked`, `ParkAll`, `Columns`, `Shape`, `Placement`, `Check`, `Suggest`), `BridgeSite`, `BridgeShape` / `Solid` (clearance between bridges), `BridgeProblem` |
+| `HeadLayout.cs` | A stand's bridge head laid out: walls, main link, columns, `Shape`, `Placement`; `Suggest` (a head and its bridges), `SuggestBridge` |
+| `AirportBridges.cs` | `Airport.Bridges`: bridges docking and pulling back in game seconds, `Clear(aircraft)`, `SetBridges(stand, n)`, `Check` / `FirstProblem`, `HeadOf(stand)` |
+| `BridgeRig.cs` | On the Airport: the JetBridge model per bridge, its parts placed from the pose each frame; a copy per head showing its head parts |
+| `Building/TerminalBuilder.cs` | Terminal walls (plinth, glass by floor, spandrels, mullions), parapet, roof, plant rooms |
+| `Shaders/Building.shader` | Terminals: flat colours, glass tint with a lit hall at night, casts shadows |
 | `Pavement.cs` | Where there's pavement to drive on, from the surface meshes, in a 16 m grid (the ploughs' turns) |
 | `RunwayRules.cs` | All gameplay constants and rules: widths, required length, `Check`, snow, grass, wear, designators |
 | `StripWork.cs` | `SurfaceValues` (per-owner shader state) and `StripWork` (the ploughing / mowing pass pattern) |
@@ -62,6 +69,7 @@ Stands, 2026-10-24:
 | `Scripts/Editor/Airfield/AirfieldTexturePostprocessor.cs` | Import settings for `Airfield/Textures` |
 | `ArtSource/Airfield/textures.py` | Generates ground textures and the glyph atlas (see [assets/airfield-textures.md](../assets/airfield-textures.md)) |
 | `Tests/EditMode/AirfieldTests.cs`, `StandTests.cs`, `MaintenanceTests.cs` | Rules, geometry, routing, snow / ploughing, grass / mowing, vehicles; runs, depots, avoidance, verges, roads |
+| `Tests/EditMode/TerminalBridgeTests.cs` | Terminal arcs and what they may stand on; the bridge model against the rules; placing, docking, pulling back before push-back |
 
 Roads and aprons, 2026-10-26:
 
@@ -246,6 +254,127 @@ leaves out its verges (split round the stand) and edge lights.
   (`Maintenance.PushBack`, see [maintenance.md](maintenance.md#tugs-and-push-back)).
 - Stands don't move when their taxiway's nodes are moved (nothing moves nodes yet), and a taxiway moved off a
   stand's front line leaves it unconnected.
+
+## Terminals and jet bridges
+
+Added 2026-10-29. The user's choices:
+
+| Topic | Choice |
+|---|---|
+| Terminal shape | a polygon whose edges can bow out (or in) into arcs, up to a half circle: curved ends, satellites, bowed frontages. Floors 1–4. No interiors yet; deeper customisation comes later |
+| Bridge ownership | a bridge belongs to one stand (`Stand.bridges`, 0–3) and never serves another. It may stand on either side of the stand's centreline |
+| Doors | each bridge serves one left-hand passenger door, L1, L2 … counted from the front (`AircraftType` `PassengerDoor` points with `normal.x < 0`) |
+| Long bridges | the fixed link from the terminal to the rotunda runs 0–60 m, for a curved terminal end whose stands fan out |
+| Bridge heads (2026-10-30) | two or three bridges on one side of a stand share a head, as at most real gates: one main link from the terminal to a building on columns beside the aircraft, the bridges off its side. A double-deck gate's head has a second storey, so the upper-deck bridge's link is level |
+
+**Loose coupling.** Terminals know nothing of stands. A bridge is saved in its stand's frame (x across, s along, as
+`StandLayout`), so it moves with the stand. Its link *root* is connected when it lies on or within
+`JetBridgeRules.ConnectReach` of a terminal wall (`BridgeLayout.Connected`). Reshaping or deleting a terminal never
+moves a bridge; it only disconnects it, and an unconnected bridge never docks.
+
+**Geometry (`JetBridgeRules`, built into the JetBridge model to the same numbers, checked by a test).** Rotunda floor
+4 m (an upper-deck bridge's raised rotunda: 7.8 m), radius 2.3; three 13 m tunnel sections telescoping from 14 to
+36 m; a 2.6 m cab, its rear a half circle round its pivot, that turns up to 95°; slope at most 1:10; the drive 4 m
+back from the tunnel's end. Every link that leaves a terminal leaves it at the 4 m floor.
+
+**Doors (2026-10-29: right-hand and upper-deck doors).** A bridge serves one door: `side` (Left / Right), `upper`
+(upper deck) and `door` (counted from the front on that side and deck): L1, R2, UL1 ... (`JetBridge.DoorName`). A
+passenger door more than 2 m above the type's lowest one is on its upper deck (`JetBridgeRules.UpperDeckAbove`,
+`BridgeLayout.TryDoor`, `HasUpperDeck`). An upper-deck bridge stands on the raised rotunda (`JetBridge.Floor`, the
+model's `RotundaHigh`). On a head (below) its stub link is level with the head's upper storey. On its own, its link
+leaves the terminal at the 4 m floor like the others and ramps up to it at 1:10 at most, so it is at least 38 m long
+(`JetBridgeRules.MinLink`, `BridgeProblem.LinkTooSteep`). Its tunnel may run over the wing root (parked, too), and
+over a main-deck bridge where it clears it (below). `AirportBridges.PlanDoors(stand, n)` picks the doors for the bridge
+count buttons: L1, L2, L3, or on a stand taking a double-deck type L1, then L2 + UL1, then L1 + L2 + UL1.
+`ChangeDoor` points one bridge at another door and places it again (last in the stand's list: see parking below).
+
+**Clearance between bridges (2026-10-30).** The user's ask: no bridge clipping another, clearance widths between
+them, all three of an A380 gate starting at one level, and no link columns on roads. A bridge's parts in a pose are
+boxes over the ground (`BridgeLayout.Shape`, `Solid`): rotunda, link (sloping where it ramps) and its columns,
+tunnel (sloping), drive with its legs, cab. Two bridges clash (`Solid.Clash`, `BridgeLayout.Crosses`) where boxes
+come within `JetBridgeRules.Clearance` (0.75 m) on the ground, unless one passes over the other with
+`JetBridgeRules.Headroom` (0.3 m) between them: the parts are straight, so it's enough to check the corners of their
+overlap. Rotundas, columns and the drive stand on the ground, so nothing passes under them. Cabs docked at the
+double-deck's L2 and UL1 (4.4 m apart) stand 0.96 m apart, which sets how large the clearance can be. At 7.8 m an
+upper-deck tunnel clears a main-deck link by 0.5 m; it can't pass over a main-deck tunnel or cab near the aircraft
+(they rise to 8 m), so it runs beside them.
+
+**Bridge heads (2026-10-30, `BridgeHead`, `HeadLayout`).** The user's ask: real gates don't run each bridge's link
+the full way from the terminal; one main link reaches a fixed head, and the bridges split off from it, and a
+double-deck gate's head has an upper floor so the upper-deck bridge needn't ramp. A stand has at most one head
+(`Stand.head`, saved in the stand's frame: its centreline `from` (near end) to `to`, and the main link's `root` on the
+terminal; `from == to`: none). It is 7 m wide (`JetBridgeRules.HeadWidth`), floor 4 m, on pairs of link columns 2.2 m
+either side of its centreline at most 18 m apart, its ends overhanging the end pairs by at most 5 m, kept off roads
+and taxiways like link columns (`HeadLayout.Columns`). Its main link is a link 3.6 m wide on its own columns, straight
+from the terminal to the head's near end, or none if the head stands against the terminal. A head has a second storey
+(floor 7.8 m, `HeadLayout.upper`) when an upper-deck bridge stands on it. A bridge stands on the head when its link
+root touches the head's wall (`HeadLayout.Touches`, `BridgeLayout.head`): its rotunda 1.2 m off the wall on a level
+stub link (`HeadStub`, `HeadLayout.Spot`), connected if the head's main link is. The head is a fixed shape every
+bridge on the stand keeps clear of, parked, docked and on the way (`BridgeSite.head`, `HeadLayout.Shape`), and
+neighbouring stands' bridges keep clear of it too; its own bridges' stub links and its columns share its `Solid.joint`
+so they don't count as clashes. `HeadLayout.Placement`: the head and main link 1.5 m off every type the stand takes
+(`HeadInTheWay`, `LinkInTheWay`), columns off the pavement, the head off taxiways and off the other stands' pads,
+clear of the neighbours' heads and bridges. A bridge on a head reports its head's problems first.
+
+**Placing a head (`HeadLayout.Suggest`, used by `AirportBridges.SetBridges`).** For two or more doors on one side
+of the aircraft (L1 + R1 can't share one). The head runs parallel to the stand's axis beside the aircraft, its
+centreline 14–34 m (plus the 7 m from rotunda to centreline) out from the largest type's doors, within the stand's
+sides; its near end from a little ahead of the foremost door to the terminal wall straight ahead (the main link
+covering the rest, at most 60 m). The bridges are placed on it from the aftmost door forward (`SuggestBridge`: the
+side facing the aircraft, every metre along it, preferring the tunnel square to the fuselage and near 20 m), and the
+first one also sets where the head ends, just aft of it. A bridge is only accepted where the bridges placed before it
+still dock everything they did (`BridgeLayout.Rate`). The first head whose bridges dock every type with their doors
+wins, else the first that takes the most. `SetBridges` keeps the head unless placing the bridges each with its own
+link takes more of them. `ChangeDoor` places a bridge on the stand's head first.
+
+**Docking (`BridgeLayout.Dock(type)`).** The cab's bumper stops 0.1 m off the door's sill, square on to the
+fuselage; the tunnel runs straight from the rotunda to the cab. It fails (`BridgeProblem`) if it's too close or too far,
+too steep, the cab can't turn that far, or the tunnel comes within 0.3 m of a wing or an engine
+(`AircraftType.wingOutline` and its mirror, `BridgeLayout.Wings`), the tailplane or the fuselage
+(`AirportMaintenance.Outline` boxes). The wings are their swept outline, not a box as wide as the span: on a
+four-engined type L2 is only a few metres ahead of the wing root's leading edge, and a span-wide box over the root
+would stop an L2 bridge placed for one type from reaching another's. A bridge needn't serve every type: it stays parked for a type whose door it
+can't reach (an L2 bridge on a wide-body stand when a narrow-body parks).
+
+**Placement (`BridgeLayout.Placement`, `Check`).** Not on taxi-out stands. The rotunda and link stay 1.5 m off where
+any type the stand takes parks: its fuselage and tail boxes and its swept wings with their engines (the outline, as
+for docking; an aircraft only moves forward to its spot, so the ground ahead of its wings' leading edges is never
+under them). The rotunda column and every link column stay off roads and taxiways; links and tunnels pass over
+roads. A link's columns (one per 18 m) are evenly spaced, or, where one would stand on pavement, moved along the
+link off it with every span still within 18 m (`BridgeLayout.Columns`, `ColumnOnPavement` if no spacing works).
+Parked (retracted, level, pointing at its door on the largest type with it, swung away as far as needed), it clears
+every type by 1.5 m, stays off the taxiways, keeps its wheels off roads and stays off the other stands' pads. An
+upper-deck bridge parks tilted up 1:10 with its tunnel and cab over the wings (its drive stays off them), passing
+over the main-deck bridges docking under it. A stand's bridges park in its list's order, each swung clear of its head
+and of the ones before it as well (`BridgeLayout.ParkAll`, used by `Check` and at work), so two never swing into
+each other; if it can, each also parks out of where the others dock the types it can't (`BridgeLayout.Clear`: an L2
+bridge left parked for a narrow-body mustn't block L1's way to it), swinging round further if it must. Rotundas stand at least 7.6 m apart. A stand's bridges keep clear of each other
+(see above) parked, docked to each type and on the way (the stand's bridges set off together; checked at four steps
+along), and of the neighbouring stands' bridges parked or docked (`BridgeSite.neighbours`). The types a stand takes
+are `Airport.aircraftTypes` filtered by code and length (`AirportBridges.TypesFor`); if that list is empty, the types
+in the scene.
+
+**Suggesting (`BridgeLayout.Suggest`, `AirportBridges.SetBridges(stand, n)`).** Two or more doors on one side go on
+a head if one fits (above). Otherwise each bridge gets its own link: a grid search round the stand, on its own ground
+(beside the aircraft or beyond its head). The link goes straight to the nearest terminal wall within 60 m (an
+upper-deck bridge's at least 38 m long).
+The place must dock the stand's largest type with that door. It prefers places that dock the other types too, a tunnel
+about 22 m out, a short link, near the stand's head. `SetBridges` places doors L1..Ln in turn, each against the ones
+before; it returns how many found a place.
+
+**At work (`Airport.Bridges`, stepped by `Airport.Simulate`).** An aircraft that has stood still on its stand's
+parking spot for 5 s gets its connected bridges, which dock in 50 s. When its departure flight starts they pull back,
+and `Flight` waits ("waiting for the jet bridges to pull back") before calling the tug. A scene opened with aircraft
+already parked shows their bridges docked. `BridgeRig` places the model's parts from each pose: the link pitched up
+to a raised rotunda (or a stub from a little inside the head's wall), and at each column a foot, a shaft stretched
+to the link and a head. Each bridge head is another copy of the model showing only `Head` (and `HeadUpper`)
+stretched to its length, an end wall at each end, the `Link` widened as its main link, and the columns. Outside Play
+mode it also places them before each render, so the editor and captures show them.
+
+**Not done yet:** interiors; terminal styles beyond the one curtain wall; a bridge shared by two stands (by choice,
+not planned); a head shared by two stands (bridges off both its sides, as at many piers); dragging a head (it moves
+only by placing the stand's bridges again); pre-conditioned air and ground power on the bridge. On the double-deck
+stand a narrow-body gets no bridge: L2, parked, stands in L1's way to its door.
 
 ## Gameplay rules (RunwayRules)
 
@@ -469,22 +598,28 @@ taxiway.
 **Rebuild the sandbox airport.** Run **AirCity ▸ Airfield ▸ Add Sandbox Airport**, or the batch command in
 [dev-tools.md](dev-tools.md). It contains:
 
-- 09/27: 2,800 m, concrete, precision lighting, with a parallel taxiway, a high-speed exit and apron links.
+- 09/27: 3,400 m x 60 m, concrete, precision lighting: every type up to code F. Taxiway A parallel to it, 25 m
+  (code F) like every taxiway jets use, with entrances at both thresholds, three straight exits and a rapid exit
+  each way.
 - 13/31: 1,600 m, asphalt, basic lighting, crossed by a taxiway.
-- A 600 m dirt strip.
-- A 700 m grass strip 06/24, grown to 19 cm, with a grass taxiway.
+- A 600 m dirt strip, and a 700 m grass strip 06/24, grown to 19 cm, with a grass taxiway to a GA ramp (three code A
+  grass stands, two code A asphalt taxi-out stands). The GA apron joins A by two 15 m links.
 - Verges at various lengths (the main runway's at 14 cm, nearly due).
-- The depot west of the apron (3 ploughs, 1 mower inside) on a small pad, with service roads east to the apron and
-  north across the dirt taxiway to the parallel taxiway. The east road runs on across the main apron as paint
-  only, round the south of the parked aircraft and up its east side, and then (a T) east along the heads of the
-  code C stands south of the taxilane: their tugs come that way.
-- Stands:
-  - A 23 m concrete taxilane east of the apron, from the apron to the parallel taxiway. To its south: four code C
-    stands and one code E (push-back, square on). To its north: three code C stands at 60° and one code C taxi-out
-    stand.
-  - A GA ramp on the grass taxiway: three code A grass stands and two code A asphalt taxi-out stands.
-  - Two code C de-icing bays (D1, D2) on a bypass beside the parallel taxiway at the 09 end, for westbound
-    departures.
+- The terminal apron: taxilane T1, 25 m, 100 m south of A and joined to it at both ends (no dead end). South of it,
+  contact stands pulled against each other: four code C, one code E, two code F. From T1's east end a 15 m lane bends
+  round the terminal's half-circle east end with three code C stands facing into it, and leaves north-east to A.
+- The terminal: two floors, a half-circle at each end, its landside wall bowed. Jet bridges: L1 on every stand (R1
+  as well on the first code C stand), L1 + L2 on a head on the code E stand and the second code F stand, L1 + L2 +
+  UL1 on a two-storey head on the first code F stand (UL1 only once a double-deck type exists), and one long bridge
+  per fan stand.
+- Parked, ready to leave: narrow-bodies on two contact stands and a fan stand, a wide-body on the code E stand, and
+  the double-deck and long-haul quadjet types on the code F stands once their models exist.
+- Two code E de-icing bays (D1, D2) on a bypass beside A at the 09 end, for westbound departures.
+- The depot west of the GA apron (3 ploughs, 1 mower, 2 small and 2 large tugs) on a small pad, with service roads
+  east onto the GA apron, north across the dirt taxiway to A, and round the GA apron to the heads of the code C
+  contact stands (their tugs come that way).
+- A display ramp south-east, off every taxiway, where Add Sandbox Airport moves the scene's showcase rows of every
+  type and livery.
 
 ## Invariants and gotchas
 

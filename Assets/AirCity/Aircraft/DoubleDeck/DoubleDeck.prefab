@@ -1,0 +1,386 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!1001 &3480206379973156539
+PrefabInstance:
+  m_ObjectHideFlags: 0
+  serializedVersion: 2
+  m_Modification:
+    serializedVersion: 3
+    m_TransformParent: {fileID: 0}
+    m_Modifications:
+    - target: {fileID: -8679921383154817045, guid: e73c3b715bb6c40cfa2978b465863321, type: 3}
+      propertyPath: m_LocalPosition.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: e73c3b715bb6c40cfa2978b465863321, type: 3}
+      propertyPath: m_LocalPosition.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: e73c3b715bb6c40cfa2978b465863321, type: 3}
+      propertyPath: m_LocalPosition.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: e73c3b715bb6c40cfa2978b465863321, type: 3}
+      propertyPath: m_LocalRotation.w
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: e73c3b715bb6c40cfa2978b465863321, type: 3}
+      propertyPath: m_LocalRotation.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: e73c3b715bb6c40cfa2978b465863321, type: 3}
+      propertyPath: m_LocalRotation.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: e73c3b715bb6c40cfa2978b465863321, type: 3}
+      propertyPath: m_LocalRotation.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: e73c3b715bb6c40cfa2978b465863321, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: e73c3b715bb6c40cfa2978b465863321, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: e73c3b715bb6c40cfa2978b465863321, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 919132149155446097, guid: e73c3b715bb6c40cfa2978b465863321, type: 3}
+      propertyPath: m_Name
+      value: DoubleDeck
+      objectReference: {fileID: 0}
+    m_RemovedComponents: []
+    m_RemovedGameObjects: []
+    m_AddedGameObjects: []
+    m_AddedComponents:
+    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: e73c3b715bb6c40cfa2978b465863321, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 4375453211747642976}
+    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: e73c3b715bb6c40cfa2978b465863321, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 578009458974578200}
+    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: e73c3b715bb6c40cfa2978b465863321, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 2838141770912865285}
+    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: e73c3b715bb6c40cfa2978b465863321, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 7588641177247027669}
+    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: e73c3b715bb6c40cfa2978b465863321, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 9132630607615603008}
+    - targetCorrespondingSourceObject: {fileID: -8404873288495061894, guid: e73c3b715bb6c40cfa2978b465863321, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 8676473742065367518}
+    - targetCorrespondingSourceObject: {fileID: 7586409663486759982, guid: e73c3b715bb6c40cfa2978b465863321, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 2431894111175257267}
+    - targetCorrespondingSourceObject: {fileID: 1959496342393921449, guid: e73c3b715bb6c40cfa2978b465863321, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 4177714045753768980}
+    - targetCorrespondingSourceObject: {fileID: 5418714630901909742, guid: e73c3b715bb6c40cfa2978b465863321, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 7544822986873163825}
+  m_SourcePrefab: {fileID: 100100000, guid: e73c3b715bb6c40cfa2978b465863321, type: 3}
+--- !u!4 &718438835074227919 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: -5065347732539391884, guid: e73c3b715bb6c40cfa2978b465863321, type: 3}
+  m_PrefabInstance: {fileID: 3480206379973156539}
+  m_PrefabAsset: {fileID: 0}
+--- !u!4 &806154230344498090 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: 4286340816244679953, guid: e73c3b715bb6c40cfa2978b465863321, type: 3}
+  m_PrefabInstance: {fileID: 3480206379973156539}
+  m_PrefabAsset: {fileID: 0}
+--- !u!4 &2266483478341788229 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: -5820893772069487362, guid: e73c3b715bb6c40cfa2978b465863321, type: 3}
+  m_PrefabInstance: {fileID: 3480206379973156539}
+  m_PrefabAsset: {fileID: 0}
+--- !u!4 &2276059801029462118 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: -5775271587381946659, guid: e73c3b715bb6c40cfa2978b465863321, type: 3}
+  m_PrefabInstance: {fileID: 3480206379973156539}
+  m_PrefabAsset: {fileID: 0}
+--- !u!4 &2990468173755502075 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: 1858979178974008128, guid: e73c3b715bb6c40cfa2978b465863321, type: 3}
+  m_PrefabInstance: {fileID: 3480206379973156539}
+  m_PrefabAsset: {fileID: 0}
+--- !u!1 &3133848699680588050 stripped
+GameObject:
+  m_CorrespondingSourceObject: {fileID: 1959496342393921449, guid: e73c3b715bb6c40cfa2978b465863321, type: 3}
+  m_PrefabInstance: {fileID: 3480206379973156539}
+  m_PrefabAsset: {fileID: 0}
+--- !u!114 &4177714045753768980
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3133848699680588050}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c9ff85cc325804253b6ebbbe0856dbdc, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: AirCity.Runtime::AirCity.Aircraft.PropellerSpinner
+  rpm: 0
+  spoolTime: 1.5
+--- !u!4 &3308240173086598971 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: -7087232412641789568, guid: e73c3b715bb6c40cfa2978b465863321, type: 3}
+  m_PrefabInstance: {fileID: 3480206379973156539}
+  m_PrefabAsset: {fileID: 0}
+--- !u!4 &3322058392580270623 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: -7037296893507717980, guid: e73c3b715bb6c40cfa2978b465863321, type: 3}
+  m_PrefabInstance: {fileID: 3480206379973156539}
+  m_PrefabAsset: {fileID: 0}
+--- !u!4 &3332334367965991771 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: 2194089956193422816, guid: e73c3b715bb6c40cfa2978b465863321, type: 3}
+  m_PrefabInstance: {fileID: 3480206379973156539}
+  m_PrefabAsset: {fileID: 0}
+--- !u!4 &3587308843400503572 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: 109356470899326895, guid: e73c3b715bb6c40cfa2978b465863321, type: 3}
+  m_PrefabInstance: {fileID: 3480206379973156539}
+  m_PrefabAsset: {fileID: 0}
+--- !u!4 &4030681586257196786 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: 550554950145960009, guid: e73c3b715bb6c40cfa2978b465863321, type: 3}
+  m_PrefabInstance: {fileID: 3480206379973156539}
+  m_PrefabAsset: {fileID: 0}
+--- !u!1 &4258092996388207297 stripped
+GameObject:
+  m_CorrespondingSourceObject: {fileID: -8404873288495061894, guid: e73c3b715bb6c40cfa2978b465863321, type: 3}
+  m_PrefabInstance: {fileID: 3480206379973156539}
+  m_PrefabAsset: {fileID: 0}
+--- !u!114 &8676473742065367518
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4258092996388207297}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c9ff85cc325804253b6ebbbe0856dbdc, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: AirCity.Runtime::AirCity.Aircraft.PropellerSpinner
+  rpm: 0
+  spoolTime: 1.5
+--- !u!4 &4321035516959979284 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: 845352556453947823, guid: e73c3b715bb6c40cfa2978b465863321, type: 3}
+  m_PrefabInstance: {fileID: 3480206379973156539}
+  m_PrefabAsset: {fileID: 0}
+--- !u!1 &4363219010453775338 stripped
+GameObject:
+  m_CorrespondingSourceObject: {fileID: 919132149155446097, guid: e73c3b715bb6c40cfa2978b465863321, type: 3}
+  m_PrefabInstance: {fileID: 3480206379973156539}
+  m_PrefabAsset: {fileID: 0}
+--- !u!114 &4375453211747642976
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4363219010453775338}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 855921eb15449441e83cad3808766529, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: AirCity.Runtime::AirCity.Aircraft.Aircraft
+  type: {fileID: -3326733738379100494, guid: 6dbd08986c1de4110ae8a80d4d6db2b4, type: 3}
+  outlineMaterial: {fileID: 2100000, guid: 51121265108404e16b0bb4041855c061, type: 2}
+  hoverColor: {r: 1, g: 1, b: 1, a: 0.75}
+  selectedColor: {r: 1, g: 0.74, b: 0.1, a: 1}
+  outlineWidth: 2.5
+--- !u!114 &578009458974578200
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4363219010453775338}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b9d756eb73d7743c9911db788db3f780, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: AirCity.Runtime::AirCity.Aircraft.AircraftLiveryApplier
+  type: {fileID: -3326733738379100494, guid: 6dbd08986c1de4110ae8a80d4d6db2b4, type: 3}
+  liveryAsset: {fileID: 11400000, guid: 58c24229e3b4f41529b5ffed57da8d1c, type: 2}
+  registration: 
+  dirt: 0.3
+  bodyMaterial: {fileID: -9103484930961366303, guid: e73c3b715bb6c40cfa2978b465863321, type: 3}
+  registrationMaterial: {fileID: -5451455189691820181, guid: e73c3b715bb6c40cfa2978b465863321, type: 3}
+--- !u!114 &2838141770912865285
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4363219010453775338}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 426505914314f4956bede4196da46c10, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: AirCity.Runtime::AirCity.Aircraft.AircraftControlSurfaces
+  elevator: 0
+  aileron: 0
+  rudder: 0
+  flaps: 0
+  elevatorUp: 28
+  elevatorDown: 23
+  aileronUp: 20
+  aileronDown: 15
+  rudderMax: 17
+  flapsMax: 30
+  elevators:
+  - transform: {fileID: 2990468173755502075}
+    rest: {x: 0.010499572, y: -0.22224373, z: -0.046008054, w: 0.97384846}
+  - transform: {fileID: 3587308843400503572}
+    rest: {x: 0.01049958, y: 0.22224371, z: 0.04600805, w: 0.97384846}
+  aileronsLeft:
+  - transform: {fileID: 6387858915861966435}
+    rest: {x: 0.010512852, y: -0.23125337, z: -0.04417984, w: 0.97183305}
+  aileronsRight:
+  - transform: {fileID: 718438835074227919}
+    rest: {x: 0.01051286, y: 0.23125337, z: 0.04417984, w: 0.97183305}
+  rudders:
+  - transform: {fileID: 2276059801029462118}
+    rest: {x: -0.27464932, y: 7.7723934e-16, z: 0.000000024010607, w: 0.96154445}
+  flapsLeft:
+  - transform: {fileID: 3322058392580270623}
+    rest: {x: 0.011458458, y: -0.198741, z: -0.056407653, w: 0.97836035}
+  - transform: {fileID: 2266483478341788229}
+    rest: {x: 0.011542981, y: -0.232175, z: -0.04829514, w: 0.97140574}
+  flapsRight:
+  - transform: {fileID: 4787670210682084702}
+    rest: {x: 0.01145847, y: 0.19874099, z: 0.056407653, w: 0.97836035}
+  - transform: {fileID: 8702999982286043285}
+    rest: {x: 0.011542987, y: 0.23217501, z: 0.04829514, w: 0.97140574}
+--- !u!114 &7588641177247027669
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4363219010453775338}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 5fb36f38766674a2787c000aaa4d1b52, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: AirCity.Runtime::AirCity.Aircraft.AircraftGroundMotion
+  groundSpeed: 0
+  steering: 0
+  noseGear: {fileID: 806154230344498090}
+  noseGearRest: {x: 0, y: 0, z: 0, w: 1}
+  maxSteeringAngle: 70
+  wheels:
+  - transform: {fileID: 3308240173086598971}
+    rest: {x: -0, y: -0, z: -0, w: 1}
+    radius: 0.62
+  - transform: {fileID: 5614057237023132974}
+    rest: {x: 0, y: 0, z: 0, w: 1}
+    radius: 0.67
+  - transform: {fileID: 3332334367965991771}
+    rest: {x: 0, y: 0, z: 0, w: 1}
+    radius: 0.67
+  - transform: {fileID: 4030681586257196786}
+    rest: {x: 0, y: 0, z: 0, w: 1}
+    radius: 0.67
+  - transform: {fileID: 4402695492546173217}
+    rest: {x: 0, y: 0, z: 0, w: 1}
+    radius: 0.67
+  - transform: {fileID: 4321035516959979284}
+    rest: {x: 0, y: 0, z: 0, w: 1}
+    radius: 0.67
+--- !u!114 &9132630607615603008
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4363219010453775338}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3b62f37f1f291412ca21ed8cdb6b3957, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: AirCity.Runtime::AirCity.Aircraft.AircraftLights
+  type: {fileID: -3326733738379100494, guid: 6dbd08986c1de4110ae8a80d4d6db2b4, type: 3}
+  glowMaterial: {fileID: 2100000, guid: f335cd47a4c2e44f5a02bbbe54750c26, type: 2}
+  navigation: 1
+  beacon: 0
+  strobes: 0
+  landing: 0
+  taxi: 0
+  logo: 0
+  spotLightDistance: 180
+  spotIntensity: 40
+--- !u!4 &4402695492546173217 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: 960860437639104410, guid: e73c3b715bb6c40cfa2978b465863321, type: 3}
+  m_PrefabInstance: {fileID: 3480206379973156539}
+  m_PrefabAsset: {fileID: 0}
+--- !u!4 &4787670210682084702 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: -991612206339210267, guid: e73c3b715bb6c40cfa2978b465863321, type: 3}
+  m_PrefabInstance: {fileID: 3480206379973156539}
+  m_PrefabAsset: {fileID: 0}
+--- !u!4 &5614057237023132974 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: -169713934073293931, guid: e73c3b715bb6c40cfa2978b465863321, type: 3}
+  m_PrefabInstance: {fileID: 3480206379973156539}
+  m_PrefabAsset: {fileID: 0}
+--- !u!4 &6387858915861966435 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: 7559879756051296472, guid: e73c3b715bb6c40cfa2978b465863321, type: 3}
+  m_PrefabInstance: {fileID: 3480206379973156539}
+  m_PrefabAsset: {fileID: 0}
+--- !u!1 &6414386079484414613 stripped
+GameObject:
+  m_CorrespondingSourceObject: {fileID: 7586409663486759982, guid: e73c3b715bb6c40cfa2978b465863321, type: 3}
+  m_PrefabInstance: {fileID: 3480206379973156539}
+  m_PrefabAsset: {fileID: 0}
+--- !u!114 &2431894111175257267
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6414386079484414613}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c9ff85cc325804253b6ebbbe0856dbdc, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: AirCity.Runtime::AirCity.Aircraft.PropellerSpinner
+  rpm: 0
+  spoolTime: 1.5
+--- !u!4 &8702999982286043285 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: 5227387365352990254, guid: e73c3b715bb6c40cfa2978b465863321, type: 3}
+  m_PrefabInstance: {fileID: 3480206379973156539}
+  m_PrefabAsset: {fileID: 0}
+--- !u!1 &8898841817781884501 stripped
+GameObject:
+  m_CorrespondingSourceObject: {fileID: 5418714630901909742, guid: e73c3b715bb6c40cfa2978b465863321, type: 3}
+  m_PrefabInstance: {fileID: 3480206379973156539}
+  m_PrefabAsset: {fileID: 0}
+--- !u!114 &7544822986873163825
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8898841817781884501}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c9ff85cc325804253b6ebbbe0856dbdc, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: AirCity.Runtime::AirCity.Aircraft.PropellerSpinner
+  rpm: 0
+  spoolTime: 1.5

@@ -39,15 +39,15 @@ about 0.3 MB.
 
 All of these are written by `finish.py` (stage 2). They are computed from the stage-1 bakes, so a mask change doesn't need `build.py`.
 
-| File | Size: Cessna172 / Narrowbody | Content | Import rule (postprocessor) |
+| File | Size: Cessna172 / Narrowbody / Widebody | Content | Import rule (postprocessor) |
 |---|---|---|---|
 | `<M>_Mask_<Style>.png` (×4) | 2048² | R / G / B = zones 1 / 2 / 3, antialiased, 0 outside the atlas | linear, CompressedHQ (BC7), no mips, non-readable |
 | `<M>_Detail.png` | 2048² | `0.42 + 0.58·AO^0.75`, × `(1 − 0.55·panel lines)`, × `detail_extra`; 1.0 outside the atlas | SingleChannel **Red** (R8), uncompressed, no mips |
 | `<M>_Dirt.png` | 1024² (½ res) | URP detail albedo: 0.5 = clean, darker = grime, clipped 0.15–0.7 | linear, Compressed, clamp |
-| `<M>_RegistrationDirt.png` | 512×216 / 384×268 | The dirt map resampled into the registration patch layout | same as Dirt |
+| `<M>_RegistrationDirt.png` | 512×216 / 384×268 / 512×386 | The dirt map resampled into the registration patch layout | same as Dirt |
 | `<M>_LogoUV.png` | 512² (¼ res) | `(u·cov, v·cov, cov)`, premultiplied by coverage so bilinear sampling stays exact at edges | linear, **uncompressed** (exact coordinates), no mips |
 | `<M>_Body_Default.png` | 2048² | The first `airlines.LIVERIES` entry (ClassicBlue) composed in numpy. Used as the imported Body texture and as the parity-test reference | default (sRGB), clamp, aniso 4 |
-| `<M>_Registration_Default.png` | 1024×432 / 768×536 | ClassicBlue registration patch | default, NPOT none |
+| `<M>_Registration_Default.png` | 1024×432 / 768×536 / 1024×772 | ClassicBlue registration patch | default, NPOT none |
 | `<M>_UV_Template.png` | 2048² | UV wireframe over shading, for hand-painting `customMask` / `customAlbedo` | default |
 | `Shared/RegistrationFont.png` | 1024² | White glyphs, alpha = coverage, 8 columns of 128 px cells | SingleChannel **Alpha** (Alpha8), uncompressed |
 
@@ -97,8 +97,8 @@ accent / cheatline / tips, and zone 3 as trim / tail. What each mask actually pa
   show no letters.
 - Per side, `AircraftType.RegistrationSide` holds `crop` (the main-atlas UV rect the strip shows) and a metric → UV
   map: `u = k·sign·station + tu`, `v = k·height + tv` (`sign` = +1 port, −1 starboard).
-- Texture size: `registrationTextureWidth` (`REG_TEX_W`: 1024 Cessna, 768 Narrowbody) × `2·registrationHalfHeight`
-  (216 / 268). The half height comes from the crop aspect and is padded to an even number so the full height is a
+- Texture size: `registrationTextureWidth` (`REG_TEX_W`: 1024 Cessna, 768 Narrowbody, 1024 Widebody) × `2·registrationHalfHeight`
+  (216 / 268 / 386). The half height comes from the crop aspect and is padded to an even number so the full height is a
   multiple of 4 (BC1).
 - `REG_BOX[style]` = `(station from, to, height from, to)` in fuselage metres, kept clear of that style's stripes.
   Letters are as tall as the box unless the text is too wide, and are centred in it.
@@ -196,7 +196,7 @@ accent / cheatline / tips, and zone 3 as trim / tail. What each mask actually pa
 |---|---|---|
 | New livery (per type) | ~50 ms, 2048² BC1 + mips ≈ 2.7 MB GPU | README (M2, editor) / format maths |
 | New aircraft (registration) | ~15 ms; 1024×432 or 768×536 BC1 ≈ 0.3 MB | README / format maths |
-| 100 aircraft, 10 liveries | ~4–5 s, ~55 MB GPU; test asserts < 64 MB | README / `Fleet_100Aircraft_10Liveries_StaysWithinBudget` |
+| 100 aircraft, 10 liveries | ~4–5 s, ~55 MB GPU (widebodies ~77 MB: larger registration patches); test asserts < 80 MB | README / `Fleet_100Aircraft_10Liveries_StaysWithinBudget` |
 | Transient per new body | mask and detail readbacks (2 × 16 MiB RGBA32) + RGB24 chain (≈ 16 MiB) | code |
 | Uncompressed body (`CompressGeneratedTextures = false`) | RGB24 + mips ≈ 16.8 MB of data; the code comment says ~22 MB (RGBA on the GPU) | format maths / compositor comment |
 
@@ -331,7 +331,7 @@ to uncompressed RGB24.
 ## Tests
 
 `Assets/AirCity/Tests/EditMode/AircraftLiveryTests.cs`, run once per type (`[TestFixture("Cessna172")]`,
-`[TestFixture("Narrowbody")]`); `TearDown` calls `ClearSharedCache`.
+`[TestFixture("Narrowbody")]`, `[TestFixture("Widebody")]`, `[TestFixture("DoubleDeck")]`, `[TestFixture("Quadjet")]`); `TearDown` calls `ClearSharedCache`.
 
 | Test | Checks |
 |---|---|
@@ -343,7 +343,7 @@ to uncompressed RGB24.
 | `Prefab_IsPaintedInEditMode` | `Body_LOD0`'s property block `_BaseMap` is the applier's body texture; LODGroup exists |
 | `Lods_CutTrianglesAndDrawCalls` | 3 LODs, decreasing triangles, ≤ 24 / 4 / 2 draws, no `Registration` material beyond LOD0, every renderer in exactly one LOD, cross-fade |
 | `Bc1Encoder_MatchesUnityCompressor` | Burst BC1 error ≤ 1.25 × `Texture2D.Compress(HQ)` + 0.1; same mip count |
-| `Fleet_100Aircraft_10Liveries_StaysWithinBudget` | 10 distinct bodies, 100 distinct registrations, all DXT1 and non-readable, GPU bytes < 64 MB |
+| `Fleet_100Aircraft_10Liveries_StaysWithinBudget` | 10 distinct bodies, 100 distinct registrations, all DXT1 and non-readable, GPU bytes < 80 MB |
 
 Also in `AircraftTypeTests.cs`: `Logo_IsPaintedOnTheFin` (the logo changes 0.1–5 % of the atlas on both types) and
 `Dirt_SharesMaterialsPerStep` (dirt 0 / 1 quantise exactly and share one body texture).

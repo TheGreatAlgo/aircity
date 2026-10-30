@@ -11,7 +11,7 @@ namespace AirCity.EditorTools.Vehicles
     /// Imports &lt;Model&gt;.vehicle (JSON written by the vehicle pipeline in ArtSource/Vehicles) as a
     /// <see cref="VehicleType"/>. Positions are already in Unity space (+Z forward, +X right).
     /// </summary>
-    [ScriptedImporter(3, "vehicle")]
+    [ScriptedImporter(7, "vehicle")]
     public class VehicleTypeImporter : ScriptedImporter
     {
 #pragma warning disable 0649   // assigned by JsonUtility
@@ -37,6 +37,13 @@ namespace AirCity.EditorTools.Vehicles
         }
 
         [Serializable]
+        class BridgeJson
+        {
+            public float rotundaFloor, rotundaRadius, tunnelStart, sectionLength, cabReach, cabWidth, driveFromEnd, linkWidth, yokeBottom, upperFloor,
+                cabBottom, cabTop, linkBottom, linkTop, headWidth, headBottom, headTop, headUpperBottom, headUpperWider;
+        }
+
+        [Serializable]
         class TypeJson
         {
             public string name, displayName, kind;
@@ -49,6 +56,7 @@ namespace AirCity.EditorTools.Vehicles
             public TowJson tow;
             public DoorJson[] doors;
             public BoundsJson interior;
+            public BridgeJson bridge;
         }
 #pragma warning restore 0649
 
@@ -124,6 +132,19 @@ namespace AirCity.EditorTools.Vehicles
                 t.liftHeight = json.tow.lift;
                 t.cradleOpening = json.tow.opening;
                 t.liftPart = json.tow.part;
+            }
+            if (json.bridge != null && json.bridge.sectionLength > 0f)
+            {
+                var b = json.bridge;
+                t.bridge = new JetBridgeDimensions
+                {
+                    rotundaFloor = b.rotundaFloor, rotundaRadius = b.rotundaRadius, tunnelStart = b.tunnelStart,
+                    sectionLength = b.sectionLength, cabReach = b.cabReach, cabWidth = b.cabWidth,
+                    driveFromEnd = b.driveFromEnd, linkWidth = b.linkWidth, yokeBottom = b.yokeBottom, upperFloor = b.upperFloor,
+                    cabBottom = b.cabBottom, cabTop = b.cabTop, linkBottom = b.linkBottom, linkTop = b.linkTop,
+                    headWidth = b.headWidth, headBottom = b.headBottom, headTop = b.headTop, headUpperBottom = b.headUpperBottom,
+                    headUpperWider = b.headUpperWider,
+                };
             }
             ctx.AddObjectToAsset("type", t);
             ctx.SetMainObject(t);

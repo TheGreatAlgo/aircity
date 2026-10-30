@@ -11,11 +11,12 @@ using UnityEngine.InputSystem;
 namespace AirCity.Dev
 {
     /// <summary>The sandbox's airfield tools (DevToolbar has a button for each).</summary>
-    public enum DevTool { Select, Runway, Taxiway, Road, Apron, Depot, Stand, DeIcing, Delete }
+    public enum DevTool { Select, Runway, Taxiway, Road, Apron, Terminal, Depot, Stand, DeIcing, Delete }
 
     /// <summary>
     /// Sandbox airfield building (development only, not game UI). DevToolbar has buttons for all of it; the keys:
-    ///   B = next build tool (select / runway / taxiway / road / apron / depot / stand / de-icing bay)   X = delete tool
+    ///   B = next build tool (select / runway / taxiway / road / apron / terminal / depot / stand / de-icing bay)
+    ///   X = delete tool
     ///   Esc = end the line being laid, else back to select, else deselect
     ///   select: click a runway, taxiway or road section, depot or apron to select it (outlined in amber; the panel
     ///     lists which aircraft can use a selected runway); Delete / Backspace removes it (DevToolbar)
@@ -34,6 +35,9 @@ namespace AirCity.Dev
     ///   apron: click corners (they stick to aprons' and stands' corners and edges), then click the first corner or
     ///     right-click to finish (Esc drops it); or drag out a rectangle, lined up with what it starts on (else the
     ///     nearest runway)
+    ///   terminal: click corners like the apron tool (or drag out a rectangle) for a terminal's footprint; click one to
+    ///     select it. Selected, its edge nearest the cursor is outlined: Shift+scroll bows it out into an arc (2 m a
+    ///     notch, up to a half circle), [ / ] change its floors
     ///   depot: drag from where the doors go out the way they face (snaps to 10 deg) to build a depot; click one to
     ///     select it
     ///   stand: click to add a parking stand. Beside a taxiway (or another stand's front line, the taxilane to come)
@@ -48,6 +52,10 @@ namespace AirCity.Dev
     ///     taxiway its angle to it, 25 to 155 deg (through square on to leaning the other way); a free stand all the
     ///     way round
     ///   I = push-back / taxi-out stand
+    ///   jet bridges (a selected push-back stand): 0-3 in the strip place that many, to doors L1, L2, L3, where they
+    ///     work for the aircraft the stand takes and reach the nearest terminal (two or three share a bridge head where
+    ///     one fits); drag a rotunda (a ring) to move it, its link following to the nearest terminal wall or its
+    ///     stand's head; the panel lists each bridge's problems per aircraft
     ///   C = weather (dry / rain / snowing; snow builds up over game time)   Y = time speed (1x .. 60x)
     ///   O = a 2 cm snowfall at once   U = grass strips and verges grow 6 cm at once
     ///   P = plough the selection (taxiway / road tool: all taxiways; nothing selected: everything)
@@ -71,7 +79,7 @@ namespace AirCity.Dev
 
         public static readonly float[] TimeScales = { 1f, 5f, 20f, 60f };
 
-        enum Kind { None, Runway, Edge, Depot, Apron, Stand }
+        enum Kind { None, Runway, Edge, Depot, Apron, Stand, Terminal }
 
         /// <summary>Something on the airfield to select or delete.</summary>
         struct Pick
@@ -82,10 +90,11 @@ namespace AirCity.Dev
             public MaintenanceDepot depot;
             public int apron;
             public Stand stand;
+            public Terminal terminal;
 
             public static Pick None => new Pick { apron = -1 };
             public bool Same(in Pick o) => kind == o.kind && runway == o.runway && edge == o.edge && depot == o.depot &&
-                                           apron == o.apron && stand == o.stand;
+                                           apron == o.apron && stand == o.stand && terminal == o.terminal;
         }
 
         DevTool tool;
@@ -109,6 +118,13 @@ namespace AirCity.Dev
         StandLayout ghost;
         string ghostProblem;
         readonly List<Vector2> apronCorners = new List<Vector2>();
+        /// <summary>The selected terminal's edge nearest the cursor (bowed by Shift+scroll), or -1.</summary>
+        int terminalEdge = -1;
+        int terminalFloors = 2;
+        /// <summary>The bridge whose rotunda is being dragged, or null; the selected stand's bridge last clicked (its
+        /// door is changed in the strip), or null.</summary>
+        JetBridge draggingBridge, selectedBridge;
+        string bridgeNote;
         Vector2 apronCursor, apronDragStart, pressScreen;
         bool apronDrag, apronPress;
         Vector2[] apronRect;
@@ -141,6 +157,32 @@ namespace AirCity.Dev
         public bool ApronSelected => selection.kind == Kind.Apron;
         public Stand SelectedStand => selection.kind == Kind.Stand ? selection.stand : null;
         public ApronArea SelectedApron => selection.kind == Kind.Apron ? airport.aprons[selection.apron] : null;
+        public Terminal SelectedTerminal => selection.kind == Kind.Terminal ? selection.terminal : null;
+        /// <summary>Floors of the selected terminal, else of new ones.</summary>
+        public int TerminalFloors => SelectedTerminal != null ? SelectedTerminal.floors : terminalFloors;
+        /// <summary>Why the last bridge change didn't take, or what it did, or null.</summary>
+        public string BridgeNote => bridgeNote;
+
+        /// <summary>The selected stand's bridge picked by clicking its rotunda, or null.</summary>
+        public JetBridge SelectedBridge =>
+            selectedBridge != null && SelectedStand != null && SelectedStand.bridges.Contains(selectedBridge) ? selectedBridge : null;
+
+        /// <summary>Point the selected bridge at another door: its side, its deck, or the next / previous door along.</summary>
+        public void ChangeBridgeDoor(DoorSide side, bool upper, int door)
+        {
+            var b = SelectedBridge;
+            if (b == null) return;
+            door = Mathf.Clamp(door, 1, 6);
+            string label = JetBridge.DoorLabel(side, upper, door);
+            bool any = airport.Bridges.TypesFor(SelectedStand).Any(t => !t.Light && BridgeLayout.TryDoor(t, side, upper, door, out _));
+            if (!any)
+            {
+                bridgeNote = $"no aircraft this stand takes has a door {label}";
+                return;
+            }
+            bridgeNote = airport.Bridges.ChangeDoor(SelectedStand, b, side, upper, door)
+                ? null : $"no place works for a bridge to {label} here";
+        }
         /// <summary>Why the apron being drawn (or the selected one's new surface) won't do, or null.</summary>
         public string ApronProblemText => apronProblem;
         /// <summary>Why the road or taxiway can't go to the cursor (it would cross a stand), or null.</summary>
@@ -179,7 +221,7 @@ namespace AirCity.Dev
         public static bool TakesScroll { get; private set; }
 
         /// <summary>What the next point of the taxiway, road or apron tool would join, in words, or null.</summary>
-        public string SnapText => tool == DevTool.Apron ? apronSnap
+        public string SnapText => tool == DevTool.Apron || tool == DevTool.Terminal ? apronSnap
             : (tool == DevTool.Taxiway || tool == DevTool.Road) && lineSnapShown ? lineSnap.what : null;
         public StandExit StandExit => SelectedStand != null ? SelectedStand.exit : standExit;
         /// <summary>New parking stands, or the selected one, turn small aircraft away.</summary>
@@ -228,6 +270,8 @@ namespace AirCity.Dev
             apronProblem = null;
             apronSnap = null;
             lineSnapShown = false;
+            draggingBridge = null;
+            bridgeNote = null;
         }
 
         /// <summary>The surface for new pavement; with a runway selected (select or runway tool), that runway's too.</summary>
@@ -250,6 +294,11 @@ namespace AirCity.Dev
         /// <summary>The next width up or down for new taxiways (taxiway tool) or runways, and the selected runway.</summary>
         public void StepWidth(int step)
         {
+            if (tool == DevTool.Terminal || SelectedTerminal != null)
+            {
+                StepFloors(step);
+                return;
+            }
             if (tool == DevTool.Road) return;   // roads come in one width
             if (tool == DevTool.Stand || tool == DevTool.DeIcing || SelectedStand != null)
             {
@@ -459,6 +508,45 @@ namespace AirCity.Dev
             if (r != null) r.Repair();
         }
 
+        /// <summary>More or fewer floors for new terminals, and the selected one.</summary>
+        public void StepFloors(int step)
+        {
+            terminalFloors = Mathf.Clamp(TerminalFloors + step, 1, Terminal.MaxFloors);
+            var t = SelectedTerminal;
+            if (t == null) return;
+            var changed = t.Clone();
+            changed.floors = terminalFloors;
+            airport.ChangeTerminal(t, changed);
+        }
+
+        /// <summary>Bow an edge of the selected terminal out (positive metres) or in.</summary>
+        public void BowTerminalEdge(int edge, float metres)
+        {
+            var t = SelectedTerminal;
+            if (t == null || edge < 0 || edge >= t.EdgeCount) return;
+            var changed = t.Clone();
+            changed.SetBulge(edge, changed.Bulge(edge) + metres);
+            apronProblem = airport.TerminalProblem(changed, t);
+            if (apronProblem == null) airport.ChangeTerminal(t, changed);
+        }
+
+        /// <summary>Give the selected stand this many jet bridges (0-3), placed where they work.</summary>
+        public void SetBridgeCount(int count)
+        {
+            var st = SelectedStand;
+            if (st == null || st.DeIcing) return;
+            if (count > 0 && st.exit == StandExit.TaxiOut)
+            {
+                bridgeNote = "taxi-out stands take no bridges: make it push-back first";
+                return;
+            }
+            int placed = airport.Bridges.SetBridges(st, count);
+            bridgeNote = placed < count
+                ? placed == 0 ? "no place for a bridge works here (build a terminal within 60 m of the stand's side or head)"
+                    : $"only {placed} of {count} fit: the rest found no place that works"
+                : null;
+        }
+
         /// <summary>Remove what's selected; false if nothing on the airfield is.</summary>
         public bool DeleteSelection()
         {
@@ -521,6 +609,7 @@ namespace AirCity.Dev
                 case DevTool.Taxiway: TaxiwayTool(click, free, point, false); break;
                 case DevTool.Road: TaxiwayTool(click, free, point, true); break;
                 case DevTool.Apron: ApronTool(mouse, keys, click, free, point); break;
+                case DevTool.Terminal: TerminalTool(mouse, keys, click, free, point); break;
                 case DevTool.Depot: DepotTool(mouse, click, point); break;
                 case DevTool.Stand:
                 case DevTool.DeIcing: StandTool(click, free, point); break;
@@ -528,16 +617,21 @@ namespace AirCity.Dev
                     if (click && hover.kind != Kind.None) Remove(hover, hoverRun);
                     break;
                 default:
-                    // a click on an aircraft selects it instead (DevSandboxControls)
+                    // a rotunda of the selected stand's bridges is dragged; a click on an aircraft selects it instead
+                    // (DevSandboxControls)
+                    if (BridgeDrag(mouse, click, point)) break;
                     if (click) Select(hover);
                     break;
             }
+            if (SelectedTerminal != null && free)
+                terminalEdge = NearestEdge(SelectedTerminal, Geo.XZ(airport.transform.InverseTransformPoint(point)));
             DrawOutlines(free, point);
         }
 
         void HandleKeys(Keyboard keys, Mouse mouse)
         {
             if (keys.bKey.wasPressedThisFrame) SetTool(tool >= DevTool.DeIcing ? DevTool.Select : tool + 1);
+            if (keys.digit0Key.wasPressedThisFrame && SelectedStand != null) SetBridgeCount(0);
             if (keys.xKey.wasPressedThisFrame) SetTool(tool == DevTool.Delete ? DevTool.Select : DevTool.Delete);
             if (keys.escapeKey.wasPressedThisFrame)
             {
@@ -583,7 +677,9 @@ namespace AirCity.Dev
         {
             var st = SelectedStand;
             bool placing = tool == DevTool.Stand || tool == DevTool.DeIcing;
-            TakesScroll = keys.shiftKey.isPressed && !DevGui.PointerOverHud && (placing || (tool == DevTool.Select && st != null));
+            bool bowing = SelectedTerminal != null && terminalEdge >= 0;
+            TakesScroll = keys.shiftKey.isPressed && !DevGui.PointerOverHud &&
+                          (placing || bowing || (tool == DevTool.Select && st != null));
             if (!TakesScroll)
             {
                 scrollTurn = 0f;
@@ -595,6 +691,11 @@ namespace AirCity.Dev
             int notches = (int)scrollTurn;
             if (notches == 0) return;
             scrollTurn -= notches;
+            if (bowing)
+            {
+                BowTerminalEdge(terminalEdge, notches * (keys.altKey.isPressed ? 0.5f : 2f));
+                return;
+            }
             // 5 degree steps land on multiples of 5
             float Stepped(float a) => step > 1f
                 ? (notches > 0 ? Mathf.Floor(a / step + 0.01f) + notches : Mathf.Ceil(a / step - 0.01f) + notches) * step
@@ -729,6 +830,160 @@ namespace AirCity.Dev
                 else if (apronCorners.Count == 0 || Vector2.Distance(p, apronCorners[apronCorners.Count - 1]) > 0.5f) apronCorners.Add(p);
             }
             if (free && mouse.rightButton.wasPressedThisFrame) FinishApron();
+        }
+
+        /// <summary>
+        /// Terminal tool: corners as for an apron (ApronTool's snapping and Shift steps; a drag makes a rectangle), the
+        /// footprint of a new terminal; a click on a terminal selects it (Shift+scroll then bows its edge nearest the
+        /// cursor).
+        /// </summary>
+        void TerminalTool(Mouse mouse, Keyboard keys, bool click, bool free, Vector3 point)
+        {
+            bool shift = keys.shiftKey.isPressed;
+            var raw = Geo.XZ(airport.transform.InverseTransformPoint(point));
+            if (click && apronCorners.Count == 0 && airport.TryPickTerminal(raw, out var hit))
+            {
+                Select(new Pick { kind = Kind.Terminal, terminal = hit, apron = -1 });
+                return;
+            }
+            var p = SnapCorner(raw, shift, point, out apronSnap);
+            apronCursor = p;
+            if (click)
+            {
+                apronPress = true;
+                pressScreen = mouse.position.ReadValue();
+                apronDragStart = p;
+            }
+            if (apronPress && !apronDrag && apronCorners.Count == 0 && mouse.leftButton.isPressed &&
+                Vector2.Distance(mouse.position.ReadValue(), pressScreen) > 6f)
+                apronDrag = true;
+            if (apronDrag)
+            {
+                apronRect = DragRect(apronDragStart, p, shift);
+                apronProblem = airport.TerminalProblem(Terminal.Polygon(apronRect, terminalFloors));
+                if (!mouse.leftButton.wasReleasedThisFrame) return;
+                if (apronProblem == null) SelectTerminal(airport.AddTerminal(apronRect, terminalFloors));
+                apronDrag = apronPress = false;
+                apronRect = null;
+                return;
+            }
+            bool closing = apronCorners.Count >= 3 && p == apronCorners[0];
+            var drawn = new List<Vector2>(apronCorners);
+            if (!closing) drawn.Add(p);
+            apronProblem = drawn.Count >= 3 ? airport.TerminalProblem(Terminal.Polygon(drawn, terminalFloors)) : null;
+            if (apronProblem == "too small") apronProblem = null;
+            if (apronPress && mouse.leftButton.wasReleasedThisFrame)
+            {
+                apronPress = false;
+                if (closing) FinishTerminal();
+                else if (apronCorners.Count == 0 || Vector2.Distance(p, apronCorners[apronCorners.Count - 1]) > 0.5f) apronCorners.Add(p);
+            }
+            if (free && mouse.rightButton.wasPressedThisFrame) FinishTerminal();
+        }
+
+        void FinishTerminal()
+        {
+            if (apronCorners.Count < 3)
+            {
+                apronCorners.Clear();
+                return;
+            }
+            apronProblem = airport.TerminalProblem(Terminal.Polygon(apronCorners, terminalFloors));
+            if (apronProblem != null) return;
+            SelectTerminal(airport.AddTerminal(apronCorners, terminalFloors));
+            apronCorners.Clear();
+        }
+
+        void SelectTerminal(Terminal t)
+        {
+            if (t != null) Select(new Pick { kind = Kind.Terminal, terminal = t, apron = -1 });
+        }
+
+        /// <summary>The terminal's edge (corner to corner) nearest a ground point, or -1.</summary>
+        static int NearestEdge(Terminal t, Vector2 p)
+        {
+            int best = -1;
+            float bestD = float.MaxValue;
+            for (int i = 0; i < t.EdgeCount; i++)
+            {
+                var pts = new List<Vector2> { t.corners[i] };
+                Terminal.Arc(pts, t.corners[i], t.corners[(i + 1) % t.EdgeCount], t.Bulge(i), Terminal.ArcStep);
+                pts.Add(t.corners[(i + 1) % t.EdgeCount]);
+                for (int k = 0; k < pts.Count - 1; k++)
+                {
+                    float d = Vector2.Distance(Geo.ClosestOnSegment(p, pts[k], pts[k + 1], out _), p);
+                    if (d >= bestD) continue;
+                    bestD = d;
+                    best = i;
+                }
+            }
+            return best;
+        }
+
+        /// <summary>
+        /// Dragging a rotunda of the selected stand's bridges (select tool): press on one, move, release. Its link
+        /// follows to the nearest terminal wall. Kept where it is if the new place doesn't work for every aircraft the
+        /// stand takes. True while it has the mouse.
+        /// </summary>
+        bool BridgeDrag(Mouse mouse, bool click, Vector3 point)
+        {
+            var st = SelectedStand;
+            var net = airport.Taxiways;
+            var sl = st != null ? net.Layout(st) : null;
+            if (sl == null)
+            {
+                draggingBridge = null;
+                return false;
+            }
+            var p = Geo.XZ(airport.transform.InverseTransformPoint(point));
+            if (click)
+            {
+                draggingBridge = null;
+                foreach (var b in st.bridges)
+                    if (Vector2.Distance(sl.At(b.rotunda.x, b.rotunda.y), p) < JetBridgeRules.RotundaRadius + 1.5f)
+                        draggingBridge = b;
+                if (draggingBridge == null) return false;
+                selectedBridge = draggingBridge;
+            }
+            if (draggingBridge == null) return false;
+            if (!st.bridges.Contains(draggingBridge))
+            {
+                draggingBridge = null;
+                return false;
+            }
+            if (!mouse.leftButton.isPressed)
+            {
+                draggingBridge = null;
+                return true;
+            }
+            var was = draggingBridge.Clone();
+            draggingBridge.rotunda = BridgeLayout.ToStand(sl, p);
+            draggingBridge.root = draggingBridge.rotunda;
+            float nearest = float.MaxValue;
+            foreach (var t in airport.terminals)
+            {
+                float d = t.ClosestOnWall(p, out var wall, out _);
+                if (d >= nearest || d - JetBridgeRules.RotundaRadius > JetBridgeRules.MaxLink) continue;
+                nearest = d;
+                draggingBridge.root = BridgeLayout.ToStand(sl, wall);
+            }
+            // its stand's head, if nearer: a stub link from the head's wall
+            var head = airport.Bridges.HeadOf(st);
+            if (head != null && head.ClosestOnWall(p, out var onHead) < nearest)
+                draggingBridge.root = BridgeLayout.ToStand(sl, onHead);
+            var problem = airport.Bridges.FirstProblem(st, draggingBridge, out var type);
+            bridgeNote = problem == BridgeProblem.None ? null
+                : (type != null ? type.displayName + ": " : "") + BridgeLayout.Describe(problem);
+            // a rotunda (or a link column) can't stand where the aircraft parks, on pavement, or on the next stand: keep it
+            // where it was
+            if (problem == BridgeProblem.RotundaInTheWay || problem == BridgeProblem.RotundaOnPavement || problem == BridgeProblem.ColumnOnPavement ||
+                problem == BridgeProblem.LinkInTheWay || problem == BridgeProblem.OnNextStand || problem == BridgeProblem.TaxiOutStand)
+            {
+                draggingBridge.rotunda = was.rotunda;
+                draggingBridge.root = was.root;
+            }
+            net.Rebuild();
+            return true;
         }
 
         bool Overlapping(List<Vector2> outline) =>
@@ -1318,6 +1573,7 @@ namespace AirCity.Dev
             float slack = Mathf.Max(2f, MetresPerPixel(world) * 6f);
             if (airport.Taxiways.TryPickEdge(local, out var e, slack)) return new Pick { kind = Kind.Edge, edge = e, apron = -1 };
             if (airport.Taxiways.TryPickStand(p, out var st)) return new Pick { kind = Kind.Stand, stand = st, apron = -1 };
+            if (airport.TryPickTerminal(p, out var term)) return new Pick { kind = Kind.Terminal, terminal = term, apron = -1 };
             if (airport.TryPickApron(p, out int i)) return new Pick { kind = Kind.Apron, apron = i };
             return Pick.None;
         }
@@ -1329,6 +1585,7 @@ namespace AirCity.Dev
             Kind.Depot => p.depot != null,
             Kind.Apron => p.apron >= 0 && p.apron < airport.aprons.Count,
             Kind.Stand => airport.Taxiways.stands.Contains(p.stand),
+            Kind.Terminal => airport.terminals.Contains(p.terminal),
             _ => true,
         };
 
@@ -1341,6 +1598,7 @@ namespace AirCity.Dev
                 case Kind.Depot: return p.depot.name;
                 case Kind.Apron: return airport.aprons[p.apron].surface + " apron";
                 case Kind.Stand: return p.stand.Name;
+                case Kind.Terminal: return $"Terminal {airport.terminals.IndexOf(p.terminal) + 1}";
                 default: return null;
             }
         }
@@ -1366,6 +1624,9 @@ namespace AirCity.Dev
                 case Kind.Stand:
                     airport.Taxiways.RemoveStand(p.stand);
                     airport.Taxiways.Rebuild();
+                    break;
+                case Kind.Terminal:
+                    airport.RemoveTerminal(p.terminal);
                     break;
             }
             // removing an apron renumbers the ones after it
@@ -1412,7 +1673,7 @@ namespace AirCity.Dev
             if (tool == DevTool.Taxiway || tool == DevTool.Stand || tool == DevTool.DeIcing || SelectedStand != null)
                 foreach (var l in airport.Taxiways.Layouts())
                     if (l.edge == null) FrontLine(l);
-            if (tool == DevTool.Apron && pointing)
+            if ((tool == DevTool.Apron || tool == DevTool.Terminal) && pointing)
             {
                 var colour = apronProblem == null ? new Color(0.55f, 1f, 0.55f) : DevGui.Danger;
                 loop.Clear();
@@ -1435,7 +1696,20 @@ namespace AirCity.Dev
                     }
                 }
             }
-            if (tool == DevTool.Apron && pointing && apronRect == null) Marker(apronCursor, apronSnap != null, apronProblem != null, point);
+            if ((tool == DevTool.Apron || tool == DevTool.Terminal) && pointing && apronRect == null)
+                Marker(apronCursor, apronSnap != null, apronProblem != null, point);
+            var term = SelectedTerminal;
+            if (term != null && terminalEdge >= 0 && terminalEdge < term.EdgeCount)
+            {
+                // the edge Shift+scroll bows
+                loop.Clear();
+                var pts = new List<Vector2> { term.corners[terminalEdge] };
+                Terminal.Arc(pts, term.corners[terminalEdge], term.corners[(terminalEdge + 1) % term.EdgeCount], term.Bulge(terminalEdge), Terminal.ArcStep);
+                pts.Add(term.corners[(terminalEdge + 1) % term.EdgeCount]);
+                foreach (var v in pts) loop.Add(airport.transform.TransformPoint(Geo.X0Z(v, term.Height)));
+                outlines.Line(cam, loop, new Color(0.3f, 0.9f, 1f), 4f);
+            }
+            BridgeRings();
             if ((tool == DevTool.Taxiway || tool == DevTool.Road) && pointing && lineSnapShown)
             {
                 var colour = RoadProblem != null ? DevGui.Danger : new Color(1f, 0.8f, 0.1f);
@@ -1457,6 +1731,54 @@ namespace AirCity.Dev
                 Marker(lineSnap.p, lineSnap.what != null, RoadProblem != null, point);
             }
             outlines.End();
+        }
+
+        /// <summary>The selected stand's bridges: a ring round each rotunda (to drag), its link, and where the tunnel
+        /// reaches to dock with each type the stand takes: green where it can, red where it can't.</summary>
+        void BridgeRings()
+        {
+            var st = SelectedStand;
+            var sl = st != null && st.bridges.Count > 0 ? airport.Taxiways.Layout(st) : null;
+            if (sl == null) return;
+            var types = airport.Bridges.TypesFor(st);
+            var head = airport.Bridges.HeadOf(st);
+            if (head != null)
+            {
+                loop.Clear();
+                foreach (var c in head.Outline) loop.Add(airport.transform.TransformPoint(Geo.X0Z(c, JetBridgeRules.RotundaFloor)));
+                var hp = head.Placement(airport.Bridges.Site(st));
+                outlines.Loop(cam, loop, hp != BridgeProblem.None ? DevGui.Danger : head.Connected ? DevGui.Accent : new Color(1f, 0.8f, 0.1f), 2.5f);
+            }
+            foreach (var b in st.bridges)
+            {
+                var l = BridgeLayout.Of(b, sl, airport.terminals, head);
+                var problem = airport.Bridges.FirstProblem(st, b, out _);
+                var colour = problem != BridgeProblem.None ? DevGui.Danger : l.Connected ? DevGui.Accent : new Color(1f, 0.8f, 0.1f);
+                loop.Clear();
+                for (int i = 0; i < 20; i++)
+                {
+                    float a = i / 20f * Mathf.PI * 2f;
+                    loop.Add(airport.transform.TransformPoint(Geo.X0Z(l.rotunda + new Vector2(Mathf.Cos(a), Mathf.Sin(a)) * (JetBridgeRules.RotundaRadius + 0.8f))));
+                }
+                outlines.Loop(cam, loop, colour, b == draggingBridge || b == SelectedBridge ? 4f : 2.5f);
+                if (!l.Connected)
+                {
+                    loop.Clear();
+                    loop.Add(airport.transform.TransformPoint(Geo.X0Z(l.rotunda)));
+                    loop.Add(airport.transform.TransformPoint(Geo.X0Z(l.root)));
+                    outlines.Line(cam, loop, new Color(1f, 0.8f, 0.1f), 2f);
+                }
+                foreach (var t in types)
+                {
+                    if (t.Light || !BridgeLayout.TryDoor(t, b, out _)) continue;
+                    var pose = l.Dock(t, out var p);
+                    var end = l.rotunda + pose.heading * (JetBridgeRules.TunnelStart + pose.Run);
+                    loop.Clear();
+                    loop.Add(airport.transform.TransformPoint(Geo.X0Z(l.rotunda, pose.cabFloor)));
+                    loop.Add(airport.transform.TransformPoint(Geo.X0Z(end, pose.cabFloor)));
+                    outlines.Line(cam, loop, p == BridgeProblem.None ? new Color(0.55f, 1f, 0.55f) : DevGui.Danger, 1.5f);
+                }
+            }
         }
 
         /// <summary>A stand's front line, dashed in amber a stand's width past each side: the taxilane that will
@@ -1517,6 +1839,9 @@ namespace AirCity.Dev
                     var layout = airport.Taxiways.Layout(p.stand);
                     if (layout == null) return false;
                     c = layout.Pad;
+                    break;
+                case Kind.Terminal:
+                    c = p.terminal.Outline().ToArray();
                     break;
                 default:
                     return false;
@@ -1612,6 +1937,20 @@ namespace AirCity.Dev
                 var a = airport.aprons[selection.apron];
                 sb.Append($"\n\n<b>Apron</b>  {a.Area:N0} m², {a.outline.Count} corners, {a.surface}");
             }
+            var term = SelectedTerminal;
+            if (term != null)
+            {
+                int curved = 0;
+                for (int i = 0; i < term.EdgeCount; i++)
+                    if (Mathf.Abs(term.Bulge(i)) > 0.05f) curved++;
+                sb.Append($"\n\n<b>{SelectionName}</b>  {term.Area:N0} m², {term.EdgeCount} walls ({curved} curved), " +
+                          $"{term.floors} floor{(term.floors == 1 ? "" : "s")}, {term.Height:0} m tall");
+                int served = 0;
+                foreach (var (_, list) in airport.Bridges.Layouts)
+                    foreach (var l in list)
+                        if (l.terminal == term) served++;
+                sb.Append($"\n{Dim}jet bridges</color> {served}");
+            }
             var st = SelectedStand;
             var sl = st != null ? net.Layout(st) : null;
             if (sl != null)
@@ -1637,6 +1976,33 @@ namespace AirCity.Dev
                     var problem = net.CheckStand(st, t);
                     string verdict = problem == StandProblem.None ? $"{Good}OK</color>" : $"{Bad}{StandProblemText(problem)}</color>";
                     sb.Append($"\n  {t.displayName}: {verdict}");
+                }
+                var head = airport.Bridges.HeadOf(st);
+                if (head != null)
+                {
+                    var hp = head.Placement(airport.Bridges.Site(st));
+                    sb.Append($"\n<b>Bridge head</b>  {head.Length:0} m, {(head.upper ? "2 floors" : "1 floor")}, main link {head.LinkLength:0} m" +
+                              (head.Connected ? "" : $"   {Bad}not connected</color>: no terminal within reach") +
+                              (hp == BridgeProblem.None ? "" : $"\n  {Bad}{BridgeLayout.Describe(hp)}</color>"));
+                }
+                foreach (var b in st.bridges)
+                {
+                    var bl = BridgeLayout.Of(b, sl, airport.terminals, head);
+                    sb.Append($"\n<b>Bridge to {b.DoorName}</b>  " + (bl.head != null ? "on the head" : $"link {bl.LinkLength:0} m") +
+                              (bl.Connected ? "" : $"   {Bad}not connected</color>: no terminal within reach") +
+                              $"   {Dim}{airport.Bridges.StateOf(b).ToString().ToLowerInvariant()}</color>");
+                    foreach (var (t, p) in airport.Bridges.Check(st, b))
+                    {
+                        if (t == null)
+                        {
+                            sb.Append($"\n  {Bad}{BridgeLayout.Describe(p)}</color>");
+                            continue;
+                        }
+                        string verdict = p == BridgeProblem.None ? $"{Good}docks</color>"
+                            : p == BridgeProblem.SmallAircraft || p == BridgeProblem.NoSuchDoor ? $"{Dim}{BridgeLayout.Describe(p)}</color>"
+                            : $"{Bad}{BridgeLayout.Describe(p)}</color>";
+                        sb.Append($"\n  {t.displayName}: {verdict}");
+                    }
                 }
             }
             return sb.ToString();

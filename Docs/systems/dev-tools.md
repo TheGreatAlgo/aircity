@@ -79,7 +79,7 @@ python3 -c "import xml.etree.ElementTree as E;t=E.parse('Logs/editmode.xml').get
 
 ## Sandbox scene (Assets/AirCity/Scenes/Sandbox.unity)
 
-It contains one parked aircraft per livery on the apron, the sandbox airport (see
+It contains one parked aircraft per livery on the apron (widebodies: one row of three liveries), the sandbox airport (see
 [airfield.md](airfield.md)) with four jets parked on its stands, and the depot (with two small tugs and a large
 one). The camera carries `DevOrbitCamera`, `DevSandboxControls`,
 `DevAirfieldTool` and `DevToolbar` (the toolbar adds itself if a scene's camera lacks it).
@@ -88,7 +88,7 @@ one). The camera carries `DevOrbitCamera`, `DevSandboxControls`,
 
 An IMGUI HUD, dev only (not game UI):
 
-- **Bottom:** the tool buttons (Select, Runway, Taxiway, Road, Apron, Depot, Stand, De-ice, then Delete).
+- **Bottom:** the tool buttons (Select, Runway, Taxiway, Road, Apron, Terminal, Depot, Stand, De-ice, then Delete).
 - **Strip above the tools:** what the current tool needs (surface, width, taxiway lights, a depot's fleet; a
   stand's code A–F, surface, angle, lean and push-back / taxi-out, and why the ghost won't fit). In Select it shows
   the selection's actions instead (surface, width, lighting, wear / repair, plough / mow / verges, fleet, a stand's
@@ -119,11 +119,16 @@ How it's built:
 | R, T, G | engines, taxi the selected aircraft, dirt on it |
 | Enter (Shift+Enter) | push the selected aircraft back off its push-back stand: a tug comes from the depot (Shift: face the other way along the taxiway). If it can't, the strip says why. **Park** (strip only) puts it on the nearest free stand that takes it |
 | Space / "Depart" | the selected aircraft departs: pushed back if it needs to be, taxis to the runway in use and takes off (`DevTrafficControls`). A selected aircraft's route is drawn on the ground (a parked one's as it would go now); the strip shows its flight's status. Sidebar TRAFFIC: Land per type, Auto traffic, wind. See [traffic.md](traffic.md) |
-| B | next build tool: select / runway / taxiway / road / apron / depot / stand / de-icing bay |
+| B | next build tool: select / runway / taxiway / road / apron / terminal / depot / stand / de-icing bay |
 | Placing (all tools) | free by default. A point sticks to something already built only within about 14 pixels (never under 1.5 m), or anywhere on the pavement of a line of its own kind. A ring shows where the next point goes before any click: cyan where it sticks (the strip says "joins …"), white where it's free, red where it can't go. **Hold Shift for steps:** lines turn in 10° steps counted from what they start on or near (a taxiway, road, runway, apron or stand edge; else the line's last stretch; else the nearest runway; else north), so they run parallel, square or 10°, 20° … off it, and come in whole 5 m |
 | Runway tool: drag (Shift = steps) | lay a runway; with Shift, 10° from north and 50 m steps |
 | Taxiway / road tool: click, right-click / Esc | add points; end the line. The new pavement's outline follows the cursor from the last point. A taxiway sticks to taxiways and runways and joins a road only when clicked on the road's pavement; a road sticks to roads and joins a taxiway or runway only when clicked on it (so a road laid beside a taxiway stays beside it). The road tool lays 7 m service roads (only paint across paved aprons); it also sticks to a point 12 m in front of a depot's doors and to the head of a parking stand (edge on the pad's edge, running on half a road width past each corner; coming at it end-on, onto the head). A line that would cross a stand turns red and won't build |
 | Apron tool: click, drag, right-click / Esc | click corners; they stick to the corners and edges of aprons and stand pads, so a new apron joins an existing one edge to edge. Click the first corner again or right-click to finish; Esc drops it. Dragging from the first press lays a rectangle lined up with what it starts on (an apron or stand edge, a taxiway or road), else the nearest runway. The outline is green, or red with the reason in the strip (edges crossing, too small, overlapping an apron of a surface it can't overlap). V / the surface chips pick the surface, also for a selected apron |
+| Terminal tool: click, drag, right-click / Esc | a terminal's footprint, drawn like an apron (corners stick to aprons' and stands' corners and edges; drag for a rectangle). It may not stand on a runway, taxiway, road or stand pad, nor overlap another terminal (red, with the reason). Click a terminal to select it. [ ] (or the Floors stepper) sets the floors, 1–4, also for the selected one |
+| Shift+scroll on a selected terminal (Alt: fine) | the wall nearest the cursor is outlined in cyan; scrolling bows it out or in, 2 m a notch (Alt 0.5 m), up to a half circle. A bulge that would hit something isn't made (the strip says why) |
+| Selected push-back stand: Bridges 0 / 1 / 2 / 3, 0 key | that many jet bridges, to doors L1.., placed where they work (`AirportBridges.SetBridges`). If fewer fit, the strip says so. A ring marks each rotunda: amber if connected to a terminal, yellow with a line to its link root if not, red if it has a problem. Thin lines show where it reaches to dock each type (green docks, red can't). The panel lists each bridge's link, state and verdict per type |
+| Select tool: click a rotunda ring | picks that bridge: the strip shows its door (Left / Right, Main / Upper, and which, counted from the front). Changing it places the bridge again where it works for the new door; a door no type at the stand has, or no place that works, is refused with the reason |
+| Select tool: drag a rotunda ring | move that bridge; its link follows to the nearest terminal wall within 60 m. A spot where the rotunda or link would stand in the aircraft's way, on pavement or on the next stand is refused (it stays put); other problems are shown in the strip |
 | Depot tool: drag, click | drag from the door front the way the doors face (Shift: 10° steps from what it's beside) to build a depot; click one to select it |
 | Stand / de-ice tool: click | a ghost pad follows the cursor. Within a stand's depth of a taxiway, or of another stand's front line (the taxilane still to come), it opens onto that line, its centreline under the cursor, pulled against a stand beside it within 40% of its width. Anywhere else it stands free, centred on the cursor. Green fits, red doesn't (the strip says why). A stand without a taxiway shows its front line dashed in amber (also while laying taxiways), and the taxiway tool sticks to that line and says "connects it"; a taxiway can run along it but not across the pad. Click builds it; click a stand to select it |
 | De-ice tool: click | the same for a drive-through de-icing bay, centred on the taxiway under the cursor |

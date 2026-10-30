@@ -167,7 +167,8 @@ namespace AirCity.EditorTools.Aircraft
             controls.sun = sun;
             cam.gameObject.AddComponent<DevToolbar>();
 
-            // one parked aircraft per (type, livery): light aircraft in front, airliners behind
+            // one parked aircraft per (type, livery): light aircraft in front, airliners behind. Widebodies show one
+            // row of every other livery (the airline ones), which keeps them on the apron
             var parent = new GameObject("Aircraft").transform;
             var liveries = AllLiveries();
             float rowZ = 0f;
@@ -176,18 +177,21 @@ namespace AirCity.EditorTools.Aircraft
                 var prefab = Prefab(type);
                 if (prefab == null) continue;
                 float dx = type.Wingspan + 2f, dz = type.Length + 4f;
-                for (int i = 0; i < liveries.Length; i++)
+                bool wide = type.SizeCode > 'C';
+                int shown = wide ? Mathf.Min(3, liveries.Length) : liveries.Length;
+                for (int i = 0; i < shown; i++)
                 {
+                    var livery = liveries[wide ? (2 * i + 1) % liveries.Length : i];
                     var go = (GameObject)PrefabUtility.InstantiatePrefab(prefab, parent);
-                    go.name = $"{type.model} {liveries[i].name}";
+                    go.name = $"{type.model} {livery.name}";
                     var pos = new Vector3((i % 3 - 1) * dx + 14f, 0f, rowZ + (i / 3) * dz);
                     go.transform.SetPositionAndRotation(pos, Quaternion.Euler(0f, 215f, 0f));
                     var a = go.GetComponent<AircraftLiveryApplier>();
-                    a.liveryAsset = liveries[i];
+                    a.liveryAsset = livery;
                     a.dirt = (i % 5) / 4f;          // clean to filthy, to show the range
                     a.Apply();
                 }
-                rowZ += 2 * dz + 6f;
+                rowZ += (shown + 2) / 3 * dz + 6f;
             }
 
             EditorSceneManager.SaveScene(scene, SandboxScene);

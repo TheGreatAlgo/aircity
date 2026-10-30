@@ -1,0 +1,66 @@
+{
+  "name": "JetBridge",
+  "displayName": "Jet bridge",
+  "kind": "JetBridge",
+  "bounds": {
+    "min": [
+      -2.45,
+      0.0,
+      -2.45
+    ],
+    "max": [
+      2.45,
+      7.26,
+      2.45
+    ]
+  },
+  "wheelbase": 0.0,
+  "wheels": [],
+  "spinners": [],
+  "lights": [],
+  "work": {},
+  "parking": [
+    0.0,
+    0.0,
+    0.0
+  ],
+  "bridge": {
+    "rotundaFloor": 4.0,
+    "rotundaRadius": 2.3,
+    "tunnelStart": 2.3,
+    "sectionLength": 13.0,
+    "sections": [
+      [
+        2.5,
+        -0.25,
+        2.55
+      ],
+      [
+        2.8,
+        -0.4,
+        2.7
+      ],
+      [
+        3.1,
+        -0.55,
+        2.85
+      ]
+    ],
+    "cabReach": 2.6,
+    "cabWidth": 3.4,
+    "cabBottom": -0.75,
+    "cabTop": 3.18,
+    "driveFromEnd": 4.0,
+    "linkWidth": 2.6,
+    "linkBottom": -0.35,
+    "linkTop": 2.75,
+    "legBase": 1.0,
+    "yokeBottom": -0.95,
+    "upperFloor": 7.8,
+    "headWidth": 7.0,
+    "headBottom": -0.6,
+    "headTop": 3.35,
+    "headUpperBottom": -0.7500000000000002,
+    "headUpperWider": 0.06
+  }
+}

@@ -73,8 +73,9 @@ namespace AirCity.Airfield
 
     /// <summary>
     /// The root of an airport: its runways (child Runway objects), taxiways and service roads (a child
-    /// TaxiwayNetwork), aprons, the grass they sit on, its maintenance depots (child MaintenanceDepots, with the
-    /// work for them in Maintenance) and the surface weather. Holds the shared airfield materials.
+    /// TaxiwayNetwork), aprons, the grass they sit on, its terminal buildings, its maintenance depots (child
+    /// MaintenanceDepots, with the work for them in Maintenance) and the surface weather. Holds the shared airfield
+    /// materials. Stands' jet bridges work through Bridges and are shown by a BridgeRig on the same object.
     ///
     ///   var rwy = airport.AddRunway(a, b, PavementSurface.Concrete, 45f);
     ///   airport.Taxiways.Connect(...);
@@ -100,11 +101,16 @@ namespace AirCity.Airfield
         public Material paint;
         public Material lightGlow;
         public Material fixture;
+        [Tooltip("Terminal buildings (the Building shader).")]
+        public Material building;
 
         [Header("Layout")]
         [Tooltip("Side of the square of grass under the airport (metres); 0 = none (terrain provides the ground).")]
         public float groundSize = 6000f;
         public List<ApronArea> aprons = new List<ApronArea>();
+        public List<Terminal> terminals = new List<Terminal>();
+        [Tooltip("The aircraft types that come here: jet bridges are checked and parked against the ones each stand takes.")]
+        public List<AircraftType> aircraftTypes = new List<AircraftType>();
 
         [Header("Weather")]
         [SerializeField] SurfaceCondition condition;
@@ -118,10 +124,11 @@ namespace AirCity.Airfield
         [Range(0f, 360f)] public float windFrom = 270f;
 
         readonly List<Runway> runways = new List<Runway>();
-        AirfieldPart groundPart, apronPart;
+        AirfieldPart groundPart, apronPart, terminalPart;
         bool dirty;
         AirportMaintenance maintenance;
         AirTraffic traffic;
+        AirportBridges bridges;
         Pavement pavement;
         int layoutVersion, pavementVersion = -1;
 
@@ -183,6 +190,12 @@ namespace AirCity.Airfield
         /// <summary>The flights: departures, arrivals and the tower that keeps them apart.</summary>
         public AirTraffic Traffic => traffic ??= new AirTraffic(this);
 
+        /// <summary>The stands' jet bridges at work: docking with parked aircraft, pulling back for push-back.</summary>
+        public AirportBridges Bridges => bridges ??= new AirportBridges(this);
+
+        /// <summary>Bumped whenever runways, taxiways, stands, aprons or terminals are rebuilt.</summary>
+        public int LayoutVersion => layoutVersion;
+
         /// <summary>Where there's pavement to drive on (rebuilt after the layout changes).</summary>
         public Pavement Pavement
         {
@@ -201,6 +214,9 @@ namespace AirCity.Airfield
 
         /// <summary>The generated apron mesh (for tests and tools; rebuilt on change).</summary>
         public Mesh ApronMesh => apronPart?.Mesh;
+
+        /// <summary>The generated terminal mesh (for tests and tools; rebuilt on change).</summary>
+        public Mesh TerminalMesh => terminalPart?.Mesh;
 
         /// <summary>Runways, taxiways or aprons were rebuilt.</summary>
         internal void LayoutChanged() => layoutVersion++;
@@ -278,6 +294,86 @@ namespace AirCity.Airfield
             if (index < 0 || index >= aprons.Count) return;
             aprons.RemoveAt(index);
             BuildGround();
+        }
+
+        // ------------------------------------------------------------------ terminals
+
+        /// <summary>The smallest terminal worth building (square metres).</summary>
+        public const float MinTerminalArea = 200f;
+
+        /// <summary>Why a terminal with this shape can't be built (or `except`, an existing one, changed to it), or null if
+        /// it can: its outline mustn't cross itself, nor another terminal, a runway, a taxiway or a stand's pad.</summary>
+        public string TerminalProblem(Terminal t, Terminal except = null)
+        {
+            if (t.corners.Count < 3) return "needs three corners";
+            var o = t.Outline();
+            if (Geo.SelfIntersects(o)) return "its walls cross";
+            if (Mathf.Abs(Geo.SignedArea(o)) < MinTerminalArea) return "too small";
+            foreach (var other in terminals)
+                if (other != except && other != null && Geo.Overlap(o, other.Outline())) return "overlaps another terminal";
+            foreach (var r in Runways)
+            {
+                var a = Geo.XZ(r.start);
+                var b = Geo.XZ(r.end);
+                var right = Geo.Right(r.Axis2D) * r.HalfWidthTotal;
+                if (Geo.Overlap(o, new[] { a + right, b + right, b - right, a - right })) return "on " + r.name;
+            }
+            var net = GetComponentInChildren<TaxiwayNetwork>();
+            if (net != null)
+            {
+                foreach (var e in net.edges)
+                {
+                    var a = net.At(e.a);
+                    var b = net.At(e.b);
+                    if ((b - a).sqrMagnitude < 1e-4f) continue;
+                    var right = Geo.Right((b - a).normalized) * (e.width * 0.5f);
+                    if (Geo.Overlap(o, new[] { a + right, b + right, b - right, a - right }))
+                        return e.IsRoad ? "across a road" : "across a taxiway";
+                }
+                foreach (var l in net.Layouts())
+                    if (Geo.Overlap(o, l.Pad)) return "on " + l.stand.Name;
+            }
+            return null;
+        }
+
+        /// <summary>A new terminal (corners either way round), or null if it can't be built (TerminalProblem).</summary>
+        public Terminal AddTerminal(IEnumerable<Vector2> corners, int floors = 2)
+        {
+            var t = Terminal.Polygon(corners, floors);
+            if (TerminalProblem(t) != null) return null;
+            terminals.Add(t);
+            BuildGround();
+            return t;
+        }
+
+        /// <summary>Change a terminal (corners, bulges, floors) to a changed copy; false (and unchanged) if that won't do.</summary>
+        public bool ChangeTerminal(Terminal t, Terminal changed)
+        {
+            if (t == null || changed == null || TerminalProblem(changed, t) != null) return false;
+            t.corners = new List<Vector2>(changed.corners);
+            t.bulge = new List<float>(changed.bulge);
+            t.floors = changed.floors;
+            BuildGround();
+            return true;
+        }
+
+        public void RemoveTerminal(Terminal t)
+        {
+            if (!terminals.Remove(t)) return;
+            BuildGround();
+        }
+
+        /// <summary>The terminal at a ground point (Airport space, x z), the last built first.</summary>
+        public bool TryPickTerminal(Vector2 point, out Terminal terminal)
+        {
+            for (int i = terminals.Count - 1; i >= 0; i--)
+                if (terminals[i] != null && terminals[i].Contains(point))
+                {
+                    terminal = terminals[i];
+                    return true;
+                }
+            terminal = null;
+            return false;
         }
 
         // ------------------------------------------------------------------ editing
@@ -419,6 +515,7 @@ namespace AirCity.Airfield
             if (t != null) t.Simulate(seconds, rate, grow, verges);
             Maintenance.Simulate(seconds);
             Traffic.Simulate(seconds);
+            Bridges.Simulate(seconds);
             ApplyGlobals();
         }
 
@@ -438,6 +535,7 @@ namespace AirCity.Airfield
         {
             groundPart?.Destroy();
             apronPart?.Destroy();
+            terminalPart?.Destroy();
         }
 
         void OnValidate() => dirty = true;
@@ -462,8 +560,8 @@ namespace AirCity.Airfield
             Shader.SetGlobalFloat(SnowId, groundSnow);
         }
 
-        /// <summary>Rebuild the grass and aprons (runways and taxiways rebuild themselves). Roads need no rebuild:
-        /// they lie under paved aprons whatever the aprons do.</summary>
+        /// <summary>Rebuild the grass, aprons and terminals (runways and taxiways rebuild themselves). Roads need no
+        /// rebuild: they lie under paved aprons whatever the aprons do.</summary>
         public void BuildGround()
         {
             if (!isActiveAndEnabled) return;
@@ -487,6 +585,13 @@ namespace AirCity.Airfield
                     a.surface.IsPaved() ? 0f : SurfaceBuilder.Fringe);
             }
             apronPart.Set(aprons.mesh.Apply(apronPart.Target, "Aprons"), dirt, asphalt, concrete, grassStrip);
+
+            terminalPart ??= new AirfieldPart(transform, "Terminals");
+            var terminalMesh = new TerminalBuilder();
+            foreach (var t in terminals)
+                if (t != null) terminalMesh.Build(t);
+            terminalPart.Set(terminalMesh.mesh.Apply(terminalPart.Target, "Terminals", false, 1), building);
+            terminalPart.Renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.On;
             LayoutChanged();
         }
     }

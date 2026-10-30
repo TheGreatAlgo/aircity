@@ -224,6 +224,12 @@ namespace AirCity.Traffic
                     return;
                 }
             }
+            // the jet bridges pull back first (they start as soon as the flight exists)
+            if (!traffic.Airport.Bridges.Clear(aircraft))
+            {
+                Waiting = "waiting for the jet bridges to pull back";
+                return;
+            }
             // a tug is sent for at once: the push-back itself is cleared once it has the nose wheel up
             bool tug = start != null && start.pushBack && !start.handPush;
             if (!tug)

@@ -641,7 +641,7 @@ def ground_shadow(objs, model, paths, size=256):
 
 # ============================================================== unity glue
 
-def write_profile(model, paths, px_per_m, reg, font, bounds):
+def write_profile(model, paths, px_per_m, reg, font, bounds, wing):
     """Write what Unity needs: <Model>.aircraft (painting + gameplay data, imported by AircraftTypeImporter)
     and the shared RegistrationFont.regfont. Positions are in Unity space, relative to the aircraft root."""
     def side(d, sign):
@@ -654,6 +654,7 @@ def write_profile(model, paths, px_per_m, reg, font, bounds):
         "displayName": model.DISPLAY_NAME,
         "category": model.CATEGORY,
         "bounds": {"min": to_unity((hi[0], hi[1], lo[2])), "max": to_unity((lo[0], lo[1], hi[2]))},
+        "wingOutline": wing,
         "atlasSize": texturing.TEX,
         "texelsPerMetre": px_per_m,
         "detail": f"Textures/{model.NAME}_Detail.png",
@@ -771,6 +772,110 @@ def write_logos():
 
 # ============================================================== stage 2
 
+def world_bounds(objs):
+    """(min, max) of every vertex in world space. Not the objects' bound_box corners: a rotated mover (a swept
+    rudder hinge) would carry its local box's empty corners into the aircraft's dimensions."""
+    pts = []
+    for ob in objs:
+        co = np.empty(len(ob.data.vertices) * 3, np.float64)
+        ob.data.vertices.foreach_get("co", co)
+        m = np.array(ob.matrix_world)
+        pts.append(co.reshape(-1, 3) @ m[:3, :3].T + m[:3, 3])
+    pts = np.concatenate(pts)
+    return pts.min(axis=0), pts.max(axis=0)
+
+
+# the parts of a wing and its engines, by tag prefix (their _cap faces too)
+WING_TAGS = ("wing", "sharklet", "winglet", "fence", "nacelle", "pylon", "intake", "fanduct", "fanface", "plug", "core")
+
+
+def convex_hull(points):
+    """Counter-clockwise convex hull of 2D points (Andrew's monotone chain), without collinear corners."""
+    pts = sorted(set(points))
+    if len(pts) < 3:
+        return pts
+
+    def cross(o, a, b):
+        return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
+
+    lower, upper = [], []
+    for p in pts:
+        while len(lower) >= 2 and cross(lower[-2], lower[-1], p) <= 0:
+            lower.pop()
+        lower.append(p)
+    for p in reversed(pts):
+        while len(upper) >= 2 and cross(upper[-2], upper[-1], p) <= 0:
+            upper.pop()
+        upper.append(p)
+    return lower[:-1] + upper[:-1]
+
+
+def _tagged_edges(ob, prefixes):
+    """The edges (Unity (x, z) end points, two (n, 2) arrays) of an object's faces whose tag starts with `prefixes`."""
+    me = ob.data
+    tags = list(me.get("part_tags", []))
+    keep = [i for i, t in enumerate(tags) if t.startswith(prefixes)]
+    if not keep or "part_tag" not in me.attributes:
+        return None
+    n = len(me.polygons)
+    tag, start, total = (np.empty(n, np.int32) for _ in range(3))
+    me.attributes["part_tag"].data.foreach_get("value", tag)
+    me.polygons.foreach_get("loop_start", start)
+    me.polygons.foreach_get("loop_total", total)
+    loops = np.empty(len(me.loops), np.int32)
+    me.loops.foreach_get("vertex_index", loops)
+    a, b = [], []
+    for s, k in zip(start[np.isin(tag, keep)], total[np.isin(tag, keep)]):
+        ring = loops[s:s + k]
+        a.append(ring)
+        b.append(np.roll(ring, -1))
+    if not a:
+        return None
+    co = np.empty(len(me.vertices) * 3, np.float64)
+    me.vertices.foreach_get("co", co)
+    m = np.array(ob.matrix_world)
+    world = co.reshape(-1, 3) @ m[:3, :3].T + m[:3, 3]
+    uxz = np.stack([-world[:, 0], -world[:, 1]], 1)                    # Unity x, z (to_unity)
+    return uxz[np.concatenate(a)], uxz[np.concatenate(b)]
+
+
+def wing_outline(objs, tolerance=0.02):
+    """The left wing and its engines from above, outboard of the fuselage's side: a convex outline in Unity (x, z),
+    counter-clockwise, flattened to [x0, z0, x1, z1, ...] (the right wing mirrors it). Jet bridges keep their tunnels
+    off it: a swept wing leaves room ahead of it (an L2 door just ahead of the wing root) that a box as wide as the
+    span wouldn't. The wing box inside the fuselage is left out (it would pull the root's leading edge forward over
+    the doors). Corners that stand less than `tolerance` off the line through their neighbours are dropped."""
+    side = 0.0
+    for ob in objs:
+        fus = _tagged_edges(ob, ("fus_port", "fus_stbd"))
+        if fus is not None:
+            side = max(side, float(np.abs(fus[0][:, 0]).max()))
+    pts = []
+    for ob in objs:
+        edges = _tagged_edges(ob, WING_TAGS)
+        if edges is None:
+            continue
+        a, b = edges
+        cut = -side
+        pts.append(a[a[:, 0] <= cut])
+        # where an edge crosses the fuselage's side
+        cross = (a[:, 0] - cut) * (b[:, 0] - cut) < 0
+        t = (cut - a[cross, 0]) / (b[cross, 0] - a[cross, 0])
+        pts.append(a[cross] + (b[cross] - a[cross]) * t[:, None])
+    pts = np.round(np.concatenate(pts), 3)
+    hull = convex_hull([tuple(p) for p in pts.tolist()])
+    while len(hull) > 3:
+        for i in range(len(hull)):
+            a, b, c = np.array(hull[i - 1]), np.array(hull[i]), np.array(hull[(i + 1) % len(hull)])
+            d = c - a
+            if abs(d[0] * (b[1] - a[1]) - d[1] * (b[0] - a[0])) < tolerance * np.linalg.norm(d):
+                del hull[i]
+                break
+        else:
+            break
+    return [round(float(v), 3) for p in hull for v in p]
+
+
 def stage2(model):
     paths = Paths(model)
     bpy.ops.wm.open_mainfile(filepath=os.path.join(paths.work, "stage1.blend"))
@@ -858,6 +963,7 @@ def stage2(model):
             bpy.data.materials.remove(m)
 
     # --- export
+    wing = wing_outline(objs)
     for ob in objs:
         if "UVraw" in ob.data.uv_layers:
             ob.data.uv_layers.remove(ob.data.uv_layers["UVraw"])
@@ -865,9 +971,8 @@ def stage2(model):
             if a in ob.data.attributes:
                 ob.data.attributes.remove(ob.data.attributes[a])
     movers = [ob for ob in objs if ob.name != "Body"]
-    corners = np.array([ob.matrix_world @ Vector(c) for ob in objs for c in ob.bound_box])
-    bounds = (corners.min(axis=0), corners.max(axis=0))
-    write_profile(model, paths, px_per_m, reg, font, bounds)
+    bounds = world_bounds(objs)
+    write_profile(model, paths, px_per_m, reg, font, bounds, wing)
     shadow = ground_shadow(objs, model, paths)
     lods = make_lods(model, bpy.data.objects["Body"], movers)
     collider = make_collider(bpy.data.objects["Body_LOD2"], model.COLLIDER_RATIO)

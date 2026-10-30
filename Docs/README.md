@@ -18,9 +18,10 @@ gotchas, and `README.md` / `ArtSource/README.md` are the human-facing guides.
 | [systems/airfield.md](systems/airfield.md) | runways, taxiways, service roads, stands and de-icing bays, aprons, verges, runway rules, weather (snow, rain, grass), airfield shaders |
 | [systems/maintenance.md](systems/maintenance.md) | depots, snow ploughs, mowers, tugs and push-back, teams, jobs and dispatch, turning round, keeping clear, the ploughing / mowing pass pattern |
 | [systems/traffic.md](systems/traffic.md) | flights: taxi route planning, holds and clearances, takeoffs, landings, go-arounds, the wind, the sandbox's traffic controls |
+| [taxi-todo.md](taxi-todo.md) | what's left in ground traffic: the jams the soak test still finds, ideas, tuning |
 | [systems/dev-tools.md](systems/dev-tools.md) | batch commands, tests, captures, the sandbox controls |
-| [assets/Cessna172.md](assets/Cessna172.md), [assets/Narrowbody.md](assets/Narrowbody.md) | one aircraft type |
-| [assets/SnowPlough.md](assets/SnowPlough.md), [assets/Mower.md](assets/Mower.md), [assets/Tugs.md](assets/Tugs.md), [assets/Depot.md](assets/Depot.md), [assets/ControlTowers.md](assets/ControlTowers.md) | one vehicle / building |
+| [assets/Cessna172.md](assets/Cessna172.md), [assets/Narrowbody.md](assets/Narrowbody.md), [assets/Widebody.md](assets/Widebody.md), [assets/DoubleDeck.md](assets/DoubleDeck.md), [assets/Quadjet.md](assets/Quadjet.md) | one aircraft type |
+| [assets/SnowPlough.md](assets/SnowPlough.md), [assets/Mower.md](assets/Mower.md), [assets/Tugs.md](assets/Tugs.md), [assets/Depot.md](assets/Depot.md), [assets/ControlTowers.md](assets/ControlTowers.md), [assets/JetBridge.md](assets/JetBridge.md) | one vehicle / building |
 | [assets/airfield-textures.md](assets/airfield-textures.md) | ground textures and airfield materials |
 
 ## Architecture in one screen
@@ -49,7 +50,8 @@ Scripts/Runtime  (assembly AirCity.Runtime)
 Scripts/Editor   (AirCity.Editor): importers (.aircraft, .vehicle, .regfont), asset postprocessors, *Setup (prefabs,
                  materials, sandbox), SceneCapture
 Shaders/  Aircraft{LightGlow,Outline,GroundShadow}, Airfield{Surface,Paint,LightGlow,Fixture,Common.hlsl}, VehicleLightGlow
-Tests/EditMode   AircraftTypeTests, AircraftLiveryTests, AirfieldTests, StandTests, MaintenanceTests, TowerTests, TugTests, TrafficTests
+Tests/EditMode   AircraftTypeTests, AircraftLiveryTests, AirfieldTests, StandTests, MaintenanceTests, TowerTests, TugTests, TrafficTests,
+                 TrafficSoakTests (explicit: game hours of auto traffic)
 ```
 
 ## Principles that hold everywhere

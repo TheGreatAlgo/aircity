@@ -42,6 +42,11 @@ namespace AirCity.Airfield
                  "0: the taxilane its own size code needs. Connecting a wider taxiway doesn't move the stand: it limits " +
                  "the aircraft that may pass it (TaxiwayNetwork.LaneLimits).")]
         [Min(0f)] public float lane;
+        [Tooltip("Its jet bridges (push-back stands only), each serving one of the parked aircraft's doors.")]
+        public List<JetBridge> bridges = new List<JetBridge>();
+        [Tooltip("The bridge head its bridges share, if they do: a building on columns beside the aircraft, a main link " +
+                 "from it to the terminal.")]
+        public BridgeHead head = new BridgeHead();
         // false for stands saved as a point on a taxiway, before stands had their own front line (TaxiwayNetwork.Layout
         // frames them from that taxiway)
         [SerializeField, HideInInspector] bool framed;
@@ -79,6 +84,8 @@ namespace AirCity.Airfield
         {
             var copy = (Stand)MemberwiseClone();
             copy.position = new Vector3(at.x, 0f, at.z);
+            copy.bridges = bridges.ConvertAll(b => b.Clone());
+            copy.head = head != null ? head.Clone() : new BridgeHead();
             return copy;
         }
         /// <summary>"12", "D2": what's painted on it.</summary>

@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using AirCity.Aircraft;
+using AirCity.Airfield;
 using AirCity.EditorTools.Aircraft;
 using NUnit.Framework;
 using UnityEditor;
@@ -52,8 +53,36 @@ namespace AirCity.Tests.Aircraft
             Assert.That(jet.Height, Is.InRange(11f, 12.5f));            // 11.76 m
             Assert.AreEqual('C', jet.SizeCode);
             Assert.That(jet.Wheelbase, Is.InRange(12f, 13.5f));         // 12.64 m
+            var wide = Type("Widebody");
+            Debug.Log($"Widebody: {wide.Wingspan:F2} x {wide.Length:F2} x {wide.Height:F2} m, code {wide.SizeCode}, " +
+                      $"wheelbase {wide.Wheelbase:F2}, min turn {wide.MinTurnRadius:F1} m");
+            Assert.That(wide.Wingspan, Is.InRange(63.5f, 65f));         // A350-900: 64.75 m
+            Assert.That(wide.Length, Is.InRange(66f, 67.5f));           // 66.8 m
+            Assert.That(wide.Height, Is.InRange(16.5f, 17.6f));         // 17.05 m
+            Assert.AreEqual('E', wide.SizeCode);
+            Assert.That(wide.Wheelbase, Is.InRange(28f, 29.5f));        // 28.7 m
+            var dd = Type("DoubleDeck");
+            Debug.Log($"DoubleDeck: {dd.Wingspan:F2} x {dd.Length:F2} x {dd.Height:F2} m, code {dd.SizeCode}, " +
+                      $"wheelbase {dd.Wheelbase:F2}, min turn {dd.MinTurnRadius:F1} m, runway {dd.RunwayLength:F0} m");
+            Assert.That(dd.Wingspan, Is.InRange(79.2f, 80f));           // A380-800: 79.75 m
+            Assert.That(dd.Length, Is.InRange(72.2f, 73.2f));           // 72.73 m
+            Assert.That(dd.Height, Is.InRange(23.6f, 24.6f));           // 24.17 m (fin tip, MRW)
+            Assert.AreEqual('F', dd.SizeCode);
+            Assert.That(dd.Wheelbase, Is.InRange(29.5f, 32f));          // nose gear to the turn centre, ~30.6 m
+            Assert.LessOrEqual(dd.RunwayLength, 3400f, "fits the sandbox's 3,400 m main runway when dry");
+            var qj = Type("Quadjet");
+            Debug.Log($"Quadjet: {qj.Wingspan:F2} x {qj.Length:F2} x {qj.Height:F2} m, code {qj.SizeCode}, " +
+                      $"wheelbase {qj.Wheelbase:F2}, min turn {qj.MinTurnRadius:F1} m, runway {qj.RunwayLength:F0} m, " +
+                      $"dry paved {RunwayRules.RequiredLength(qj, PavementSurface.Asphalt, SurfaceCondition.Dry):F0} m");
+            Assert.That(qj.Wingspan, Is.InRange(67.9f, 68.9f));         // 747-8: 68.4 m
+            Assert.That(qj.Length, Is.InRange(75.8f, 76.8f));           // 76.3 m
+            Assert.That(qj.Height, Is.InRange(19.0f, 19.8f));           // 19.4 m (fin tip)
+            Assert.AreEqual('F', qj.SizeCode);
+            Assert.That(qj.Wheelbase, Is.InRange(28f, 30.5f));          // nose gear to the turn centre, ~28.9 m
+            Assert.LessOrEqual(RunwayRules.RequiredLength(qj, PavementSurface.Asphalt, SurfaceCondition.Dry), 3400f,
+                "fits the sandbox's 3,400 x 60 m main runway when dry");
             // origin under the main gear, nose forwards (+Z), on the ground
-            foreach (var t in new[] { cessna, jet })
+            foreach (var t in new[] { cessna, jet, wide, dd, qj })
             {
                 Assert.Greater(t.bounds.max.z, t.Wheelbase, $"{t.model}: the nose should be ahead of the nose gear");
                 Assert.That(t.bounds.min.y, Is.InRange(-0.05f, 0.05f), $"{t.model}: tyres should touch y = 0");
@@ -65,7 +94,7 @@ namespace AirCity.Tests.Aircraft
         {
             // the gameplay data (wheels, doors, lights) and the imported mesh must agree on the axes:
             // a model that faces -Z would put landing lights at the tail and wingtip lights metres off the wing
-            foreach (var model in new[] { "Cessna172", "Narrowbody" })
+            foreach (var model in new[] { "Cessna172", "Narrowbody", "Widebody", "DoubleDeck", "Quadjet" })
             {
                 var type = Type(model);
                 var go = Spawn(type);
@@ -83,25 +112,87 @@ namespace AirCity.Tests.Aircraft
         }
 
         [Test]
+        public void WingOutline_IsTheLeftWingFromTheFuselageToTheTip()
+        {
+            foreach (var model in new[] { "Cessna172", "Narrowbody", "Widebody", "DoubleDeck", "Quadjet" })
+            {
+                var t = Type(model);
+                var o = t.wingOutline;
+                Assert.GreaterOrEqual(o.Length, 3, $"{model}: wing outline");
+                float area = 0f;
+                for (int i = 0; i < o.Length; i++) area += o[i].x * o[(i + 1) % o.Length].y - o[(i + 1) % o.Length].x * o[i].y;
+                Assert.Greater(area, 0f, $"{model}: counter-clockwise");
+                Assert.AreEqual(-t.Wingspan * 0.5f, o.Min(p => p.x), 0.1f, $"{model}: out to the tip");
+                Assert.Less(o.Max(p => p.x), -0.5f, $"{model}: starts at the fuselage's side, not its centreline");
+                Assert.IsTrue(o.All(p => p.y >= t.bounds.min.z - 0.01f && p.y <= t.bounds.max.z + 0.01f), $"{model}: within the length");
+            }
+        }
+
+        [Test]
         public void ServicePoints_AreOnTheCorrectSide()
         {
-            var jet = Type("Narrowbody");
-            // airliners board from the left (port = -X in Unity) and load cargo on the right
-            foreach (var p in jet.PointsOfType(ServicePointType.PassengerDoor))
-                Assert.AreEqual(p.name.Contains("_L") ? -1f : 1f, Mathf.Sign(p.position.x), p.name);
-            foreach (var p in jet.PointsOfType(ServicePointType.CargoDoor))
-                Assert.Greater(p.position.x, 0f, p.name);
-            Assert.IsTrue(jet.TryGetPoint("Door_L1", out var l1));
-            Assert.That(l1.position.y, Is.InRange(2.5f, 3.6f), "L1 sill height (jet bridges need ~3.4 m)");
-            Assert.Greater(l1.position.z, jet.bounds.max.z - jet.Length * 0.25, "L1 is in the front quarter");
+            // L1 sill heights: jet bridges reach ~3.4 m for an A320, ~4.7 m for an A350
+            foreach (var (model, lo, hi) in new[] { ("Narrowbody", 2.5f, 3.6f), ("Widebody", 4.4f, 5.2f), ("DoubleDeck", 4.9f, 5.3f), ("Quadjet", 4.9f, 5.4f) })
+            {
+                var jet = Type(model);
+                // airliners board from the left (port = -X in Unity) and load cargo on the right
+                foreach (var p in jet.PointsOfType(ServicePointType.PassengerDoor))
+                    Assert.AreEqual(p.name.Contains("_L") || p.name.Contains("_UL") ? -1f : 1f, Mathf.Sign(p.position.x), $"{model}: {p.name}");
+                foreach (var p in jet.PointsOfType(ServicePointType.CargoDoor))
+                    Assert.Greater(p.position.x, 0f, $"{model}: {p.name}");
+                Assert.IsTrue(jet.TryGetPoint("Door_L1", out var l1), model);
+                Assert.That(l1.position.y, Is.InRange(lo, hi), $"{model}: L1 sill height");
+                Assert.Greater(l1.position.z, jet.bounds.max.z - jet.Length * 0.25, $"{model}: L1 is in the front quarter");
+            }
             Assert.IsTrue(Type("Cessna172").PointsOfType(ServicePointType.Fuel).All(p => p.position.y > 1.9f),
                 "a Cessna is fuelled on top of its high wing");
         }
 
         [Test]
+        public void UpperDeckDoors_AreTwoMetresAboveTheMainDeck()
+        {
+            // the game tells upper-deck doors by sill height (> 2 m above the lowest passenger door) and counts
+            // doors from the front; A380-800: main deck sills 5.10-5.20 m, upper deck 7.87-7.94 m
+            var dd = Type("DoubleDeck");
+            var doors = dd.PointsOfType(ServicePointType.PassengerDoor).ToArray();
+            float lowest = doors.Min(p => p.position.y);
+            var upper = doors.Where(p => p.position.y > lowest + 2f).ToArray();
+            var main = doors.Where(p => p.position.y <= lowest + 2f).ToArray();
+            Assert.AreEqual(10, main.Length, "main deck: L1-L5, R1-R5");
+            Assert.AreEqual(6, upper.Length, "upper deck: UL1-UL3, UR1-UR3");
+            Assert.IsTrue(upper.All(p => p.name.StartsWith("Door_U")), "only Door_U* are upper-deck doors");
+            Assert.IsTrue(main.All(p => p.position.y < 5.3f && p.position.y > 4.9f), "main-deck sills");
+            Assert.IsTrue(upper.All(p => p.position.y > 7.7f && p.position.y < 8.1f), "upper-deck sills");
+            AssertNumberedFromTheFront(main, upper);
+
+            // a type with a partial upper deck but no upper-deck boarding doors (its upper-deck exit is only
+            // painted): every passenger door is on the main deck, so none may count as an upper-deck door.
+            // 747-8: main-deck sills 4.78-5.32 m (ground clearances C, S, V, T, J)
+            var qj = Type("Quadjet");
+            var qDoors = qj.PointsOfType(ServicePointType.PassengerDoor).ToArray();
+            float qLowest = qDoors.Min(p => p.position.y);
+            Assert.AreEqual(10, qDoors.Length, "Quadjet: L1-L5, R1-R5");
+            Assert.IsEmpty(qDoors.Where(p => p.position.y > qLowest + 2f), "Quadjet: no upper-deck boarding doors");
+            Assert.IsTrue(qDoors.All(p => p.position.y > 4.9f && p.position.y < 5.4f), "Quadjet: main-deck sills");
+            Assert.IsFalse(qDoors.Any(p => p.name.StartsWith("Door_U")), "Quadjet: no Door_U* points");
+            AssertNumberedFromTheFront(qDoors);
+        }
+
+        static void AssertNumberedFromTheFront(params AircraftType.ServicePoint[][] decks)
+        {
+            foreach (var deck in decks)
+                foreach (var side in new[] { -1f, 1f })
+                {
+                    var row = deck.Where(p => Mathf.Sign(p.position.x) == side).OrderByDescending(p => p.position.z).ToArray();
+                    for (int i = 0; i < row.Length; i++)
+                        StringAssert.EndsWith((i + 1).ToString(), row[i].name, "doors are numbered from the front");
+                }
+        }
+
+        [Test]
         public void NavigationLights_RedOnTheLeft()
         {
-            foreach (var t in new[] { Type("Cessna172"), Type("Narrowbody") })
+            foreach (var t in new[] { Type("Cessna172"), Type("Narrowbody"), Type("Widebody"), Type("DoubleDeck"), Type("Quadjet") })
             {
                 var red = t.lights.Single(l => l.type == AircraftLightType.Navigation && l.color.r > 0.9f && l.color.g < 0.2f);
                 var green = t.lights.Single(l => l.type == AircraftLightType.Navigation && l.color.g > 0.9f && l.color.r < 0.2f);
@@ -135,7 +226,7 @@ namespace AirCity.Tests.Aircraft
         [Test]
         public void Prefab_HasEveryGameplayComponent()
         {
-            foreach (var model in new[] { "Cessna172", "Narrowbody" })
+            foreach (var model in new[] { "Cessna172", "Narrowbody", "Widebody", "DoubleDeck", "Quadjet" })
             {
                 var type = Type(model);
                 var go = Spawn(type);
@@ -165,7 +256,7 @@ namespace AirCity.Tests.Aircraft
         [Test]
         public void Picking_HitsTheAircraft()
         {
-            foreach (var model in new[] { "Cessna172", "Narrowbody" })
+            foreach (var model in new[] { "Cessna172", "Narrowbody", "Widebody", "DoubleDeck", "Quadjet" })
             {
                 var type = Type(model);
                 var go = Spawn(type);
@@ -198,7 +289,7 @@ namespace AirCity.Tests.Aircraft
         [Test]
         public void Logo_IsPaintedOnTheFin()
         {
-            foreach (var model in new[] { "Cessna172", "Narrowbody" })
+            foreach (var model in new[] { "Cessna172", "Narrowbody", "Widebody", "DoubleDeck", "Quadjet" })
             {
                 var type = Type(model);
                 var example = type.examples.First(e => e.logo != null);

@@ -242,6 +242,25 @@ def bake(objs, ao_distance):
     return results
 
 
+def collapse_uvs(ob, axis):
+    """For a part the game stretches along one local axis ("r", "f" or "z"; the jet bridge's link and legs):
+    each face's UVs collapse onto the line through the middle of its island along that axis, so the texture (AO
+    included) doesn't vary along the stretch, however far it goes."""
+    k = "rfz".index(axis)
+    me = ob.data
+    uv = me.uv_layers.active.data
+    for poly in me.polygons:
+        groups = {}
+        for li in poly.loop_indices:
+            co = me.vertices[me.loops[li].vertex_index].co
+            groups.setdefault(tuple(round(co[i], 4) for i in range(3) if i != k), []).append(li)
+        for loops in groups.values():
+            if len(loops) > 1:
+                mid = sum((uv[li].uv for li in loops), Vector((0.0, 0.0))) / len(loops)
+                for li in loops:
+                    uv[li].uv = mid
+
+
 def compose(model, maps):
     """Albedo = material colour x AO x grime (sRGB), metal-gloss = (metallic, 0, 0, smoothness)."""
     color = maps["color"][..., :3]
@@ -288,12 +307,17 @@ def decimate(ob, ratio):
 
 def make_lods(model, root, objs):
     """Body (static parts merged) + movers at LOD0; LOD1 / LOD2 = everything merged and decimated.
-    Unity's importer builds the LODGroup from the _LODn suffixes (as for aircraft)."""
+    Unity's importer builds the LODGroup from the _LODn suffixes (as for aircraft).
+
+    LOD_RATIOS = None: no LODs (the jet bridge, which the game assembles part by part). The static parts merge
+    into the first one, which keeps its part name (no _LODn suffix, so Unity builds no LODGroup)."""
     movers = set(model.MOVERS)
     static = [ob for n, ob in objs.items() if n not in movers]
     select_only(static, static[0])
     bpy.ops.object.join()
     body = static[0]
+    if model.LOD_RATIOS is None:
+        return [body] + [objs[n] for n in model.MOVERS]
     body.name = body.data.name = "Body_LOD0"
     out = [body]
     for level, ratio in ((1, model.LOD_RATIOS[0]), (2, model.LOD_RATIOS[1])):
@@ -331,8 +355,12 @@ def to_unity(v):
 
 
 def write_profile(model, objs, path):
-    corners = np.array([ob.matrix_world @ Vector(c) for ob in objs for c in ob.bound_box])
-    lo, hi = corners.min(axis=0), corners.max(axis=0)
+    if hasattr(model, "BOUNDS"):
+        # a model laid out apart for the bake (the jet bridge) gives its bounds: (right, forward, up) lo / hi
+        lo, hi = (np.array(v, float) for v in model.BOUNDS)
+    else:
+        corners = np.array([ob.matrix_world @ Vector(c) for ob in objs for c in ob.bound_box])
+        lo, hi = corners.min(axis=0), corners.max(axis=0)
     data = {
         "name": model.NAME,
         "displayName": model.DISPLAY_NAME,
@@ -353,6 +381,8 @@ def write_profile(model, objs, path):
     if hasattr(model, "INTERIOR"):
         lo, hi = model.INTERIOR
         data["interior"] = {"min": to_unity(lo), "max": to_unity(hi)}
+    if hasattr(model, "BRIDGE"):
+        data["bridge"] = model.BRIDGE          # plain numbers the game's jet-bridge rig shares, as given
     with open(path, "w") as fh:
         json.dump(data, fh, indent=2)
     print("wrote", path)
@@ -425,12 +455,16 @@ def render_previews(model, folder, views, prefix):
     cam.clip_end = 2000
     os.makedirs(folder, exist_ok=True)
     open_views = getattr(model, "PREVIEW_OPEN", ())
+    pose = getattr(model, "preview_pose", None)
     for n in views:
         # movers rolled up (the depot's doors) for these views
-        for m in getattr(model, "MOVERS", []):
-            ob = bpy.data.objects.get(m)
-            if ob is not None:
-                ob.scale = (1.0, 1.0, 0.05 if n in open_views else 1.0)
+        if open_views:
+            for m in getattr(model, "MOVERS", []):
+                ob = bpy.data.objects.get(m)
+                if ob is not None:
+                    ob.scale = (1.0, 1.0, 0.05 if n in open_views else 1.0)
+        if pose:
+            pose(n)            # the model places its parts for this view (the jet bridge assembles itself, docked)
         loc, tgt, lens = model.VIEWS[n]
         cam_ob.location = loc
         cam.type = "PERSP"
@@ -465,6 +499,8 @@ def run():
     unwrap(mesh_objs)
     maps = bake(mesh_objs, model.AO_DISTANCE)
     print("baked in %.1fs" % (time.time() - t0))
+    for n, axis in getattr(model, "STRETCH", {}).items():
+        collapse_uvs(objs[n], axis)
     albedo, mg = compose(model, maps)
     os.makedirs(os.path.join(unity, "Textures"), exist_ok=True)
     os.makedirs(os.path.join(unity, "Models"), exist_ok=True)

@@ -55,12 +55,13 @@ ArtSource/                 scripts that generate the art (Blender); see ArtSourc
 
 ## Aircraft
 
-Aircraft are generated from code (`ArtSource/Aircraft`), never hand-edited in Unity. Two types so far:
+Aircraft are generated from code (`ArtSource/Aircraft`), never hand-edited in Unity. Three types so far:
 
 | Type | Real-world class | Span × length | ICAO code |
 |---|---|---|---|
 | `Cessna172` | light single (Cessna 172) | 11.1 × 8.3 m | A |
 | `Narrowbody` | twinjet (A320 family) | 35.8 × 37.6 m | C |
+| `Widebody` | long-haul twinjet (A350-900) | 64.7 × 66.9 m | E |
 
 Each comes with an `AircraftType` asset (imported from `<Model>.aircraft`) holding what gameplay needs, in the
 aircraft's local space (origin on the ground under the main gear, +Z = nose, +X = right):
@@ -122,11 +123,11 @@ Generated textures get mips and BC1 compression from `AirCity.Rendering.Bc1Textu
 
 Each aircraft has three LODs, switched by screen size (`LodHeights` in `AircraftAssetPostprocessor`):
 
-| LOD | Cessna 172 | Narrowbody | What changes |
-|---|---|---|---|
-| 0 | 37k triangles, 17 draws | 46k, 21 draws | full model; animated surfaces, wheels, props / fans, registration lettering |
-| 1 | 9.7k, 4 draws | 10k, 2 draws | moving parts merged into one static mesh (the Cessna keeps a low-poly spinning prop); no lettering |
-| 2 | 2.7k, 2 draws | 2.9k, 2 draws | everything in one mesh |
+| LOD | Cessna 172 | Narrowbody | Widebody | What changes |
+|---|---|---|---|---|
+| 0 | 37k triangles, 17 draws | 46k, 21 draws | 65k, 21 draws | full model; animated surfaces, wheels, props / fans, registration lettering |
+| 1 | 9.7k, 4 draws | 10k, 2 draws | 13k, 2 draws | moving parts merged into one static mesh (the Cessna keeps a low-poly spinning prop); no lettering |
+| 2 | 2.7k, 2 draws | 2.9k, 2 draws | 3.3k, 2 draws | everything in one mesh |
 
 LODs cross-fade (dithered), so switching isn't a visible pop.
 
@@ -180,12 +181,13 @@ rwy.StartPloughing();                         // the depot's ploughs come; close
   vertex data only, never rebuild meshes.
 - The ground is flat for now. Flattening terrain under runways comes with the terrain system.
 
-**AirCity ▸ Airfield ▸ Add Sandbox Airport** rebuilds the sandbox airport: a 2,800 m concrete runway with
-precision lighting and a parallel taxiway, a crossing 1,600 m asphalt runway, a 600 m dirt strip and a 700 m grass
-strip (overdue for mowing), on grass, with a depot of three snow ploughs, a mower and three tugs (two small, one
-large) on a small pad and service roads from it to the apron and the parallel taxiway. It also has a taxilane of
-jet stands (code C and E, square on and at 60°, one taxi-out) with four jets parked on them, a GA ramp of code A
-stands on the grass taxiway, and two de-icing bays at the 09 end.
+**AirCity ▸ Airfield ▸ Add Sandbox Airport** rebuilds the sandbox airport, a small complete one: a 3,400 m x 60 m
+concrete runway with precision lighting and a code F parallel taxiway (exits both ways), a crossing 1,600 m asphalt
+runway, a 600 m dirt strip and a 700 m grass strip (overdue for mowing) with a GA ramp, a terminal with code C, E
+and F contact stands on a taxilane joined to the parallel taxiway at both ends and three stands fanned round its
+curved end, jet bridges (including a right-hand R1 and an upper-deck UL1), aircraft parked ready to leave, two
+de-icing bays at the 09 end, a depot (ploughs, a mower, two small and two large tugs) with service roads, and a
+display ramp for the showcase rows (see [Docs/systems/airfield.md](Docs/systems/airfield.md)).
 
 ### Snow ploughs and mowers
 

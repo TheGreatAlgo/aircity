@@ -24,8 +24,8 @@ namespace AirCity.Vehicles
     public sealed class AirportMaintenance
     {
         const float Step = 0.5f, CheckEvery = 30f, Decel = 2.2f, StuckReroute = 20f;
-        /// <summary>Held up by aircraft this long (game seconds), a vehicle goes under their wings, clear of the
-        /// fuselage, to get by (two waiting for each other would otherwise wait for good).</summary>
+        /// <summary>Held up by aircraft this long (game seconds), a vehicle goes under the wings of those on a flight,
+        /// clear of the fuselage, to get by (two waiting for each other would otherwise wait for good).</summary>
         const float UnderWingAfter = 30f;
         /// <summary>Head to head this long with a taxiing aircraft that waits for it (game seconds), a vehicle backs off
         /// this far (metres) and waits there till it has gone by (and BackedOffWait more), BackedOffLimit at most.</summary>
@@ -633,10 +633,12 @@ namespace AirCity.Vehicles
                             var other = o;
                             if (o.aircraft != null && t.type.IsTug && t.Ignores(o.aircraft)) continue;
                             if (o.aircraft != null && (airport.Traffic.WaitsFor(o.aircraft, t) || airport.Traffic.Holding(o.aircraft) ||
-                                                       t.heldByAircraft > UnderWingAfter))
+                                                       (t.heldByAircraft > UnderWingAfter && airport.Traffic.FlightOf(o.aircraft) != null)))
                             {
                                 // a taxiing aircraft has stopped (for this vehicle, or at a hold), or it's been held
-                                // up by aircraft a while: it goes on, under the wings if it must, clear of the fuselage
+                                // up by flights a while (they may be waiting for it): it goes on, under the wings if it
+                                // must, clear of the fuselage. Not under an aircraft moved some other way: that one
+                                // won't wait for it
                                 other = Fuselage(o.aircraft, TugClearance);
                             }
                             else if (o.aircraft != null && t.type.IsTug)

@@ -73,8 +73,8 @@ namespace AirCity.Airfield
         /// <summary>Runway width presets (metres); the smallest serves size code A, the largest code F.</summary>
         public static readonly float[] RunwayWidths = { 18f, 23f, 30f, 45f, 60f };
 
-        /// <summary>Taxiway width presets (metres), one per size code A to E.</summary>
-        public static readonly float[] TaxiwayWidths = { 7.5f, 10.5f, 15f, 18f, 23f };
+        /// <summary>Taxiway width presets (metres), one per size code A to F.</summary>
+        public static readonly float[] TaxiwayWidths = { 7.5f, 10.5f, 15f, 18f, 23f, 25f };
 
         /// <summary>Minimum runway width for an aircraft size code (ICAO Annex 14).</summary>
         public static float RunwayWidthFor(char sizeCode) => sizeCode switch

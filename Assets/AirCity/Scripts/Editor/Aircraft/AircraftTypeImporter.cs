@@ -13,7 +13,7 @@ namespace AirCity.EditorTools.Aircraft
     /// <see cref="AircraftType"/>. Paths in the file are relative to it, positions are already in Unity space.
     /// Re-imports automatically when the generator rewrites the file or any referenced texture.
     /// </summary>
-    [ScriptedImporter(4, "aircraft")]
+    [ScriptedImporter(5, "aircraft")]
     public class AircraftTypeImporter : ScriptedImporter
     {
 #pragma warning disable 0649   // assigned by JsonUtility
@@ -44,6 +44,7 @@ namespace AirCity.EditorTools.Aircraft
         {
             public string model, displayName, category;
             public BoundsJson bounds;
+            public float[] wingOutline;
             public int atlasSize;
             public float texelsPerMetre;
             public string detail, dirt, registrationDirt, logoUV, groundShadow, font, defaultBody, defaultRegistration, uvTemplate;
@@ -73,6 +74,9 @@ namespace AirCity.EditorTools.Aircraft
                 b.SetMinMax(V3(json.bounds.min), V3(json.bounds.max));
                 t.bounds = b;
             }
+            var wing = json.wingOutline ?? Array.Empty<float>();
+            t.wingOutline = new Vector2[wing.Length / 2];
+            for (int i = 0; i < t.wingOutline.Length; i++) t.wingOutline[i] = new Vector2(wing[2 * i], wing[2 * i + 1]);
             if (json.gear != null)
             {
                 var wheels = new List<AircraftType.Wheel>();
