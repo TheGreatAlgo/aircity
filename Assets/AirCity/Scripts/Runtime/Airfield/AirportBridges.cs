@@ -320,7 +320,7 @@ namespace AirCity.Airfield
             if (sl == null || !stand.bridges.Contains(bridge)) return false;
             var site = Site(stand);
             var others = new List<BridgeLayout>();
-            var wanted = new JetBridge { door = door, side = side, upper = upper };
+            var wanted = new JetBridge { door = door, side = side, upper = upper, tunnel = bridge.tunnel };
             // on the stand's head if it has one (its upper storey there if this or another bridge on it needs one), else
             // with its own link
             JetBridge placed = null;
@@ -333,7 +333,10 @@ namespace AirCity.Airfield
                 var hs = site.With(h);
                 foreach (var b in stand.bridges)
                     if (b != bridge) others.Add(BridgeLayout.Of(b, sl, airport.terminals, h));
+                // (a short tunnel first, as on a new head)
+                wanted.tunnel = TunnelSize.Short;
                 placed = HeadLayout.SuggestBridge(h, wanted, others, hs, out _);
+                wanted.tunnel = bridge.tunnel;
                 others.Clear();
             }
             if (placed == null)
@@ -348,11 +351,495 @@ namespace AirCity.Airfield
             bridge.upper = placed.upper;
             bridge.rotunda = placed.rotunda;
             bridge.root = placed.root;
+            bridge.tunnel = placed.tunnel;
             // it was placed parking after the others (BridgeLayout.Check), so it goes last
             stand.bridges.Remove(bridge);
             stand.bridges.Add(bridge);
             net.Rebuild();
             return true;
+        }
+
+        // ------------------------------------------------------------------ placing by hand (dev tool)
+
+        /// <summary>The layout of a stand (null if it can't be laid out).</summary>
+        StandLayout LayoutOf(Stand stand)
+        {
+            var net = airport.GetComponentInChildren<TaxiwayNetwork>();
+            return net != null && stand != null ? net.Layout(stand) : null;
+        }
+
+        void Rebuild() => airport.GetComponentInChildren<TaxiwayNetwork>()?.Rebuild();
+
+        /// <summary>The nearest point of any terminal's wall to a ground point, if it is within `reach` metres (inside a
+        /// terminal counts as on its wall), and the wall's outward direction there.</summary>
+        public bool OnTerminalWall(Vector2 p, float reach, out Vector2 onWall, out Vector2 outward)
+        {
+            onWall = p;
+            outward = Vector2.up;
+            float best = float.MaxValue;
+            foreach (var t in airport.terminals)
+            {
+                if (t == null || t.corners.Count < 3) continue;
+                float d = t.ClosestOnWall(p, out var wall, out var o);
+                if (t.Contains(p)) d = 0f;
+                if (d >= best || d > reach) continue;
+                best = d;
+                onWall = wall;
+                outward = o;
+            }
+            return best < float.MaxValue;
+        }
+
+        /// <summary>The push-back stand a bridge with its rotunda here would serve: the one whose pad it stands on, else
+        /// the nearest within 40 m of it. Null if none.</summary>
+        public Stand StandFor(Vector2 p)
+        {
+            var net = airport.GetComponentInChildren<TaxiwayNetwork>();
+            if (net == null) return null;
+            Stand best = null;
+            float bestD = 40f;
+            foreach (var st in net.stands)
+            {
+                if (st == null || st.DeIcing) continue;
+                var l = net.Layout(st);
+                if (l == null) continue;
+                var pad = l.Pad;
+                float d = Geo.Inside(pad, p) ? -1f / (1f + Vector2.Distance(p, l.Centre)) : Geo.DistanceToOutline(pad, p);
+                if (d >= bestD) continue;
+                bestD = d;
+                best = st;
+            }
+            return best;
+        }
+
+        /// <summary>
+        /// Move a stand's bridge's rotunda to a ground point. Its link starts from the stand's head if the head's wall is
+        /// nearer than any terminal's; else from `keepRoot` (where it left the terminal before, Airport space) if that
+        /// still works (on a terminal wall, the link at most JetBridgeRules.MaxLink long and not through a terminal),
+        /// else from the nearest terminal wall within reach. Refused, nothing changed, if the rotunda, its link or the
+        /// link's columns would stand where the aircraft parks, on a road or taxiway, on another stand or through a
+        /// terminal. `problem` is what's wrong where it ends up (or why it was refused), for `type` if it's one type's.
+        /// </summary>
+        public bool MoveBridge(Stand stand, JetBridge bridge, Vector2 at, Vector2? keepRoot, out BridgeProblem problem, out AircraftType type)
+        {
+            problem = BridgeProblem.None;
+            type = null;
+            var sl = LayoutOf(stand);
+            if (sl == null || !stand.bridges.Contains(bridge)) return false;
+            var was = (bridge.rotunda, bridge.root);
+            var root = at;
+            float nearest = float.MaxValue;
+            foreach (var t in airport.terminals)
+            {
+                if (t == null || t.corners.Count < 3) continue;
+                float d = t.ClosestOnWall(at, out var wall, out _);
+                if (d >= nearest || d - JetBridgeRules.RotundaRadius > JetBridgeRules.MaxLink) continue;
+                nearest = d;
+                root = wall;
+            }
+            var head = HeadLayout.Of(sl, airport.terminals);
+            if (head != null && head.ClosestOnWall(at, out var onHead) < nearest) root = onHead;
+            else if (keepRoot is Vector2 k && OnTerminalWall(k, JetBridgeRules.ConnectReach, out _, out _) &&
+                     Vector2.Distance(k, at) - JetBridgeRules.RotundaRadius <= JetBridgeRules.MaxLink &&
+                     !BridgeLayout.ThroughTerminal(k, at, airport.terminals))
+                root = k;
+            bridge.rotunda = BridgeLayout.ToStand(sl, at);
+            bridge.root = BridgeLayout.ToStand(sl, root);
+            problem = FirstProblem(stand, bridge, out type);
+            bool ok = problem != BridgeProblem.RotundaInTheWay && problem != BridgeProblem.RotundaOnPavement &&
+                      problem != BridgeProblem.ColumnOnPavement && problem != BridgeProblem.LinkInTheWay && problem != BridgeProblem.OnNextStand &&
+                      problem != BridgeProblem.TaxiOutStand && problem != BridgeProblem.LinkThroughTerminal;
+            if (!ok) (bridge.rotunda, bridge.root) = was;
+            Rebuild();
+            return ok;
+        }
+
+        /// <summary>
+        /// Move where a stand's bridge's link leaves the terminal (`bridge` null: the stand's head's main link) to a
+        /// point on a terminal's wall (Airport space), the rotunda (or head) staying where it is. Refused, nothing
+        /// changed, if the point isn't on a terminal's wall, or the link would be longer than JetBridgeRules.MaxLink, run
+        /// through a terminal, over where the aircraft parks or onto another stand, or its columns couldn't keep off the
+        /// roads and taxiways. A bridge on the stand's head has no link to the terminal to move.
+        /// </summary>
+        public bool MoveRoot(Stand stand, JetBridge bridge, Vector2 root, out BridgeProblem problem, out AircraftType type)
+        {
+            problem = BridgeProblem.None;
+            type = null;
+            var sl = LayoutOf(stand);
+            if (sl == null || !OnTerminalWall(root, JetBridgeRules.ConnectReach, out _, out _)) return false;
+            var head = HeadLayout.Of(sl, airport.terminals);
+            bool ok;
+            if (bridge == null)
+            {
+                if (head == null) return false;
+                var was = stand.head.root;
+                stand.head.root = BridgeLayout.ToStand(sl, root);
+                var site = Site(stand);
+                problem = site.head.Placement(site);
+                ok = problem != BridgeProblem.ColumnOnPavement && problem != BridgeProblem.LinkInTheWay && problem != BridgeProblem.OnNextStand &&
+                     problem != BridgeProblem.LinkThroughTerminal && problem != BridgeProblem.LinkTooLong;
+                if (!ok) stand.head.root = was;
+            }
+            else
+            {
+                if (!stand.bridges.Contains(bridge) || BridgeLayout.Of(bridge, sl, airport.terminals, head).head != null) return false;
+                var was = bridge.root;
+                bridge.root = BridgeLayout.ToStand(sl, root);
+                problem = FirstProblem(stand, bridge, out type);
+                ok = problem != BridgeProblem.ColumnOnPavement && problem != BridgeProblem.LinkInTheWay && problem != BridgeProblem.OnNextStand &&
+                     problem != BridgeProblem.LinkThroughTerminal && problem != BridgeProblem.LinkTooLong;
+                if (!ok) bridge.root = was;
+            }
+            Rebuild();
+            return ok;
+        }
+
+        /// <summary>The door none of the stand's bridges serves yet whose sill is nearest a ground point along the
+        /// aircraft, on the side it's on (a quick guess of what a bridge there would serve, AddBridge), or null.</summary>
+        public JetBridge NearestDoor(Stand stand, Vector2 p)
+        {
+            var sl = LayoutOf(stand);
+            if (sl == null) return null;
+            var types = TypesFor(stand);
+            JetBridge best = null;
+            float bestD = float.MaxValue;
+            foreach (var door in Doors(stand, types))
+            {
+                float d = DoorDistance(sl, types, door, p);
+                if (d >= bestD) continue;
+                bestD = d;
+                best = door;
+            }
+            return best;
+        }
+
+        /// <summary>How far a ground point is from a door along the aircraft (the largest type the stand takes with
+        /// it), plus a stand's width if it's on the other side; MaxValue if no type has it.</summary>
+        static float DoorDistance(StandLayout sl, IList<AircraftType> types, JetBridge door, Vector2 p)
+        {
+            AircraftType design = null;
+            foreach (var t in types)
+                if (t != null && !t.Light && BridgeLayout.TryDoor(t, door, out _) && (design == null || t.Wingspan > design.Wingspan)) design = t;
+            if (design == null || !BridgeLayout.TryDoor(design, door, out var sp)) return float.MaxValue;
+            var sill = BridgeLayout.Sill(sl, design, sp);
+            var park = sl.ParkPosition(design);
+            var right = Geo.Right(sl.nose);
+            float d = Mathf.Abs(Vector2.Dot(p - sill, sl.nose));
+            bool sameSide = Mathf.Sign(Vector2.Dot(p - park, right)) == Mathf.Sign(Vector2.Dot(sill - park, right));
+            return sameSide ? d : d + 100f;
+        }
+
+        /// <summary>Every door (side, deck, number) any of these types has that none of the stand's bridges serves yet.</summary>
+        List<JetBridge> Doors(Stand stand, IEnumerable<AircraftType> types)
+        {
+            var list = new List<JetBridge>();
+            foreach (var side in new[] { DoorSide.Left, DoorSide.Right })
+                foreach (bool upper in new[] { false, true })
+                    for (int n = 1; n <= 6; n++)
+                    {
+                        bool any = false;
+                        foreach (var t in types)
+                            any |= t != null && !t.Light && BridgeLayout.TryDoor(t, side, upper, n, out _);
+                        bool served = stand.bridges.Exists(b => b != null && b.side == side && b.upper == upper && b.door == n);
+                        if (any && !served) list.Add(new JetBridge { side = side, upper = upper, door = n });
+                    }
+            return list;
+        }
+
+        /// <summary>What's wrong with a bridge's rotunda at `rotunda` with its link from `root` (Airport space) on a stand,
+        /// whatever door it serves (`door`'s side, deck and number if given, else L1; a short tunnel if it parks
+        /// clear with one): BridgeLayout.Placement against the stand's head and bridges. None if nothing.</summary>
+        public BridgeProblem WhereProblem(Stand stand, Vector2 rotunda, Vector2 root, JetBridge door)
+        {
+            var sl = LayoutOf(stand);
+            if (sl == null) return BridgeProblem.TaxiOutStand;
+            var site = Site(stand);
+            var first = BridgeProblem.None;
+            foreach (var size in new[] { TunnelSize.Short, TunnelSize.Long })
+            {
+                var b = new JetBridge
+                {
+                    door = door?.door ?? 1, side = door?.side ?? DoorSide.Left, upper = door?.upper ?? false, tunnel = size,
+                    rotunda = BridgeLayout.ToStand(sl, rotunda), root = BridgeLayout.ToStand(sl, root),
+                };
+                var l = BridgeLayout.Of(b, sl, airport.terminals, site.head);
+                l.Columns(site.pavement);
+                var p = l.Placement(site, site.HeadShapes);
+                if (p == BridgeProblem.None) return p;
+                if (first == BridgeProblem.None) first = p;
+            }
+            return first;
+        }
+
+        /// <summary>
+        /// Give a stand another bridge (up to JetBridgeRules.MaxPerStand) with its rotunda at `rotunda` and its link from
+        /// `root` (Airport space: a terminal's wall, or the stand's head's wall for a bridge on the head), to the door
+        /// nearest it along the aircraft (DoorDistance) that no bridge of the stand serves yet and that it docks at least
+        /// one type at, with a short tunnel if that docks as many types as a long one. Placed by hand, it serves the door
+        /// it was put beside, even where another door would dock more types. It goes last (parks after the others).
+        /// Null, nothing changed, if it can't stand there (`problem`) or docks no type at any door.
+        /// </summary>
+        public JetBridge AddBridge(Stand stand, Vector2 rotunda, Vector2 root, out BridgeProblem problem, out AircraftType type)
+        {
+            problem = BridgeProblem.None;
+            type = null;
+            var sl = LayoutOf(stand);
+            if (sl == null || stand.DeIcing) return null;
+            if (stand.exit == StandExit.TaxiOut)
+            {
+                problem = BridgeProblem.TaxiOutStand;
+                return null;
+            }
+            if (stand.bridges.Count >= JetBridgeRules.MaxPerStand) return null;
+            var types = TypesFor(stand);
+            var site = Site(stand);
+            var others = new List<BridgeLayout>();
+            foreach (var b in stand.bridges) others.Add(BridgeLayout.Of(b, sl, airport.terminals, site.head));
+            JetBridge best = null;
+            int bestDocks = 0;
+            float bestD = float.MaxValue;
+            var firstProblem = BridgeProblem.None;
+            AircraftType firstType = null;
+            foreach (var door in Doors(stand, types))
+                foreach (var size in new[] { TunnelSize.Short, TunnelSize.Long })
+                {
+                    float near = DoorDistance(sl, types, door, rotunda);
+                    var b = new JetBridge
+                    {
+                        door = door.door, side = door.side, upper = door.upper, tunnel = size,
+                        rotunda = BridgeLayout.ToStand(sl, rotunda), root = BridgeLayout.ToStand(sl, root),
+                    };
+                    var l = BridgeLayout.Of(b, sl, airport.terminals, site.head);
+                    int docks = 0;
+                    var placement = BridgeProblem.None;
+                    foreach (var (t, pr) in BridgeLayout.Check(l, others, site))
+                    {
+                        if (t == null)
+                        {
+                            placement = pr;
+                            break;
+                        }
+                        if (pr == BridgeProblem.None) docks++;
+                        else if (firstProblem == BridgeProblem.None && pr != BridgeProblem.NoSuchDoor && pr != BridgeProblem.SmallAircraft)
+                        {
+                            firstProblem = pr;
+                            firstType = t;
+                        }
+                    }
+                    if (placement != BridgeProblem.None)
+                    {
+                        if (problem == BridgeProblem.None) problem = placement;
+                        continue;
+                    }
+                    // the nearest door; as near, the one docking more types (a short tunnel, tried first, if as many)
+                    if (docks > 0 && (near < bestD - 0.5f || (near <= bestD + 0.5f && docks > bestDocks)))
+                    {
+                        best = b;
+                        bestDocks = docks;
+                        bestD = near;
+                    }
+                }
+            if (best == null)
+            {
+                // where it stands is wrong for every door, or it stands right but docks nothing
+                if (problem == BridgeProblem.None)
+                {
+                    problem = firstProblem;
+                    type = firstType;
+                }
+                return null;
+            }
+            problem = BridgeProblem.None;
+            stand.bridges.Add(best);
+            Rebuild();
+            return best;
+        }
+
+        /// <summary>Take one bridge off a stand (its head, if it stood on one, stays: RemoveHead takes that).</summary>
+        public void RemoveBridge(Stand stand, JetBridge bridge)
+        {
+            if (stand == null || !stand.bridges.Remove(bridge)) return;
+            Rebuild();
+        }
+
+        /// <summary>Take a stand's bridge head away, and the bridges standing on it.</summary>
+        public void RemoveHead(Stand stand)
+        {
+            var sl = LayoutOf(stand);
+            var head = sl != null ? HeadLayout.Of(sl, airport.terminals) : null;
+            if (head == null) return;
+            stand.bridges.RemoveAll(b => b != null && head.Touches(sl.At(b.root.x, b.root.y)));
+            stand.head = new BridgeHead();
+            Rebuild();
+        }
+
+        /// <summary>Where each bridge on a stand's head stands along it (metres from its near end and from its far end)
+        /// and on which side of it (+1 right): MoveHead takes them along. Empty if the stand has no head.</summary>
+        public List<(JetBridge bridge, float fromNear, float fromFar, float side)> HeadStations(Stand stand)
+        {
+            var list = new List<(JetBridge, float, float, float)>();
+            var net = airport.GetComponentInChildren<TaxiwayNetwork>();
+            var sl = net != null ? net.Layout(stand) : null;
+            var h = sl != null ? HeadLayout.Of(sl, airport.terminals) : null;
+            if (h == null) return list;
+            var d = h.Dir;
+            foreach (var b in stand.bridges)
+            {
+                if (b == null || !h.Touches(sl.At(b.root.x, b.root.y))) continue;
+                var off = sl.At(b.rotunda.x, b.rotunda.y) - h.a;
+                float t = Vector2.Dot(off, d);
+                list.Add((b, t, h.Length - t, Vector2.Dot(off, Geo.Right(d)) >= 0f ? 1f : -1f));
+            }
+            return list;
+        }
+
+        /// <summary>
+        /// Move a stand's bridge head to run from `near` (where its main link comes in) to `far` (Airport space; kept
+        /// JetBridgeRules.MinHead to MaxHead long), its main link following to the nearest terminal wall within
+        /// JetBridgeRules.MaxLink (none against it), and its bridges (`stations`, HeadStations before the move) with it,
+        /// each on its side of it at its distance from the near end, or from the far end with `keepFar` (the near end
+        /// moved). Refused, and nothing changed, if the head, its main link or a bridge's rotunda would stand where an
+        /// aircraft the stand takes parks, on a road or taxiway, on another stand's pad or in a terminal. `problem` is
+        /// what's wrong where it ends up (or why it was refused), for `type` if it's one type's; None if nothing.
+        /// </summary>
+        public bool MoveHead(Stand stand, Vector2 near, Vector2 far, IList<(JetBridge bridge, float fromNear, float fromFar, float side)> stations,
+            bool keepFar, out BridgeProblem problem, out AircraftType type) =>
+            MoveHead(stand, near, far, stations, keepFar, null, out problem, out type);
+
+        /// <summary>MoveHead, its main link kept leaving the terminal at `keepRoot` (Airport space; where it did before)
+        /// if that still works: on a terminal's wall, at most JetBridgeRules.MaxLink from the head's near end and not
+        /// through a terminal.</summary>
+        public bool MoveHead(Stand stand, Vector2 near, Vector2 far, IList<(JetBridge bridge, float fromNear, float fromFar, float side)> stations,
+            bool keepFar, Vector2? keepRoot, out BridgeProblem problem, out AircraftType type)
+        {
+            problem = BridgeProblem.None;
+            type = null;
+            var net = airport.GetComponentInChildren<TaxiwayNetwork>();
+            var sl = net != null ? net.Layout(stand) : null;
+            if (sl == null || stand.head == null || !stand.head.Exists) return false;
+            var along = far - near;
+            float len = Mathf.Clamp(along.magnitude, JetBridgeRules.MinHead, JetBridgeRules.MaxHead);
+            if (along.sqrMagnitude < 1e-4f) along = sl.axis;
+            if (keepFar) near = far - along.normalized * len;
+            else far = near + along.normalized * len;
+            // against a terminal's wall: no main link; else from where it left the terminal before, else from the
+            // nearest terminal wall within reach
+            var root = near;
+            float nearest = float.MaxValue;
+            foreach (var t in airport.terminals)
+            {
+                if (t == null || t.corners.Count < 3) continue;
+                float dist = t.ClosestOnWall(near, out var wall, out _);
+                if (t.Contains(near)) dist = 0f;
+                if (dist >= nearest || dist > JetBridgeRules.MaxLink) continue;
+                nearest = dist;
+                root = dist <= JetBridgeRules.ConnectReach ? near : wall;
+            }
+            if (nearest > JetBridgeRules.ConnectReach && keepRoot is Vector2 k && OnTerminalWall(k, JetBridgeRules.ConnectReach, out _, out _) &&
+                Vector2.Distance(k, near) <= JetBridgeRules.MaxLink && !BridgeLayout.ThroughTerminal(k, near, airport.terminals))
+                root = k;
+
+            return TrySetHead(stand, sl, near, far, root, stations, keepFar, out problem, out type);
+        }
+
+        /// <summary>
+        /// Give a stand a bridge head by hand: its main link from `root` (on a terminal's wall; the near end against a
+        /// wall: no main link) to its near end `near`, the head on to `far` (Airport space; kept JetBridgeRules.MinHead
+        /// to MaxHead long). A head the stand has already is replaced, the bridges on it taken along (each at its
+        /// distance from the near end). Refused, nothing changed, as MoveHead, and where the main link would be longer
+        /// than JetBridgeRules.MaxLink, run through a terminal, or not start on a terminal's wall.
+        /// </summary>
+        public bool PlaceHead(Stand stand, Vector2 root, Vector2 near, Vector2 far, out BridgeProblem problem, out AircraftType type)
+        {
+            problem = BridgeProblem.None;
+            type = null;
+            var sl = LayoutOf(stand);
+            if (sl == null || stand.DeIcing) return false;
+            if (stand.exit == StandExit.TaxiOut)
+            {
+                problem = BridgeProblem.TaxiOutStand;
+                return false;
+            }
+            if (!HeadEnds(sl, ref root, near, ref far, out problem)) return false;
+            return TrySetHead(stand, sl, near, far, root, HeadStations(stand), false, out problem, out type);
+        }
+
+        /// <summary>What's wrong with a head placed so (PlaceHead) on a stand, without placing it: None if nothing.</summary>
+        public BridgeProblem HeadProblem(Stand stand, Vector2 root, Vector2 near, Vector2 far)
+        {
+            var sl = LayoutOf(stand);
+            if (sl == null || stand.DeIcing || stand.exit == StandExit.TaxiOut) return BridgeProblem.TaxiOutStand;
+            if (!HeadEnds(sl, ref root, near, ref far, out var problem)) return problem;
+            var h = HeadLayout.Of(new BridgeHead
+            {
+                from = BridgeLayout.ToStand(sl, near), to = BridgeLayout.ToStand(sl, far), root = BridgeLayout.ToStand(sl, root),
+            }, sl, airport.terminals, false);
+            if (HeadLayout.InTerminal(h, airport.terminals)) return BridgeProblem.HeadInTerminal;
+            var site = Site(stand);
+            return h.Placement(site);
+        }
+
+        /// <summary>A hand-placed head's main link and length made right: the near end against a terminal's wall leaves no
+        /// main link; else it must start on a wall, at most JetBridgeRules.MaxLink long and not through a terminal. The
+        /// far end moved to keep the head MinHead to MaxHead long.</summary>
+        bool HeadEnds(StandLayout sl, ref Vector2 root, Vector2 near, ref Vector2 far, out BridgeProblem problem)
+        {
+            problem = BridgeProblem.None;
+            if (OnTerminalWall(near, JetBridgeRules.ConnectReach, out _, out _)) root = near;
+            else if (!OnTerminalWall(root, JetBridgeRules.ConnectReach, out _, out _)) problem = BridgeProblem.LinkTooLong;
+            else if (Vector2.Distance(root, near) > JetBridgeRules.MaxLink) problem = BridgeProblem.LinkTooLong;
+            else if (BridgeLayout.ThroughTerminal(root, near, airport.terminals)) problem = BridgeProblem.LinkThroughTerminal;
+            var along = far - near;
+            if (along.sqrMagnitude < 1e-4f) along = sl.axis;
+            far = near + along.normalized * Mathf.Clamp(along.magnitude, JetBridgeRules.MinHead, JetBridgeRules.MaxHead);
+            return problem == BridgeProblem.None;
+        }
+
+        /// <summary>Set a stand's head to run from `near` to `far` with its main link from `root` (all Airport space), the
+        /// bridges on it (`stations`) taken along; put it all back, and false, if it doesn't stand right (MoveHead).</summary>
+        bool TrySetHead(Stand stand, StandLayout sl, Vector2 near, Vector2 far, Vector2 root,
+            IList<(JetBridge bridge, float fromNear, float fromFar, float side)> stations, bool keepFar, out BridgeProblem problem, out AircraftType type)
+        {
+            type = null;
+            float len = Vector2.Distance(near, far);
+            var was = (stand.head ?? new BridgeHead()).Clone();
+            var were = new List<(Vector2 rotunda, Vector2 root)>();
+            foreach (var s in stations) were.Add((s.bridge.rotunda, s.bridge.root));
+            stand.head = new BridgeHead { from = BridgeLayout.ToStand(sl, near), to = BridgeLayout.ToStand(sl, far), root = BridgeLayout.ToStand(sl, root) };
+            var moved = HeadLayout.Of(stand.head, sl, airport.terminals, false);
+            float edge = JetBridgeRules.LinkWidth * 0.5f + 0.2f;
+            foreach (var (b, fromNear, fromFar, side) in stations)
+            {
+                float t = Mathf.Clamp(keepFar ? len - fromFar : fromNear, edge, Mathf.Max(len - edge, edge));
+                var (rot, stub) = moved.Spot(t, side);
+                b.rotunda = BridgeLayout.ToStand(sl, rot);
+                b.root = BridgeLayout.ToStand(sl, stub);
+            }
+            var site = Site(stand);
+            problem = site.head != null ? site.head.Placement(site) : BridgeProblem.None;
+            if (HeadLayout.InTerminal(moved, airport.terminals)) problem = BridgeProblem.HeadInTerminal;
+            bool ok = problem != BridgeProblem.HeadInTheWay && problem != BridgeProblem.LinkInTheWay && problem != BridgeProblem.ColumnOnPavement &&
+                      problem != BridgeProblem.OnNextStand && problem != BridgeProblem.OverTaxiway && problem != BridgeProblem.HeadInTerminal &&
+                      problem != BridgeProblem.LinkThroughTerminal && problem != BridgeProblem.LinkTooLong;
+            foreach (var (b, _, _, _) in stations)
+            {
+                if (!ok) break;
+                var bp = FirstProblem(stand, b, out var bt);
+                ok = bp != BridgeProblem.RotundaInTheWay && bp != BridgeProblem.RotundaOnPavement && bp != BridgeProblem.LinkInTheWay &&
+                     bp != BridgeProblem.OnNextStand;
+                if (problem == BridgeProblem.None || !ok)
+                {
+                    problem = bp;
+                    type = bt;
+                }
+            }
+            if (!ok)
+            {
+                stand.head = was;
+                for (int i = 0; i < stations.Count; i++) (stations[i].bridge.rotunda, stations[i].bridge.root) = were[i];
+            }
+            Rebuild();
+            return ok;
         }
 
         public void Simulate(float dt)
@@ -391,8 +878,7 @@ namespace AirCity.Airfield
                             if (s.state == BridgeState.Docking && (s.docked != a || leaving))
                                 Move(s, BridgeState.Retracting, parked, s.docked);
                             s.t = Mathf.Min(1f, s.t + dt / JetBridgeRules.DockTime);
-                            float k = s.t * s.t * (3f - 2f * s.t);
-                            s.pose = BridgePose.Lerp(s.from, s.to, k);
+                            s.pose = BridgePose.Move(s.from, s.to, s.t);
                             if (s.t >= 1f)
                             {
                                 s.state = s.state == BridgeState.Docking ? BridgeState.Docked : BridgeState.Parked;
@@ -502,15 +988,19 @@ namespace AirCity.Airfield
             if (net != null)
                 foreach (var st in net.stands)
                 {
-                    if (st == null || st.bridges == null || st.bridges.Count == 0) continue;
+                    if (st == null) continue;
+                    bool hasHead = st.head != null && st.head.Exists;
+                    if ((st.bridges == null || st.bridges.Count == 0) && !hasHead) continue;
                     var sl = net.Layout(st);
                     if (sl == null) continue;
+                    // a head stands even with no bridges on it yet (placed by hand, its bridges to come)
                     var head = HeadLayout.Of(sl, airport.terminals);
                     if (head != null)
                     {
                         head.Columns(pavement);
                         heads[st] = head;
                     }
+                    if (st.bridges == null || st.bridges.Count == 0) continue;
                     var list = new List<BridgeLayout>();
                     foreach (var b in st.bridges)
                     {

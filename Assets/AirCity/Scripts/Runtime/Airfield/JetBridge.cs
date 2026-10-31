@@ -50,6 +50,24 @@ namespace AirCity.Airfield
         ColumnOnPavement,
         /// <summary>The stand's bridge head stands where the aircraft parks.</summary>
         HeadInTheWay,
+        /// <summary>Swinging round, retracted, between where it parks and where it docks, it would hit the aircraft.</summary>
+        SwingHitsAircraft,
+        /// <summary>Its link (or the head's main link) runs through a terminal building from where it leaves the wall.</summary>
+        LinkThroughTerminal,
+        /// <summary>Its link (or the head's main link) is longer than JetBridgeRules.MaxLink, or doesn't start on a terminal's wall.</summary>
+        LinkTooLong,
+        /// <summary>The bridge head stands in a terminal building.</summary>
+        HeadInTerminal,
+    }
+
+    /// <summary>A bridge's tunnel: three telescoping sections of JetBridgeRules.Section(size).</summary>
+    public enum TunnelSize
+    {
+        /// <summary>13 m sections: 14 to 36 m.</summary>
+        Long = 0,
+        /// <summary>8.5 m sections: 9.5 to 22.5 m. For a bridge close to the aircraft, as on a bridge head: retracted, it
+        /// swings round well clear of it.</summary>
+        Short = 1,
     }
 
     public enum DoorSide
@@ -86,6 +104,8 @@ namespace AirCity.Airfield
         [Tooltip("Where the fixed link meets the terminal (or the stand's bridge head), in the stand's frame. On the " +
                  "rotunda: no link.")]
         public Vector2 root;
+        [Tooltip("Its tunnel: long (14-36 m) or short (9.5-22.5 m, for a bridge close to the aircraft, as on a head).")]
+        public TunnelSize tunnel;
 
         /// <summary>"L1", "R2", "UL1" ...</summary>
         public string DoorName => DoorLabel(side, upper, door);
@@ -94,6 +114,14 @@ namespace AirCity.Airfield
 
         /// <summary>Its rotunda's (and link's) floor above the ground.</summary>
         public float Floor => upper ? JetBridgeRules.UpperFloor : JetBridgeRules.RotundaFloor;
+
+        /// <summary>Its tunnel's length retracted and fully out.</summary>
+        public float MinTunnel => JetBridgeRules.MinTunnelOf(tunnel);
+        public float MaxTunnel => JetBridgeRules.MaxTunnelOf(tunnel);
+
+        /// <summary>It parked (retracted): its cab's floor (an upper-deck bridge's raised JetBridgeRules.ParkRise).</summary>
+        public BridgePose ParkedPose(Vector2 heading) => new BridgePose
+            { heading = heading, length = MinTunnel, cabFloor = Floor + (upper ? JetBridgeRules.ParkRise : 0f), floor = Floor };
 
         public JetBridge Clone() => (JetBridge)MemberwiseClone();
     }
@@ -132,12 +160,17 @@ namespace AirCity.Airfield
         public const float RotundaRadius = 2.3f;
         /// <summary>From the rotunda's centre to where the tunnel starts.</summary>
         public const float TunnelStart = 2.3f;
-        /// <summary>Each of the three tunnel sections' length; the outer two slide over the one before.</summary>
-        public const float SectionLength = 13f;
+        /// <summary>Each of the three tunnel sections' length (a long tunnel's, and a short one's); the outer two slide
+        /// over the one before.</summary>
+        public const float SectionLength = 13f, ShortSectionLength = 8.5f;
         /// <summary>How much of a section stays inside the next one at full stretch.</summary>
         public const float MinOverlap = 1.5f;
-        /// <summary>The tunnel's length (rotunda to cab) retracted and fully out.</summary>
+        /// <summary>A long tunnel's length (rotunda to cab) retracted and fully out.</summary>
         public const float MinTunnel = SectionLength + 1f, MaxTunnel = 3f * SectionLength - 2f * MinOverlap;
+        public static float Section(TunnelSize size) => size == TunnelSize.Short ? ShortSectionLength : SectionLength;
+        /// <summary>A tunnel's length retracted and fully out.</summary>
+        public static float MinTunnelOf(TunnelSize size) => Section(size) + 1f;
+        public static float MaxTunnelOf(TunnelSize size) => 3f * Section(size) - 2f * MinOverlap;
         /// <summary>From the cab's pivot (the tunnel's end) to its bumper, and how far the bumper stops off the door.</summary>
         public const float CabReach = 2.6f, DoorGap = 0.1f;
         public const float CabWidth = 3.4f;
@@ -165,6 +198,10 @@ namespace AirCity.Airfield
         public const float ColumnFoot = 0.75f;
         /// <summary>The steepest the tunnel or a ramped link may slope (rise over run): 1 in 10.</summary>
         public const float MaxSlope = 0.1f;
+        /// <summary>How far above its rotunda's floor an upper-deck bridge's cab is raised while it is parked, over the
+        /// main-deck bridges docking beside it (a long tunnel retracted, tilted up MaxSlope; a short one tilts more, as
+        /// a parked bridge carries no passengers).</summary>
+        public const float ParkRise = 1.39f;
         /// <summary>A bridge head's width, and its underside and parapet from its floor (RotundaFloor); with an upper
         /// storey (floor UpperFloor) its parapet is HeadTop over that, its underside HeadUpperBottom under it, and it is
         /// HeadUpperWider wider. As built in the model.</summary>
@@ -227,6 +264,32 @@ namespace AirCity.Airfield
             float r = -clockwiseDegrees * Mathf.Deg2Rad;
             return new Vector2(d.x * Mathf.Cos(r) - d.y * Mathf.Sin(r), d.x * Mathf.Sin(r) + d.y * Mathf.Cos(r));
         }
+
+        /// <summary>
+        /// Part way (t, 0..1) along a bridge's move from one pose to another, as an operator drives it: going out (to a
+        /// longer tunnel) it swings round to its new heading first, as retracted as it is, then telescopes out, tilts and
+        /// turns the cab; coming in it does that first, then swings. So it never swings round with its tunnel out, across
+        /// the aircraft. Each stage takes its share of the time by how far it moves (the swing measured at the cab), and
+        /// eases in and out.
+        /// </summary>
+        public static BridgePose Move(BridgePose from, BridgePose to, float t)
+        {
+            bool outward = to.length >= from.length;
+            // between the stages: swung round, not yet out (going out); in, not yet swung round (coming in)
+            var mid = outward ? from : to;
+            mid.heading = outward ? to.heading : from.heading;
+            mid.floor = to.floor;
+            float arm = JetBridgeRules.TunnelStart + Mathf.Min(from.length, to.length) + JetBridgeRules.CabReach;
+            float swing = Vector2.Angle(from.heading, to.heading) * Mathf.Deg2Rad * arm;
+            float reach = Mathf.Abs(to.length - from.length) + Mathf.Abs(to.cabFloor - from.cabFloor) +
+                          Mathf.Abs(to.cabTurn - from.cabTurn) * Mathf.Deg2Rad * JetBridgeRules.CabReach;
+            float first = swing + reach > 1e-3f ? (outward ? swing : reach) / (swing + reach) : 0.5f;
+            t = Mathf.Clamp01(t);
+            if (t < first) return Lerp(from, mid, Ease(t / first));
+            return Lerp(mid, to, first >= 1f ? 1f : Ease((t - first) / (1f - first)));
+        }
+
+        static float Ease(float t) => t * t * (3f - 2f * t);
 
         /// <summary>Part way from a to b (headings turn the short way).</summary>
         public static BridgePose Lerp(BridgePose a, BridgePose b, float t)
@@ -432,6 +495,21 @@ namespace AirCity.Airfield
             return l;
         }
 
+        /// <summary>Does a link from `root` (on a terminal's wall) to `end` run through a terminal on its way (sampled
+        /// every metre from just off the wall to the rotunda's drum)?</summary>
+        public static bool ThroughTerminal(Vector2 root, Vector2 end, IList<Terminal> terminals)
+        {
+            if (terminals == null) return false;
+            var d = end - root;
+            float len = d.magnitude - JetBridgeRules.RotundaRadius;
+            if (len <= JetBridgeRules.ConnectReach + 0.5f) return false;
+            d /= d.magnitude;
+            for (float s = JetBridgeRules.ConnectReach + 0.5f; s <= len; s += 1f)
+                foreach (var t in terminals)
+                    if (t != null && t.Contains(root + d * s)) return true;
+            return false;
+        }
+
         /// <summary>A stand-frame point (x, s) for a ground point.</summary>
         public static Vector2 ToStand(StandLayout stand, Vector2 p)
         {
@@ -472,7 +550,7 @@ namespace AirCity.Airfield
         /// </summary>
         public BridgePose Dock(AircraftType type, out BridgeProblem problem)
         {
-            var pose = new BridgePose { heading = stand.axis, length = JetBridgeRules.MinTunnel, cabFloor = bridge.Floor, floor = bridge.Floor };
+            var pose = new BridgePose { heading = stand.axis, length = bridge.MinTunnel, cabFloor = bridge.Floor, floor = bridge.Floor };
             problem = BridgeProblem.None;
             if (type.Light)
             {
@@ -499,8 +577,8 @@ namespace AirCity.Airfield
             pose.cabFloor = door.position.y;
             pose.length = Mathf.Sqrt(Mathf.Max(run, 0f) * Mathf.Max(run, 0f) + pose.Rise * pose.Rise);
             pose.cabTurn = Vector2.SignedAngle(cabFacing, pose.heading);
-            if (pose.length < JetBridgeRules.MinTunnel) problem = BridgeProblem.TooClose;
-            else if (pose.length > JetBridgeRules.MaxTunnel) problem = BridgeProblem.TooFar;
+            if (pose.length < bridge.MinTunnel) problem = BridgeProblem.TooClose;
+            else if (pose.length > bridge.MaxTunnel) problem = BridgeProblem.TooFar;
             else if (Mathf.Abs(pose.Rise) > JetBridgeRules.MaxSlope * Mathf.Max(run, 0.01f)) problem = BridgeProblem.TooSteep;
             else if (Mathf.Abs(pose.cabTurn) > JetBridgeRules.MaxCabTurn) problem = BridgeProblem.CabTurn;
             if (problem != BridgeProblem.None) return pose;
@@ -555,7 +633,7 @@ namespace AirCity.Airfield
 
         /// <summary>
         /// Where it parks, out of the way, for a stand taking these types: retracted, level at the rotunda's floor (an
-        /// upper-deck bridge tilted up MaxSlope, over the main-deck bridges docking beside it),
+        /// upper-deck bridge's cab raised JetBridgeRules.ParkRise, over the main-deck bridges docking beside it),
         /// pointing at the door it serves on the largest type that has one (so docking is a straight run out), swung away
         /// from the aircraft as far as it has to be to clear every type by ParkClearance, and clear of `avoid` (the
         /// stand's head and its bridges parked before it, ParkAll). If it can, it also keeps out of `clearOf` (where the
@@ -573,8 +651,7 @@ namespace AirCity.Airfield
             foreach (var t in types)
                 if (t != null && !t.Light && TryDoor(t, bridge, out _) && (largest == null || t.Wingspan > largest.Wingspan)) largest = t;
             if (largest != null) aim = Dock(largest, out _).heading;
-            float rise = bridge.upper ? JetBridgeRules.MinTunnel * JetBridgeRules.MaxSlope / Mathf.Sqrt(1f + JetBridgeRules.MaxSlope * JetBridgeRules.MaxSlope) : 0f;
-            pose = new BridgePose { heading = aim, length = JetBridgeRules.MinTunnel, cabFloor = bridge.Floor + rise, floor = bridge.Floor };
+            pose = bridge.ParkedPose(aim);
             if (clearOf != null && clearOf.Count > 0 && Swing(ref pose, aim, 72, types, avoid, clearOf)) return true;
             if (Swing(ref pose, aim, 36, types, avoid, null)) return true;
             pose.heading = aim;
@@ -595,8 +672,9 @@ namespace AirCity.Airfield
             return false;
         }
 
-        /// <summary>For each of a stand's bridges, where the others dock the types it can't (it parks clear of them,
-        /// Parked: a bridge left parked mustn't stand in the way of the others).</summary>
+        /// <summary>For each of a stand's bridges, where the others dock the types it can't, and their way out there
+        /// from swung round, retracted (BridgePose.Move: telescoping out, the cab turning): it parks clear of them (Parked:
+        /// a bridge left parked mustn't stand in the way of the others).</summary>
         public static List<BridgeShape>[] Clear(IList<BridgeLayout> list, IList<AircraftType> types)
         {
             var docks = new List<(AircraftType type, BridgeShape shape)>[list.Count];
@@ -610,7 +688,8 @@ namespace AirCity.Airfield
                     if (t == null || t.Light) continue;
                     var pose = list[i].Dock(t, out var p);
                     if (p != BridgeProblem.None) continue;
-                    docks[i].Add((t, list[i].Shape(pose)));
+                    var swung = list[i].bridge.ParkedPose(pose.heading);
+                    for (int k = 0; k <= 4; k++) docks[i].Add((t, list[i].Shape(k == 4 ? pose : BridgePose.Move(swung, pose, k / 4f))));
                     can[i].Add(t);
                 }
             }
@@ -662,6 +741,50 @@ namespace AirCity.Airfield
                 foreach (var q in quads)
                     if (InTheWay(stand, q, t, JetBridgeRules.ParkClearance, !high)) return false;
                 if (drive != null && InTheWay(stand, drive, t, JetBridgeRules.ParkClearance)) return false;
+            }
+            return true;
+        }
+
+        /// <summary>Could it park, retracted, pointing this way (or within 30 degrees of it), clear of every type the
+        /// stand takes, and swing round from there to dock `type` (if given) without hitting it (SwingClear)?</summary>
+        public bool CanParkToward(Vector2 heading, IList<AircraftType> types, AircraftType type = null)
+        {
+            var pose = bridge.ParkedPose(heading);
+            var dock = default(BridgePose);
+            if (type != null)
+            {
+                dock = Dock(type, out var problem);
+                if (problem != BridgeProblem.None) return false;
+            }
+            for (int k = 0; k <= 12; k++)
+            {
+                pose.heading = BridgePose.Rotate(heading, (k + 1) / 2 * 5f * (k % 2 == 0 ? -1f : 1f));
+                if (ClearOf(pose, types)) return type == null || SwingClear(pose, dock, type);
+            }
+            return false;
+        }
+
+        /// <summary>How far a bridge swinging round, retracted, keeps off the aircraft (SwingClear), metres.</summary>
+        const float SwingClearance = 0.5f;
+
+        /// <summary>
+        /// Swinging round from `from` (where it parks) to the heading it docks at (`to`), as retracted and tilted as it
+        /// parks (BridgePose.Move), does it keep SwingClearance off a type parked on the stand: its fuselage and tail,
+        /// and its wings unless it passes over them from a raised rotunda (its drive, on the ground, never does)?
+        /// </summary>
+        public bool SwingClear(BridgePose from, BridgePose to, AircraftType type)
+        {
+            if (type == null) return true;
+            float angle = Vector2.SignedAngle(from.heading, to.heading);
+            int n = Mathf.CeilToInt(Mathf.Abs(angle) / 3f);
+            var pose = from;
+            for (int i = 1; i <= n; i++)
+            {
+                // (SignedAngle is counter-clockwise, Rotate clockwise)
+                pose.heading = BridgePose.Rotate(from.heading, -angle * i / n);
+                foreach (var q in Footprint(pose, true))
+                    if (InTheWay(stand, q, type, SwingClearance, !bridge.upper)) return false;
+                if (bridge.upper && InTheWay(stand, Shape(pose).Drive.Corners(0f), type, SwingClearance)) return false;
             }
             return true;
         }
@@ -816,6 +939,8 @@ namespace AirCity.Airfield
             foreach (var q in site.pavement)
                 if (Convex.Overlap(RotundaSquare, q)) return BridgeProblem.RotundaOnPavement;
             if (Connected && LinkSlope > JetBridgeRules.MaxSlope + 1e-4f) return BridgeProblem.LinkTooSteep;
+            if (head == null && Connected && LinkLength > JetBridgeRules.MaxLink + 1e-3f) return BridgeProblem.LinkTooLong;
+            if (head == null && ThroughTerminal(root, rotunda, site.terminals)) return BridgeProblem.LinkThroughTerminal;
             if (Columns(site.pavement) == null) return BridgeProblem.ColumnOnPavement;
             var link = LinkFootprint;
             foreach (var t in types)
@@ -915,11 +1040,12 @@ namespace AirCity.Airfield
                     foreach (var q in l.Footprint(pose, true))
                         foreach (var pad in pads)
                             if (p == BridgeProblem.None && Convex.Overlap(q, pad)) p = BridgeProblem.OnNextStand;
+                if (p == BridgeProblem.None && !l.SwingClear(mine, pose, t)) p = BridgeProblem.SwingHitsAircraft;
                 if (p == BridgeProblem.None)
                 {
-                    // docked (the last step), and on the way: the stand's bridges all set off together
+                    // docked (the last step), and on the way (BridgePose.Move): the stand's bridges all set off together
                     for (int i = 1; i <= SweepSteps; i++)
-                        sweep[i - 1] = l.Shape(i == SweepSteps ? pose : BridgePose.Lerp(mine, pose, i / (float)SweepSteps));
+                        sweep[i - 1] = l.Shape(i == SweepSteps ? pose : BridgePose.Move(mine, pose, i / (float)SweepSteps));
                     foreach (var o in order)
                     {
                         if (o == l) continue;
@@ -930,7 +1056,7 @@ namespace AirCity.Airfield
                         bool clash = false;
                         for (int i = 1; i <= SweepSteps && !clash; i++)
                         {
-                            var theirs = oDocks ? o.Shape(i == SweepSteps ? op : BridgePose.Lerp(oParked, op, i / (float)SweepSteps)) : oParkedShape;
+                            var theirs = oDocks ? o.Shape(i == SweepSteps ? op : BridgePose.Move(oParked, op, i / (float)SweepSteps)) : oParkedShape;
                             clash = sweep[i - 1].Clashes(theirs);
                         }
                         if (clash)
@@ -961,17 +1087,17 @@ namespace AirCity.Airfield
         }
 
         /// <summary>Docking (and pulling back) is checked at the poses this many steps apart on the way.</summary>
-        const int SweepSteps = 4;
+        const int SweepSteps = 8;
 
         /// <summary>
         /// A place for a new bridge to a door (side, deck, n-th from the front) on a stand: searched over a grid round the
         /// stand, kept on its
         /// own ground (beside the aircraft or beyond its head), the rotunda clear of the aircraft, its link (if a
-        /// terminal is within JetBridgeRules.MaxLink) straight out from the nearest terminal wall. It must dock the
-        /// largest type with that door without crossing the stand's other bridges; places that dock the other types too
-        /// come first (a bridge that can't reach a smaller type's door just stays parked for it, as an L2 bridge does for
-        /// a narrow-body on a wide-body stand). Then: the tunnel a little under half out for the largest type, a short
-        /// link, the rotunda near the stand's head. Null if nowhere works.
+        /// terminal is within JetBridgeRules.MaxLink) straight out from the nearest terminal wall, with `door`'s tunnel.
+        /// It must dock the largest type with that door without crossing the stand's other bridges; places that dock the
+        /// other types too come first (a bridge that can't reach a smaller type's door just stays parked for it, as an
+        /// L2 bridge does for a narrow-body on a wide-body stand). Then: the tunnel a little under half out for the
+        /// largest type, a short link, the rotunda near the stand's head. Null if nowhere works.
         /// </summary>
         public static JetBridge Suggest(StandLayout stand, JetBridge door, IList<BridgeLayout> others, BridgeSite site)
         {
@@ -981,7 +1107,8 @@ namespace AirCity.Airfield
             foreach (var t in types)
                 if (t != null && !t.Light && TryDoor(t, door, out _) && (design == null || t.Wingspan > design.Wingspan)) design = t;
             if (design == null || stand.TaxiOut || stand.stand.DeIcing) return null;
-            const float step = 1.5f, target = 22f;
+            const float step = 1.5f;
+            float target = door.tunnel == TunnelSize.Short ? 14f : 22f;
             var candidates = new List<(float score, JetBridge bridge)>();
             for (float s = stand.noseS - 40f; s <= stand.far + 30f; s += step)
                 for (float x = stand.x0 - 10f; x <= stand.x1 + 10f; x += step)
@@ -989,7 +1116,11 @@ namespace AirCity.Airfield
                     // on the stand's own ground: between its sides, or beyond its head
                     bool beside = x - JetBridgeRules.RotundaRadius >= stand.x0 && x + JetBridgeRules.RotundaRadius <= stand.x1;
                     if (!beside && s < stand.far + JetBridgeRules.RotundaRadius) continue;
-                    var b = new JetBridge { door = door.door, side = door.side, upper = door.upper, rotunda = new Vector2(x, s), root = new Vector2(x, s) };
+                    var b = new JetBridge
+                    {
+                        door = door.door, side = door.side, upper = door.upper, tunnel = door.tunnel, rotunda = new Vector2(x, s),
+                        root = new Vector2(x, s),
+                    };
                     var at = stand.At(x, s);
                     float link = 0f, nearest = float.MaxValue;
                     bool inside = false;
@@ -1089,6 +1220,10 @@ namespace AirCity.Airfield
             BridgeProblem.LinkTooSteep => $"link too short to ramp up to the raised rotunda (needs {JetBridgeRules.MinLink(JetBridgeRules.UpperFloor):0} m)",
             BridgeProblem.ColumnOnPavement => "link column would stand on a road or taxiway",
             BridgeProblem.HeadInTheWay => "bridge head stands where the aircraft parks",
+            BridgeProblem.SwingHitsAircraft => "swings into the aircraft on its way out",
+            BridgeProblem.LinkThroughTerminal => "link runs through the terminal",
+            BridgeProblem.LinkTooLong => $"link longer than {JetBridgeRules.MaxLink:0} m",
+            BridgeProblem.HeadInTerminal => "bridge head stands in the terminal",
             _ => "taxi-out stands take no bridges",
         };
     }

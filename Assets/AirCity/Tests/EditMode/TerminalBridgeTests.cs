@@ -197,6 +197,7 @@ namespace AirCity.Tests.Airfield
             Assert.AreEqual(JetBridgeRules.RotundaRadius, d.rotundaRadius, 1e-3f);
             Assert.AreEqual(JetBridgeRules.TunnelStart, d.tunnelStart, 1e-3f);
             Assert.AreEqual(JetBridgeRules.SectionLength, d.sectionLength, 1e-3f);
+            Assert.AreEqual(JetBridgeRules.ShortSectionLength, d.shortSectionLength, 1e-3f);
             Assert.AreEqual(JetBridgeRules.CabReach, d.cabReach, 1e-3f);
             Assert.AreEqual(JetBridgeRules.CabWidth, d.cabWidth, 1e-3f);
             Assert.AreEqual(JetBridgeRules.DriveFromEnd, d.driveFromEnd, 1e-3f);
@@ -214,7 +215,8 @@ namespace AirCity.Tests.Airfield
             Assert.AreEqual(JetBridgeRules.HeadUpperWider, d.headUpperWider, 1e-3f);
             var prefab = VehicleSetup.Prefab("JetBridge");
             Assert.IsNotNull(prefab, "JetBridge prefab (VehicleSetup.CreateMissing)");
-            foreach (var part in new[] { "Rotunda", "RotundaHigh", "Tunnel_A", "Tunnel_B", "Tunnel_C", "Drive", "DriveLegs", "Cab", "Link",
+            foreach (var part in new[] { "Rotunda", "RotundaHigh", "Tunnel_A", "Tunnel_B", "Tunnel_C", "ShortTunnel_A", "ShortTunnel_B",
+                         "ShortTunnel_C", "Drive", "DriveLegs", "Cab", "Link",
                          "LinkColumnFoot", "LinkColumn", "LinkColumnHead", "Head", "HeadUpper", "HeadEnd", "HeadUpperEnd" })
                 Assert.IsNotNull(prefab.transform.Find(part), part);
         }
@@ -409,6 +411,229 @@ namespace AirCity.Tests.Airfield
                 foreach (var l in layouts.Where(l => !l.bridge.upper))
                     Assert.AreEqual(BridgeProblem.None, airport.Bridges.Check(st, l.bridge).Single(c => c.type != null && c.type.model == model).problem,
                         $"{model} at {l.bridge.DoorName}: {Problems(airport, st)}");
+        }
+
+        [Test]
+        public void HeadBridges_HaveShortTunnels_AndSwingRoundRetracted()
+        {
+            // the user saw bridges swing round with their tunnels out into the aircraft: a head's bridges get short
+            // tunnels, park retracted pointing at their doors, and only telescope out once swung round
+            var (airport, stands, _) = TestAirport(SizeCode.F);
+            var st = stands[0];
+            Assert.AreEqual(3, airport.Bridges.SetBridges(st, airport.Bridges.PlanDoors(st, 3)), Problems(airport, st));
+            var sl = airport.Taxiways.Layout(st);
+            var head = airport.Bridges.HeadOf(st);
+            var layouts = st.bridges.Select(b => BridgeLayout.Of(b, sl, airport.terminals, head)).ToList();
+            var types = airport.Bridges.TypesFor(st);
+            var parked = BridgeLayout.ParkAll(layouts, types, new[] { head.Shape }, out var ok);
+            for (int i = 0; i < layouts.Count; i++)
+            {
+                var l = layouts[i];
+                Assert.AreEqual(TunnelSize.Short, l.bridge.tunnel, l.bridge.DoorName);
+                Assert.IsTrue(ok[i], $"{l.bridge.DoorName} parks clear");
+                Assert.AreEqual(l.bridge.MinTunnel, parked[i].length, 1e-3f, $"{l.bridge.DoorName} parks retracted");
+                foreach (var t in types.Where(t => !t.Light))
+                {
+                    var dock = l.Dock(t, out var problem);
+                    if (problem != BridgeProblem.None) continue;
+                    Assert.IsTrue(l.SwingClear(parked[i], dock, t), $"{l.bridge.DoorName} swings round clear of the {t.model}");
+                    // on the way out it doesn't lengthen until it has swung round
+                    for (int k = 1; k < 40; k++)
+                    {
+                        var pose = BridgePose.Move(parked[i], dock, k / 40f);
+                        if (Vector2.Angle(pose.heading, dock.heading) > 0.5f)
+                            Assert.AreEqual(parked[i].length, pose.length, 1e-3f, $"{l.bridge.DoorName} to the {t.model}, step {k}: out before it swung round");
+                    }
+                }
+            }
+        }
+
+        [Test]
+        public void BridgePose_Move_SwingsRetractedThenTelescopes()
+        {
+            var parked = new BridgePose { heading = Vector2.right, length = 9.5f, floor = 4f, cabFloor = 4f };
+            var docked = new BridgePose { heading = Vector2.up, length = 18f, floor = 4f, cabFloor = 4.6f, cabTurn = 20f };
+            Assert.AreEqual(parked.length, BridgePose.Move(parked, docked, 0f).length, 1e-4f);
+            var end = BridgePose.Move(parked, docked, 1f);
+            Assert.AreEqual(docked.length, end.length, 1e-4f);
+            Assert.Less(Vector2.Angle(docked.heading, end.heading), 0.01f);
+            bool swungFirst = false;
+            for (int k = 1; k < 50; k++)
+            {
+                // going out: swings round as it is, then telescopes
+                var o = BridgePose.Move(parked, docked, k / 50f);
+                if (Vector2.Angle(o.heading, docked.heading) > 0.01f) Assert.AreEqual(parked.length, o.length, 1e-4f, $"out, step {k}");
+                else swungFirst = true;
+                // coming in: retracts first, then swings round
+                var i = BridgePose.Move(docked, parked, k / 50f);
+                if (Vector2.Angle(i.heading, docked.heading) > 0.01f) Assert.AreEqual(parked.length, i.length, 1e-4f, $"in, step {k}");
+            }
+            Assert.IsTrue(swungFirst, "it got round and then went out");
+        }
+
+        [Test]
+        public void BridgeHead_Dragged_TakesItsBridges_AndStopsShortOfTheAircraft()
+        {
+            var (airport, stands, _) = TestAirport(SizeCode.F);
+            var st = stands[0];
+            Assert.AreEqual(3, airport.Bridges.SetBridges(st, airport.Bridges.PlanDoors(st, 3)), Problems(airport, st));
+            var sl = airport.Taxiways.Layout(st);
+            var head = airport.Bridges.HeadOf(st);
+            var stations = airport.Bridges.HeadStations(st);
+            Assert.AreEqual(3, stations.Count, "all three stand on it");
+            var away = Geo2.Right(head.Dir) * Mathf.Sign(Vector2.Dot(head.a - sl.ParkPosition(Type("DoubleDeck")), Geo2.Right(head.Dir)));
+            // moved whole 2 m further from the aircraft: the bridges go with it, its main link still reaches the terminal
+            var was = st.bridges.Select(b => sl.At(b.rotunda.x, b.rotunda.y)).ToList();
+            Assert.IsTrue(airport.Bridges.MoveHead(st, head.a + away * 2f, head.b + away * 2f, stations, false, out var problem, out _),
+                BridgeLayout.Describe(problem));
+            var moved = airport.Bridges.HeadOf(st);
+            Assert.AreEqual(2f, Vector2.Dot(moved.a - head.a, away), 1e-3f);
+            Assert.IsTrue(moved.Connected);
+            for (int i = 0; i < st.bridges.Count; i++)
+                Assert.AreEqual(2f, Vector2.Distance(was[i], sl.At(st.bridges[i].rotunda.x, st.bridges[i].rotunda.y)), 1e-3f,
+                    $"{st.bridges[i].DoorName} moved with it");
+            foreach (var b in st.bridges)
+                Assert.IsNotNull(BridgeLayout.Of(b, sl, airport.terminals, moved).head, $"{b.DoorName} still stands on it");
+            // its far end stretched 5 m: the bridges stay where they are (counted from the near end, which stayed put)
+            stations = airport.Bridges.HeadStations(st);
+            var before = st.bridges.Select(b => b.rotunda).ToList();
+            Assert.IsTrue(airport.Bridges.MoveHead(st, moved.a, moved.b + moved.Dir * 5f, stations, false, out problem, out _), BridgeLayout.Describe(problem));
+            Assert.AreEqual(moved.Length + 5f, airport.Bridges.HeadOf(st).Length, 1e-3f);
+            CollectionAssert.AreEqual(before, st.bridges.Select(b => b.rotunda));
+            // dragged into where the aircraft parks: refused, nothing moved
+            var into = airport.Bridges.HeadOf(st);
+            var headWas = st.head.Clone();
+            stations = airport.Bridges.HeadStations(st);
+            Assert.IsFalse(airport.Bridges.MoveHead(st, into.a - away * 15f, into.b - away * 15f, stations, false, out problem, out _));
+            Assert.AreEqual(headWas.from, st.head.from);
+            Assert.AreEqual(headWas.to, st.head.to);
+            CollectionAssert.AreEqual(before, st.bridges.Select(b => b.rotunda));
+        }
+
+        [Test]
+        public void HandPlacedBridge_ServesTheDoorItReaches_FromWhereverItLeavesTheTerminal()
+        {
+            // the user places a bridge by hand: a link from a point on the terminal's wall to a rotunda beside the stand
+            var (airport, stands, terminal) = TestAirport(SizeCode.C);
+            var st = stands[1];
+            var sl = airport.Taxiways.Layout(st);
+            var jet = Type("Narrowbody");
+            // the rotunda where the bridge placer would put L1's; its link from 8 m along the terminal's wall, angled
+            Assert.AreEqual(1, airport.Bridges.SetBridges(st, 1));
+            var suggested = BridgeLayout.Of(st.bridges[0], sl, airport.terminals);
+            var rotunda = suggested.rotunda;
+            airport.Bridges.RemoveBridge(st, st.bridges[0]);
+            Assert.IsTrue(airport.Bridges.OnTerminalWall(suggested.root + sl.Right * 8f, 2f, out var wall, out _));
+            var made = airport.Bridges.AddBridge(st, rotunda, wall, out var problem, out var type);
+            Assert.IsNotNull(made, $"{(type != null ? type.model + ": " : "")}{BridgeLayout.Describe(problem)}");
+            Assert.AreEqual("L1", made.DoorName);
+            var l = BridgeLayout.Of(made, sl, airport.terminals);
+            Assert.IsTrue(l.Connected);
+            Assert.AreEqual(0f, Vector2.Distance(wall, l.root), 1e-3f, "its link leaves the terminal where it was put");
+            Assert.AreEqual(BridgeProblem.None, airport.Bridges.FirstProblem(st, made, out _), Problems(airport, st));
+
+            // moving where the link leaves, along the wall: the rotunda stays put
+            Assert.IsTrue(airport.Bridges.OnTerminalWall(suggested.root - sl.Right * 5f, 2f, out var along, out _));
+            Assert.IsTrue(airport.Bridges.MoveRoot(st, made, along, out problem, out _), BridgeLayout.Describe(problem));
+            l = BridgeLayout.Of(made, sl, airport.terminals);
+            Assert.AreEqual(0f, Vector2.Distance(along, l.root), 1e-3f);
+            Assert.AreEqual(0f, Vector2.Distance(rotunda, l.rotunda), 1e-3f);
+            // not off the wall
+            Assert.IsFalse(airport.Bridges.MoveRoot(st, made, along + new Vector2(0f, -20f), out _, out _));
+            // moving the rotunda keeps the link leaving where it did
+            Assert.IsTrue(airport.Bridges.MoveBridge(st, made, rotunda + sl.axis * 1f, along, out problem, out _), BridgeLayout.Describe(problem));
+            Assert.AreEqual(0f, Vector2.Distance(along, BridgeLayout.Of(made, sl, airport.terminals).root), 1e-3f);
+            // nor through the building: a root on the far wall
+            var far = terminal.corners.OrderBy(c => c.y).First();
+            Assert.IsTrue(airport.Bridges.OnTerminalWall(new Vector2(along.x, far.y), 1f, out var back, out _));
+            Assert.IsFalse(airport.Bridges.MoveRoot(st, made, back, out problem, out _));
+            Assert.AreEqual(BridgeProblem.LinkThroughTerminal, problem);
+
+            // a rotunda where the aircraft parks is refused, nothing added
+            int n = st.bridges.Count;
+            Assert.IsNull(airport.Bridges.AddBridge(st, sl.ParkPosition(jet), wall, out problem, out _));
+            Assert.AreEqual(BridgeProblem.RotundaInTheWay, problem);
+            Assert.AreEqual(n, st.bridges.Count);
+
+            // taken off again
+            airport.Bridges.RemoveBridge(st, made);
+            Assert.AreEqual(0, st.bridges.Count);
+        }
+
+        [Test]
+        public void HeadMainLink_LeavesTheTerminalWhereItIsPut()
+        {
+            var (airport, stands, _) = TestAirport(SizeCode.F);
+            var st = stands[0];
+            Assert.AreEqual(3, airport.Bridges.SetBridges(st, airport.Bridges.PlanDoors(st, 3)), Problems(airport, st));
+            var head = airport.Bridges.HeadOf(st);
+            Assert.IsTrue(head.HasLink);
+            // slide its terminal end 6 m along the wall: the head stays, its main link angles
+            var side = Geo2.Right(head.Dir);
+            Assert.IsTrue(airport.Bridges.OnTerminalWall(head.root + side * 6f, 2f, out var along, out _));
+            Assert.IsTrue(airport.Bridges.MoveRoot(st, null, along, out var problem, out _), BridgeLayout.Describe(problem));
+            var moved = airport.Bridges.HeadOf(st);
+            Assert.AreEqual(0f, Vector2.Distance(along, moved.root), 1e-3f);
+            Assert.AreEqual(0f, Vector2.Distance(head.a, moved.a), 1e-3f);
+            // moving the head keeps it leaving there
+            var stations = airport.Bridges.HeadStations(st);
+            Assert.IsTrue(airport.Bridges.MoveHead(st, moved.a + side * 1f, moved.b + side * 1f, stations, false, along, out problem, out _),
+                BridgeLayout.Describe(problem));
+            Assert.AreEqual(0f, Vector2.Distance(along, airport.Bridges.HeadOf(st).root), 1e-3f);
+            // removing a bridge leaves the head; removing the head takes the bridges on it
+            airport.Bridges.RemoveBridge(st, st.bridges[0]);
+            Assert.IsNotNull(airport.Bridges.HeadOf(st));
+            airport.Bridges.RemoveHead(st);
+            Assert.IsNull(airport.Bridges.HeadOf(st));
+            Assert.AreEqual(0, st.bridges.Count);
+        }
+
+        [Test]
+        public void HandPlacedHead_StandsWithoutBridges_AndTakesBridgesOnItsWall()
+        {
+            // the user places the head by hand (main link from the wall, near end, far end), then its bridges onto it
+            var (airport, stands, _) = TestAirport(SizeCode.E);
+            var st = stands[0];
+            var sl = airport.Taxiways.Layout(st);
+            // where the placer would put the head for L1 + L2, to stand somewhere that works
+            Assert.AreEqual(2, airport.Bridges.SetBridges(st, 2), Problems(airport, st));
+            var auto = airport.Bridges.HeadOf(st);
+            Assert.IsNotNull(auto, "two bridges share a head");
+            var rotundas = st.bridges.Select(b => sl.At(b.rotunda.x, b.rotunda.y)).ToList();
+            var (near, far, root) = (auto.a, auto.b, auto.root);
+            airport.Bridges.RemoveHead(st);
+            Assert.AreEqual(0, st.bridges.Count);
+
+            // the main link from 4 m along the wall
+            Assert.IsTrue(airport.Bridges.OnTerminalWall(root + sl.Right * 4f, 2f, out var wall, out _));
+            Assert.AreEqual(BridgeProblem.None, airport.Bridges.HeadProblem(st, wall, near, far));
+            Assert.IsTrue(airport.Bridges.PlaceHead(st, wall, near, far, out var problem, out _), BridgeLayout.Describe(problem));
+            var head = airport.Bridges.HeadOf(st);
+            Assert.IsNotNull(head, "a head with no bridges on it yet still stands");
+            Assert.AreEqual(0f, Vector2.Distance(wall, head.root), 1e-3f);
+            Assert.IsTrue(airport.Bridges.Heads.Contains(head), "and is shown");
+
+            // bridges onto it, from its wall to where the placer had their rotundas
+            foreach (var r in rotundas)
+            {
+                head.ClosestOnWall(r, out var onHead);
+                var b = airport.Bridges.AddBridge(st, r, onHead, out problem, out var type);
+                Assert.IsNotNull(b, $"{(type != null ? type.model + ": " : "")}{BridgeLayout.Describe(problem)}");
+                Assert.IsNotNull(BridgeLayout.Of(b, sl, airport.terminals, airport.Bridges.HeadOf(st)).head, $"{b.DoorName} stands on the head");
+            }
+            CollectionAssert.AreEquivalent(new[] { "L1", "L2" }, st.bridges.Select(b => b.DoorName));
+            foreach (var b in st.bridges)
+                Assert.AreEqual(BridgeProblem.None,
+                    airport.Bridges.Check(st, b).Single(c => c.type != null && c.type.model == "Widebody").problem, Problems(airport, st));
+
+            // a head 15 m nearer the aircraft, over its wing, is refused, and the one there stays
+            var park = sl.ParkPosition(Type("Widebody"));
+            var toward = sl.Right * Mathf.Sign(Vector2.Dot(park - near, sl.Right)) * 15f;
+            Assert.AreEqual(BridgeProblem.HeadInTheWay, airport.Bridges.HeadProblem(st, wall, near + toward, far + toward));
+            Assert.IsFalse(airport.Bridges.PlaceHead(st, wall, near + toward, far + toward, out _, out _));
+            Assert.AreEqual(0f, Vector2.Distance(near, airport.Bridges.HeadOf(st).a), 1e-3f);
+            // nor with its main link from off the walls
+            Assert.AreEqual(BridgeProblem.LinkTooLong, airport.Bridges.HeadProblem(st, park, near, far));
         }
 
         [Test]

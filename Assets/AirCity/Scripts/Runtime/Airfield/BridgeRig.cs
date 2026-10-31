@@ -7,8 +7,9 @@ namespace AirCity.Airfield
 {
     /// <summary>
     /// Shows the airport's jet bridges (on the Airport's object): one JetBridge model per bridge, its parts placed each
-    /// frame from the pose AirportBridges has it in. The rotunda turns with the tunnel; the three tunnel sections share
-    /// the tunnel's length out (the smallest stays at the rotunda, the largest carries the cab and the drive); the drive
+    /// frame from the pose AirportBridges has it in. The rotunda turns with the tunnel; the three tunnel sections (a short
+    /// bridge's ShortTunnel_A/B/C) share the tunnel's length out (the smallest stays at the rotunda, the largest carries
+    /// the cab and the drive); the drive
     /// stands under the yoke with its legs stretched up to it; the cab turns to face the aircraft. The fixed link is
     /// stretched from the terminal's wall (at the main floor) to the rotunda, ramping up to an upper-deck bridge's raised
     /// rotunda (RotundaHigh; a model without one stretches the low one), on the columns BridgeLayout.Columns placed off
@@ -23,15 +24,16 @@ namespace AirCity.Airfield
     [ExecuteAlways, DisallowMultipleComponent, RequireComponent(typeof(Airport))]
     public class BridgeRig : MonoBehaviour
     {
-        [Tooltip("The JetBridge model (VehicleSetup makes it): parts Rotunda, RotundaHigh, Tunnel_A/B/C, Drive, DriveLegs, Cab, " +
-                 "Link, LinkColumnFoot, LinkColumn, LinkColumnHead, Head, HeadUpper, HeadEnd, HeadUpperEnd.")]
+        [Tooltip("The JetBridge model (VehicleSetup makes it): parts Rotunda, RotundaHigh, Tunnel_A/B/C, ShortTunnel_A/B/C, Drive, " +
+                 "DriveLegs, Cab, Link, LinkColumnFoot, LinkColumn, LinkColumnHead, Head, HeadUpper, HeadEnd, HeadUpperEnd.")]
         public GameObject prefab;
 
         sealed class Instance
         {
             public GameObject root;
             public Transform rotunda, rotundaHigh, cab, drive, legs, link;
-            public Transform[] tunnel;
+            /// <summary>The long tunnel's sections, and the short one's (null in a model built before it had them).</summary>
+            public Transform[] tunnel, shortTunnel;
             /// <summary>The link's columns' feet, shafts and heads (the first of each is the model's own).</summary>
             public readonly List<Transform> feet = new List<Transform>(), shafts = new List<Transform>(), heads = new List<Transform>();
         }
@@ -190,6 +192,7 @@ namespace AirCity.Airfield
                 root = go,
                 rotunda = t.Find("Rotunda"),
                 tunnel = new[] { t.Find("Tunnel_A"), t.Find("Tunnel_B"), t.Find("Tunnel_C") },
+                shortTunnel = t.Find("ShortTunnel_A") != null ? new[] { t.Find("ShortTunnel_A"), t.Find("ShortTunnel_B"), t.Find("ShortTunnel_C") } : null,
                 cab = t.Find("Cab"),
                 drive = t.Find("Drive"),
                 legs = t.Find("DriveLegs"),
@@ -235,10 +238,20 @@ namespace AirCity.Airfield
             float length = along.magnitude;
             var dir = length > 1e-3f ? along / length : Geo.X0Z(h);
             var pitched = Quaternion.LookRotation(dir, Vector3.up);
-            float sec = JetBridgeRules.SectionLength;
+            // the bridge's own sections (a model without short ones: the long ones, nested deeper)
+            bool shortOne = l.bridge.tunnel == TunnelSize.Short && inst.shortTunnel != null;
+            var sections = shortOne ? inst.shortTunnel : inst.tunnel;
+            var hidden = shortOne ? inst.tunnel : inst.shortTunnel;
+            if (hidden != null)
+                foreach (var part in hidden)
+                    if (part != null) part.gameObject.SetActive(false);
+            float sec = shortOne ? JetBridgeRules.ShortSectionLength : JetBridgeRules.SectionLength;
             float extra = Mathf.Max(length - sec, 0f);
             for (int i = 0; i < 3; i++)
-                Set(inst.tunnel[i], start + dir * (extra * i * 0.5f), pitched);
+            {
+                if (sections[i] != null) sections[i].gameObject.SetActive(true);
+                Set(sections[i], start + dir * (extra * i * 0.5f), pitched);
+            }
 
             // the cab on the tunnel's end, level, turned to the door
             Set(inst.cab, end, Yaw(pose.CabHeading));

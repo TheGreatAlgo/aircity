@@ -39,7 +39,12 @@ ArtSource/README.md. When you change a system, update its doc in `Docs/` in the 
   (`TerminalBridgeTests.Model_MatchesBridgeRules`). Departures wait for `Airport.Bridges.Clear` before the tug.
   A stand's bridges park in list order, each clear of those before (`BridgeLayout.ParkAll`): a re-placed bridge goes last.
   Two or three bridges share a head (`Stand.head`, `HeadLayout`): a bridge stands on it when its link root touches the
-  head's wall; the head has an upper storey only while an upper-deck bridge stands on it.
+  head's wall; the head has an upper storey only while an upper-deck bridge stands on it. A bridge's tunnel is long or
+  short (`JetBridge.tunnel`; a head's are short). Bridges move in stages (`BridgePose.Move`: swing round retracted, then
+  telescope out; the reverse coming in): check poses on the way with Move, never a straight Lerp. Hand placement
+  (dev Bridge tool, dragging rotundas, link roots and heads) goes through `AirportBridges` (`AddBridge`, `MoveBridge`,
+  `MoveRoot`, `PlaceHead`, `MoveHead`, `RemoveBridge`, `RemoveHead`), which refuse a place and leave things as they
+  were. A head may stand with no bridges on it.
 - Hot per-pixel or per-entity work goes in Burst jobs (see `AircraftLiveryCompositor`). Runtime-made textures go
   through `Bc1TextureBuilder`, not `Texture2D.Compress` (which is slow and main-thread only).
 

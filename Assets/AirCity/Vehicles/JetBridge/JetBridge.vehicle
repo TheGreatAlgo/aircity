@@ -29,6 +29,7 @@
     "rotundaRadius": 2.3,
     "tunnelStart": 2.3,
     "sectionLength": 13.0,
+    "shortSectionLength": 8.5,
     "sections": [
       [
         2.5,

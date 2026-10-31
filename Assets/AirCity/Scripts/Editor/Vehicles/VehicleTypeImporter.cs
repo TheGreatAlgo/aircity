@@ -11,7 +11,7 @@ namespace AirCity.EditorTools.Vehicles
     /// Imports &lt;Model&gt;.vehicle (JSON written by the vehicle pipeline in ArtSource/Vehicles) as a
     /// <see cref="VehicleType"/>. Positions are already in Unity space (+Z forward, +X right).
     /// </summary>
-    [ScriptedImporter(7, "vehicle")]
+    [ScriptedImporter(8, "vehicle")]
     public class VehicleTypeImporter : ScriptedImporter
     {
 #pragma warning disable 0649   // assigned by JsonUtility
@@ -40,7 +40,7 @@ namespace AirCity.EditorTools.Vehicles
         class BridgeJson
         {
             public float rotundaFloor, rotundaRadius, tunnelStart, sectionLength, cabReach, cabWidth, driveFromEnd, linkWidth, yokeBottom, upperFloor,
-                cabBottom, cabTop, linkBottom, linkTop, headWidth, headBottom, headTop, headUpperBottom, headUpperWider;
+                cabBottom, cabTop, linkBottom, linkTop, headWidth, headBottom, headTop, headUpperBottom, headUpperWider, shortSectionLength;
         }
 
         [Serializable]
@@ -143,7 +143,7 @@ namespace AirCity.EditorTools.Vehicles
                     driveFromEnd = b.driveFromEnd, linkWidth = b.linkWidth, yokeBottom = b.yokeBottom, upperFloor = b.upperFloor,
                     cabBottom = b.cabBottom, cabTop = b.cabTop, linkBottom = b.linkBottom, linkTop = b.linkTop,
                     headWidth = b.headWidth, headBottom = b.headBottom, headTop = b.headTop, headUpperBottom = b.headUpperBottom,
-                    headUpperWider = b.headUpperWider,
+                    headUpperWider = b.headUpperWider, shortSectionLength = b.shortSectionLength,
                 };
             }
             ctx.AddObjectToAsset("type", t);

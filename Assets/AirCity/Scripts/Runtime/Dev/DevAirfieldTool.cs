@@ -11,11 +11,11 @@ using UnityEngine.InputSystem;
 namespace AirCity.Dev
 {
     /// <summary>The sandbox's airfield tools (DevToolbar has a button for each).</summary>
-    public enum DevTool { Select, Runway, Taxiway, Road, Apron, Terminal, Depot, Stand, DeIcing, Delete }
+    public enum DevTool { Select, Runway, Taxiway, Road, Apron, Terminal, Depot, Stand, DeIcing, Bridge, Delete }
 
     /// <summary>
     /// Sandbox airfield building (development only, not game UI). DevToolbar has buttons for all of it; the keys:
-    ///   B = next build tool (select / runway / taxiway / road / apron / terminal / depot / stand / de-icing bay)
+    ///   B = next build tool (select / runway / taxiway / road / apron / terminal / depot / stand / de-icing bay / bridge)
     ///   X = delete tool
     ///   Esc = end the line being laid, else back to select, else deselect
     ///   select: click a runway, taxiway or road section, depot or apron to select it (outlined in amber; the panel
@@ -43,8 +43,16 @@ namespace AirCity.Dev
     ///   stand: click to add a parking stand. Beside a taxiway (or another stand's front line, the taxilane to come)
     ///     it opens onto it, its centreline under the cursor, pulled against the stands beside it; anywhere else it
     ///     stands free, centred on the cursor, and is connected later by laying a taxiway along its front line (shown
-    ///     dashed). Red where it won't fit. Click one to select it
+    ///     dashed). Hold Ctrl (Mac: or Cmd) to place it free anywhere, never snapped: Ctrl+press and drag turns it to
+    ///     point at the cursor (any angle), and it is built where the button comes up. Red where it won't fit. Click one to select it
     ///   de-icing bay: click on a taxiway (or anywhere, to connect later) to add a drive-through bay there
+    ///   bridge: place a jet bridge by hand. Click a terminal's wall where its link leaves the building (or a stand's
+    ///     bridge head), then click where its rotunda stands, beside the stand it serves: it serves the door nearest it
+    ///     along the aircraft that no bridge there serves yet and that it docks at, a short tunnel if that does as well. The
+    ///     link and rotunda show green where they work, red (with the reason) where they don't. Right-click or Esc
+    ///     drops the start; up to 3 a stand. "Head" in the strip places a bridge head instead: click the terminal's
+    ///     wall where its main link leaves, then where the head starts (at the wall: no main link), then where it ends;
+    ///     then it's back to placing bridges, onto the new head
     ///   V = surface   [ / ] = width (stands: size code)   L = lighting (selected runway; all taxiways with the
     ///     taxiway tool)   Z = stand angle (90 / 60 / 45 / 30, keeping its lean), Shift+Z = lean the other way
     ///     (bays: direction)
@@ -54,8 +62,11 @@ namespace AirCity.Dev
     ///   I = push-back / taxi-out stand
     ///   jet bridges (a selected push-back stand): 0-3 in the strip place that many, to doors L1, L2, L3, where they
     ///     work for the aircraft the stand takes and reach the nearest terminal (two or three share a bridge head where
-    ///     one fits); drag a rotunda (a ring) to move it, its link following to the nearest terminal wall or its
-    ///     stand's head; the panel lists each bridge's problems per aircraft
+    ///     one fits, their tunnels short); drag a rotunda (a ring) to move it, its link following to the nearest
+    ///     terminal wall or its stand's head; drag a bridge head's end (a ring) to stretch or turn it, or the head to
+    ///     move it, its bridges going with it; drag a link's square on the terminal wall (or the head's main link's) to
+    ///     move where it leaves the building, along the walls; a clicked bridge's tunnel is long or short in the strip,
+    ///     Delete takes just that bridge off; the panel lists each bridge's problems per aircraft
     ///   C = weather (dry / rain / snowing; snow builds up over game time)   Y = time speed (1x .. 60x)
     ///   O = a 2 cm snowfall at once   U = grass strips and verges grow 6 cm at once
     ///   P = plough the selection (taxiway / road tool: all taxiways; nothing selected: everything)
@@ -112,6 +123,11 @@ namespace AirCity.Dev
         /// and free stands' and bays' heading.</summary>
         float standAngle = 90f, freeHeading, scrollTurn;
         bool bayFlip, ghostAttached;
+        /// <summary>Ctrl (or Cmd) held with the stand tool: the ghost stands free, never pulled onto a taxiway or against a stand;
+        /// and while the button is down after a Ctrl+press, it is turned towards the cursor about where it was pressed
+        /// (freeAnchor), and built where the button comes up.</summary>
+        bool placeFree, freeTurning;
+        Vector2 freeAnchor;
         string ghostNote;
         StandExit standExit;
         bool standNoSmall;
@@ -125,6 +141,37 @@ namespace AirCity.Dev
         /// door is changed in the strip), or null.</summary>
         JetBridge draggingBridge, selectedBridge;
         string bridgeNote;
+        /// <summary>The selected stand's bridge head being dragged: by its near end (where the main link comes in), its
+        /// far end, or whole; and how it and its bridges were when the drag began (AirportBridges.HeadStations).</summary>
+        enum HeadGrip { None, Whole, Near, Far, Root }
+        HeadGrip headGrip;
+        BridgeHead headWas;
+        Vector2 headGrab, headLast;
+        /// <summary>Where the head's main link left the terminal when the drag began: kept while it works.</summary>
+        Vector2? headRoot;
+        readonly List<(JetBridge bridge, float fromNear, float fromFar, float side)> headBridges = new List<(JetBridge, float, float, float)>();
+        /// <summary>A link's terminal end being dragged along the walls (RootDrag): a bridge's, or (draggingRootHead) the
+        /// selected stand's head's main link's.</summary>
+        JetBridge draggingRoot;
+        bool draggingRootHead;
+        /// <summary>Bridge tool: where the link leaves the terminal (or the head), once clicked; the stand the rotunda
+        /// under the cursor would serve, the door it would most likely serve, and why it can't go there (or null).</summary>
+        Vector2? bridgeStart;
+        /// <summary>Bridge tool placing a bridge head (else a bridge): its near end, once clicked (bridgeStart is where
+        /// its main link leaves the terminal).</summary>
+        bool headMode;
+        Vector2? headNear;
+        /// <summary>Where the dragged bridge's link left the terminal when the drag began (kept while it works).</summary>
+        Vector2? dragRootFrom;
+        Stand bridgeStand;
+        JetBridge bridgePreview;
+        string bridgeProblem;
+        Vector2 bridgeCursor;
+        /// <summary>Bridge tool: the last placement check's stand, point and answer ("" if fine; null: not checked yet),
+        /// and what the last bridge placed was.</summary>
+        Stand previewStand;
+        Vector2 previewAt, previewRoot;
+        string previewWhy, bridgePlaced;
         Vector2 apronCursor, apronDragStart, pressScreen;
         bool apronDrag, apronPress;
         Vector2[] apronRect;
@@ -272,6 +319,16 @@ namespace AirCity.Dev
             lineSnapShown = false;
             draggingBridge = null;
             bridgeNote = null;
+            headGrip = HeadGrip.None;
+            freeTurning = placeFree = false;
+            draggingRoot = null;
+            draggingRootHead = false;
+            bridgeStart = null;
+            headNear = null;
+            bridgeStand = null;
+            bridgePreview = null;
+            bridgeProblem = null;
+            previewWhy = bridgePlaced = null;
         }
 
         /// <summary>The surface for new pavement; with a runway selected (select or runway tool), that runway's too.</summary>
@@ -530,6 +587,70 @@ namespace AirCity.Dev
             if (apronProblem == null) airport.ChangeTerminal(t, changed);
         }
 
+        /// <summary>Give the selected bridge a long or short tunnel, where it stands (BridgeNote: what's wrong with it then).</summary>
+        public void SetBridgeTunnel(TunnelSize size)
+        {
+            var b = SelectedBridge;
+            if (b == null || b.tunnel == size) return;
+            b.tunnel = size;
+            airport.Taxiways.Rebuild();
+            var problem = airport.Bridges.FirstProblem(SelectedStand, b, out var type);
+            bridgeNote = problem == BridgeProblem.None ? null : (type != null ? type.displayName + ": " : "") + BridgeLayout.Describe(problem);
+        }
+
+        /// <summary>Bridge tool: has the link's start been clicked; why the bridge can't go where the cursor is (or
+        /// null); and the stand and door it would serve.</summary>
+        public bool BridgeStarted => bridgeStart != null;
+        /// <summary>Bridge tool: placing a bridge head (else a bridge), and has its near end been clicked.</summary>
+        public bool PlacingHead => headMode;
+        public bool HeadStarted => headNear != null;
+
+        /// <summary>Bridge tool: place bridge heads (or bridges) with the next clicks; whatever was started is dropped.</summary>
+        public void SetPlacingHead(bool on)
+        {
+            headMode = on;
+            bridgeStart = headNear = null;
+            bridgeProblem = previewWhy = bridgePlaced = null;
+        }
+
+        /// <summary>Take the selected stand's bridge head away, and the bridges on it.</summary>
+        public void DeleteSelectedHead()
+        {
+            var st = SelectedStand;
+            if (st == null) return;
+            airport.Bridges.RemoveHead(st);
+            selectedBridge = null;
+            bridgeNote = null;
+        }
+        public string BridgeToolProblem => tool == DevTool.Bridge ? bridgeProblem : null;
+        public string BridgeTarget => bridgeStand == null ? null
+            : bridgePreview != null ? $"{bridgeStand.Name}, nearest door {bridgePreview.DoorName}" : bridgeStand.Name;
+        public string BridgePlaced => tool == DevTool.Bridge ? bridgePlaced : null;
+
+        /// <summary>Pick one of the selected stand's bridges (as clicking its rotunda does).</summary>
+        public void SelectBridge(JetBridge b)
+        {
+            if (SelectedStand != null && SelectedStand.bridges.Contains(b)) selectedBridge = b;
+        }
+
+        /// <summary>Remove the selected stand itself, even with one of its bridges picked.</summary>
+        public void DeleteSelectedStand()
+        {
+            if (SelectedStand == null) return;
+            selectedBridge = null;
+            DeleteSelection();
+        }
+
+        /// <summary>Take the selected bridge off its stand.</summary>
+        public void DeleteSelectedBridge()
+        {
+            var b = SelectedBridge;
+            if (b == null) return;
+            airport.Bridges.RemoveBridge(SelectedStand, b);
+            selectedBridge = null;
+            bridgeNote = null;
+        }
+
         /// <summary>Give the selected stand this many jet bridges (0-3), placed where they work.</summary>
         public void SetBridgeCount(int count)
         {
@@ -547,10 +668,15 @@ namespace AirCity.Dev
                 : null;
         }
 
-        /// <summary>Remove what's selected; false if nothing on the airfield is.</summary>
+        /// <summary>Remove what's selected (a stand's clicked bridge: just that bridge); false if nothing on the airfield is.</summary>
         public bool DeleteSelection()
         {
             if (selection.kind == Kind.None) return false;
+            if (SelectedBridge != null)
+            {
+                DeleteSelectedBridge();
+                return true;
+            }
             Remove(selection, false);
             return true;
         }
@@ -612,15 +738,23 @@ namespace AirCity.Dev
                 case DevTool.Terminal: TerminalTool(mouse, keys, click, free, point); break;
                 case DevTool.Depot: DepotTool(mouse, click, point); break;
                 case DevTool.Stand:
-                case DevTool.DeIcing: StandTool(click, free, point); break;
+                case DevTool.DeIcing: StandTool(mouse, keys, click, free, point); break;
+                case DevTool.Bridge: BridgeTool(click, free, point); break;
                 case DevTool.Delete:
                     if (click && hover.kind != Kind.None) Remove(hover, hoverRun);
                     break;
                 default:
                     // a rotunda of the selected stand's bridges is dragged; a click on an aircraft selects it instead
                     // (DevSandboxControls)
+                    if (RootDrag(mouse, click, point)) break;
                     if (BridgeDrag(mouse, click, point)) break;
-                    if (click) Select(hover);
+                    if (HeadDrag(mouse, click, point)) break;
+                    if (click)
+                    {
+                        // a click off the rotundas drops the picked bridge (Delete then takes the stand)
+                        Select(hover);
+                        selectedBridge = null;
+                    }
                     break;
             }
             if (SelectedTerminal != null && free)
@@ -630,17 +764,22 @@ namespace AirCity.Dev
 
         void HandleKeys(Keyboard keys, Mouse mouse)
         {
-            if (keys.bKey.wasPressedThisFrame) SetTool(tool >= DevTool.DeIcing ? DevTool.Select : tool + 1);
+            if (keys.bKey.wasPressedThisFrame) SetTool(tool >= DevTool.Bridge ? DevTool.Select : tool + 1);
             if (keys.digit0Key.wasPressedThisFrame && SelectedStand != null) SetBridgeCount(0);
             if (keys.xKey.wasPressedThisFrame) SetTool(tool == DevTool.Delete ? DevTool.Select : DevTool.Delete);
             if (keys.escapeKey.wasPressedThisFrame)
             {
-                if (chainNode >= 0) chainNode = -1;
+                if (bridgeStart != null) bridgeStart = headNear = null;
+                else if (chainNode >= 0) chainNode = -1;
                 else if (apronCorners.Count > 0 || apronDrag) SetTool(tool);
                 else if (tool != DevTool.Select) SetTool(DevTool.Select);
                 else selection = Pick.None;
             }
-            if (mouse.rightButton.wasPressedThisFrame) chainNode = -1;
+            if (mouse.rightButton.wasPressedThisFrame)
+            {
+                chainNode = -1;
+                bridgeStart = headNear = null;
+            }
             if (keys.vKey.wasPressedThisFrame) SetSurface((PavementSurface)(((int)surface + 1) % Surfaces.Count));
             if (keys.leftBracketKey.wasPressedThisFrame) StepWidth(-1);
             if (keys.rightBracketKey.wasPressedThisFrame) StepWidth(1);
@@ -920,10 +1059,232 @@ namespace AirCity.Dev
             return best;
         }
 
+        /// <summary>How near a link's terminal end a press grips it (RootDrag), metres.</summary>
+        const float RootGripReach = 2.5f;
+
         /// <summary>
-        /// Dragging a rotunda of the selected stand's bridges (select tool): press on one, move, release. Its link
-        /// follows to the nearest terminal wall. Kept where it is if the new place doesn't work for every aircraft the
-        /// stand takes. True while it has the mouse.
+        /// Bridge tool: the first click picks where the link leaves a terminal (on its wall: anywhere within a few metres
+        /// of it sticks to it) or a stand's bridge head (its wall); then the bridge's rotunda follows the cursor, to serve
+        /// the stand beside it (AirportBridges.StandFor), and a second click places it there (AirportBridges.AddBridge),
+        /// selecting its stand and the bridge. A bridge started on a head's wall goes on that head's stand.
+        /// </summary>
+        void BridgeTool(bool click, bool free, Vector3 point)
+        {
+            var p = Geo.XZ(airport.transform.InverseTransformPoint(point));
+            bridgeCursor = p;
+            bridgePreview = null;
+            bridgeProblem = null;
+            bridgeStand = null;
+            if (!free) return;
+            float reach = Mathf.Max(3f, MetresPerPixel(point) * 12f);
+            if (headMode)
+            {
+                HeadTool(click, p, reach);
+                return;
+            }
+            if (bridgeStart == null)
+            {
+                // the first click: a terminal's wall, or a stand's head
+                var head = HeadAt(p, reach, out var onHead);
+                bool onWall = airport.Bridges.OnTerminalWall(p, reach, out var wall, out _);
+                if (head != null)
+                {
+                    bridgeStand = head.stand.stand;
+                    bridgeCursor = onHead;
+                }
+                else if (onWall) bridgeCursor = wall;
+                else bridgeProblem = "click a terminal's wall (or a stand's bridge head) where the link leaves it";
+                if (click && bridgeProblem == null) bridgeStart = bridgeCursor;
+                return;
+            }
+            var root = bridgeStart.Value;
+            var startHead = HeadAt(root, 0.5f, out _);
+            var st = startHead != null ? startHead.stand.stand : airport.Bridges.StandFor(p);
+            bridgeStand = st;
+            if (st == null)
+            {
+                bridgeProblem = "put the rotunda beside a stand";
+                return;
+            }
+            if (st.exit == StandExit.TaxiOut)
+            {
+                bridgeProblem = "taxi-out stands take no bridges";
+                return;
+            }
+            if (st.bridges.Count >= JetBridgeRules.MaxPerStand)
+            {
+                bridgeProblem = $"{st.Name} has {JetBridgeRules.MaxPerStand} bridges already";
+                return;
+            }
+            float link = Vector2.Distance(root, p) - JetBridgeRules.RotundaRadius;
+            if (startHead == null && link > JetBridgeRules.MaxLink)
+            {
+                bridgeProblem = $"link longer than {JetBridgeRules.MaxLink:0} m";
+                return;
+            }
+            bridgePreview = airport.Bridges.NearestDoor(st, p);
+            // where it stands, checked again only once the cursor has moved a little (a door's own problems wait for
+            // the click)
+            if (st != previewStand || Vector2.Distance(p, previewAt) > 0.5f || previewRoot != root || previewWhy == null)
+            {
+                previewStand = st;
+                previewAt = p;
+                previewRoot = root;
+                var why = airport.Bridges.WhereProblem(st, p, root, bridgePreview);
+                previewWhy = why == BridgeProblem.None ? "" : BridgeLayout.Describe(why);
+            }
+            if (previewWhy.Length > 0) bridgeProblem = previewWhy;
+            if (!click) return;
+            var made = airport.Bridges.AddBridge(st, p, root, out var problem, out var type);
+            if (made == null)
+            {
+                bridgeProblem = previewWhy = problem == BridgeProblem.None
+                    ? "no door of the aircraft here is in reach from there"
+                    : (type != null ? type.displayName + ": " : "") + BridgeLayout.Describe(problem);
+                return;
+            }
+            // placed: its stand selected (its rings show), the tool kept for the next one
+            Select(new Pick { kind = Kind.Stand, stand = st, apron = -1 });
+            selectedBridge = made;
+            var after = airport.Bridges.FirstProblem(st, made, out var at);
+            bridgePlaced = $"placed {made.DoorName} ({made.tunnel.ToString().ToLowerInvariant()} tunnel) on {st.Name}" +
+                           (after == BridgeProblem.None ? "" : $": {(at != null ? at.displayName + " " : "")}{BridgeLayout.Describe(after)}");
+            bridgeStart = null;
+            previewWhy = null;
+        }
+
+        /// <summary>
+        /// Bridge tool placing a bridge head: the first click picks where its main link leaves a terminal (on its wall),
+        /// the second where the head starts (within reach of that point, or anywhere against a wall: no main link), the
+        /// third where it ends (AirportBridges.PlaceHead: it serves the stand beside it, StandFor its middle). Placed,
+        /// its stand is selected and the tool goes back to placing bridges, so the next clicks put them on the head.
+        /// </summary>
+        void HeadTool(bool click, Vector2 p, float reach)
+        {
+            if (bridgeStart == null)
+            {
+                if (airport.Bridges.OnTerminalWall(p, reach, out var wall, out _)) bridgeCursor = wall;
+                else bridgeProblem = "click a terminal's wall where the head's main link leaves the building";
+                if (click && bridgeProblem == null) bridgeStart = bridgeCursor;
+                return;
+            }
+            var root = bridgeStart.Value;
+            if (headNear == null)
+            {
+                // its near end: at the wall it stands against it
+                var near = Vector2.Distance(p, root) < reach ? root : p;
+                bridgeCursor = near;
+                float link = Vector2.Distance(root, near);
+                if (link > JetBridgeRules.MaxLink) bridgeProblem = $"main link longer than {JetBridgeRules.MaxLink:0} m";
+                else if (BridgeLayout.ThroughTerminal(root, near, airport.terminals)) bridgeProblem = "main link runs through the terminal";
+                if (click && bridgeProblem == null) headNear = near;
+                return;
+            }
+            var a = headNear.Value;
+            var along = p - a;
+            float len = Mathf.Clamp(along.magnitude, JetBridgeRules.MinHead, JetBridgeRules.MaxHead);
+            var far = a + (along.sqrMagnitude > 1e-4f ? along.normalized : Vector2.up) * len;
+            bridgeCursor = far;
+            var st = airport.Bridges.StandFor((a + far) * 0.5f);
+            bridgeStand = st;
+            if (st == null)
+            {
+                bridgeProblem = "put the head beside a stand";
+                return;
+            }
+            if (st != previewStand || Vector2.Distance(far, previewAt) > 0.5f || previewRoot != root || previewWhy == null)
+            {
+                previewStand = st;
+                previewAt = far;
+                previewRoot = root;
+                var why = airport.Bridges.HeadProblem(st, root, a, far);
+                previewWhy = why == BridgeProblem.None ? "" : BridgeLayout.Describe(why);
+            }
+            if (previewWhy.Length > 0) bridgeProblem = previewWhy;
+            if (!click) return;
+            if (!airport.Bridges.PlaceHead(st, root, a, far, out var problem, out var type))
+            {
+                bridgeProblem = previewWhy = (type != null ? type.displayName + ": " : "") + BridgeLayout.Describe(problem);
+                return;
+            }
+            Select(new Pick { kind = Kind.Stand, stand = st, apron = -1 });
+            selectedBridge = null;
+            headMode = false;
+            bridgeStart = headNear = null;
+            previewWhy = null;
+            bridgePlaced = $"placed a {len:0} m bridge head on {st.Name}: now click its wall, then where each bridge's rotunda stands";
+        }
+
+        /// <summary>A stand's bridge head whose wall is within `reach` of a ground point (and the nearest point of it), or null.</summary>
+        HeadLayout HeadAt(Vector2 p, float reach, out Vector2 onWall)
+        {
+            onWall = p;
+            HeadLayout best = null;
+            float bestD = reach;
+            foreach (var h in airport.Bridges.Heads)
+            {
+                float d = Geo.Inside(h.Outline, p) ? 0f : h.ClosestOnWall(p, out var w);
+                if (d > bestD) continue;
+                h.ClosestOnWall(p, out var at);
+                bestD = d;
+                best = h;
+                onWall = at;
+            }
+            return best;
+        }
+
+        /// <summary>
+        /// Dragging where a link of the selected stand leaves the terminal (select tool): press on the square at a
+        /// bridge's link's terminal end, or the head's main link's, and move it along the walls (it sticks to the
+        /// nearest wall within reach); the rotunda (or head) stays put (AirportBridges.MoveRoot). True while it has the
+        /// mouse.
+        /// </summary>
+        bool RootDrag(Mouse mouse, bool click, Vector3 point)
+        {
+            var st = SelectedStand;
+            var sl = st != null ? airport.Taxiways.Layout(st) : null;
+            if (sl == null)
+            {
+                draggingRoot = null;
+                draggingRootHead = false;
+                return false;
+            }
+            var p = Geo.XZ(airport.transform.InverseTransformPoint(point));
+            var head = airport.Bridges.HeadOf(st);
+            if (click)
+            {
+                draggingRoot = null;
+                draggingRootHead = head != null && head.HasLink && Vector2.Distance(head.root, p) < RootGripReach;
+                if (!draggingRootHead)
+                    foreach (var b in st.bridges)
+                    {
+                        var l = BridgeLayout.Of(b, sl, airport.terminals, head);
+                        if (l.head == null && l.LinkLength > 0.05f && Vector2.Distance(l.root, p) < RootGripReach) draggingRoot = b;
+                    }
+                if (draggingRoot == null && !draggingRootHead) return false;
+                if (draggingRoot != null) selectedBridge = draggingRoot;
+                return true;
+            }
+            if (draggingRoot == null && !draggingRootHead) return false;
+            if (!mouse.leftButton.isPressed || (draggingRoot != null && !st.bridges.Contains(draggingRoot)))
+            {
+                draggingRoot = null;
+                draggingRootHead = false;
+                return true;
+            }
+            if (!airport.Bridges.OnTerminalWall(p, Mathf.Max(6f, MetresPerPixel(point) * 20f), out var wall, out _)) return true;
+            airport.Bridges.MoveRoot(st, draggingRootHead ? null : draggingRoot, wall, out var problem, out var type);
+            bridgeNote = problem == BridgeProblem.None ? null
+                : (type != null ? type.displayName + ": " : "") + BridgeLayout.Describe(problem);
+            return true;
+        }
+
+        /// <summary>
+        /// Dragging a rotunda of the selected stand's bridges (select tool): press on one, move, release. Its link keeps
+        /// leaving the terminal where it did while that still works, else follows to the nearest terminal wall; it moves
+        /// onto the stand's head if the head is nearer (AirportBridges.MoveBridge). Kept where it is if the rotunda or link
+        /// would stand in the aircraft's way, on pavement or the next stand, or through a terminal. True while it has the
+        /// mouse.
         /// </summary>
         bool BridgeDrag(Mouse mouse, bool click, Vector3 point)
         {
@@ -944,6 +1305,8 @@ namespace AirCity.Dev
                         draggingBridge = b;
                 if (draggingBridge == null) return false;
                 selectedBridge = draggingBridge;
+                var at = BridgeLayout.Of(draggingBridge, sl, airport.terminals, airport.Bridges.HeadOf(st));
+                dragRootFrom = at.head == null && at.Connected ? at.root : (Vector2?)null;
             }
             if (draggingBridge == null) return false;
             if (!st.bridges.Contains(draggingBridge))
@@ -956,33 +1319,62 @@ namespace AirCity.Dev
                 draggingBridge = null;
                 return true;
             }
-            var was = draggingBridge.Clone();
-            draggingBridge.rotunda = BridgeLayout.ToStand(sl, p);
-            draggingBridge.root = draggingBridge.rotunda;
-            float nearest = float.MaxValue;
-            foreach (var t in airport.terminals)
-            {
-                float d = t.ClosestOnWall(p, out var wall, out _);
-                if (d >= nearest || d - JetBridgeRules.RotundaRadius > JetBridgeRules.MaxLink) continue;
-                nearest = d;
-                draggingBridge.root = BridgeLayout.ToStand(sl, wall);
-            }
-            // its stand's head, if nearer: a stub link from the head's wall
-            var head = airport.Bridges.HeadOf(st);
-            if (head != null && head.ClosestOnWall(p, out var onHead) < nearest)
-                draggingBridge.root = BridgeLayout.ToStand(sl, onHead);
-            var problem = airport.Bridges.FirstProblem(st, draggingBridge, out var type);
+            airport.Bridges.MoveBridge(st, draggingBridge, p, dragRootFrom, out var problem, out var type);
             bridgeNote = problem == BridgeProblem.None ? null
                 : (type != null ? type.displayName + ": " : "") + BridgeLayout.Describe(problem);
-            // a rotunda (or a link column) can't stand where the aircraft parks, on pavement, or on the next stand: keep it
-            // where it was
-            if (problem == BridgeProblem.RotundaInTheWay || problem == BridgeProblem.RotundaOnPavement || problem == BridgeProblem.ColumnOnPavement ||
-                problem == BridgeProblem.LinkInTheWay || problem == BridgeProblem.OnNextStand || problem == BridgeProblem.TaxiOutStand)
+            return true;
+        }
+
+        /// <summary>How near an end of a bridge head a press grips that end (HeadDrag), metres.</summary>
+        const float HeadGripReach = 4f;
+
+        /// <summary>
+        /// Dragging the selected stand's bridge head (select tool): press on an end (a ring) to move that end, the other
+        /// staying put, or on the head to move it whole; move; release. Its bridges go with it, and its main link follows
+        /// to the nearest terminal wall (AirportBridges.MoveHead, from where they all were when the drag began); where it
+        /// won't stand, it stops where it last stood right. True while it has the mouse.
+        /// </summary>
+        bool HeadDrag(Mouse mouse, bool click, Vector3 point)
+        {
+            var st = SelectedStand;
+            var net = airport.Taxiways;
+            var sl = st != null ? net.Layout(st) : null;
+            var h = sl != null ? airport.Bridges.HeadOf(st) : null;
+            if (h == null)
             {
-                draggingBridge.rotunda = was.rotunda;
-                draggingBridge.root = was.root;
+                headGrip = HeadGrip.None;
+                return false;
             }
-            net.Rebuild();
+            var p = Geo.XZ(airport.transform.InverseTransformPoint(point));
+            if (click)
+            {
+                headGrip = Vector2.Distance(p, h.b) < HeadGripReach ? HeadGrip.Far
+                    : Vector2.Distance(p, h.a) < HeadGripReach ? HeadGrip.Near
+                    : Geo.Inside(h.Outline, p) ? HeadGrip.Whole : HeadGrip.None;
+                if (headGrip == HeadGrip.None) return false;
+                headWas = st.head.Clone();
+                headRoot = h.HasLink ? h.root : (Vector2?)null;
+                headGrab = headLast = p;
+                headBridges.Clear();
+                headBridges.AddRange(airport.Bridges.HeadStations(st));
+                return true;
+            }
+            if (headGrip == HeadGrip.None) return false;
+            if (!mouse.leftButton.isPressed)
+            {
+                headGrip = HeadGrip.None;
+                return true;
+            }
+            if (Vector2.Distance(p, headLast) < 0.2f) return true;
+            headLast = p;
+            // the head moved or stretched from where it was when the drag began
+            var a = sl.At(headWas.from.x, headWas.from.y);
+            var b = sl.At(headWas.to.x, headWas.to.y);
+            var move = p - headGrab;
+            if (headGrip != HeadGrip.Far) a += move;
+            if (headGrip != HeadGrip.Near) b += move;
+            airport.Bridges.MoveHead(st, a, b, headBridges, headGrip == HeadGrip.Near, headRoot, out var problem, out var type);
+            bridgeNote = problem == BridgeProblem.None ? null : (type != null ? type.displayName + ": " : "") + BridgeLayout.Describe(problem);
             return true;
         }
 
@@ -1197,13 +1589,28 @@ namespace AirCity.Dev
         }
 
         /// <summary>Stand / de-icing bay tool: a ghost of the stand under the cursor (on a taxiway or a stand's
-        /// taxilane, snapped to its neighbours; or free), built on a click; a click on a stand selects it.</summary>
-        void StandTool(bool click, bool free, Vector3 point)
+        /// taxilane, snapped to its neighbours; or free), built on a click; a click on a stand selects it. With Ctrl
+        /// held it stands free wherever the cursor is, never snapped; press and drag to turn it to face the way the
+        /// cursor goes (any angle), and it is built where the button comes up.</summary>
+        void StandTool(Mouse mouse, Keyboard keys, bool click, bool free, Vector3 point)
         {
             var net = airport.Taxiways;
             var p = Geo.XZ(airport.transform.InverseTransformPoint(point));
             ghost = null;
             ghostProblem = null;
+            if (freeTurning)
+            {
+                // centred where the button went down, its centreline pointing at the cursor
+                if (Vector2.Distance(p, freeAnchor) > 2f) freeHeading = Mathf.Repeat(Bearing(p - freeAnchor), 360f);
+                placeFree = true;
+                ghost = Ghost(freeAnchor, out ghostProblem);
+                if (mouse.leftButton.isPressed) return;
+                freeTurning = false;
+                BuildGhost();
+                return;
+            }
+            // (Cmd too: macOS may turn a Ctrl+click into a right-click)
+            placeFree = keys.ctrlKey.isPressed || keys.leftCommandKey.isPressed || keys.rightCommandKey.isPressed;
             if (!free) return;
             if (net.TryPickStand(p, out var existing))
             {
@@ -1212,7 +1619,21 @@ namespace AirCity.Dev
                 return;
             }
             ghost = Ghost(p, out ghostProblem);
-            if (!click || ghost == null || ghostProblem != null) return;
+            if (!click || ghost == null) return;
+            if (placeFree)
+            {
+                freeTurning = true;
+                freeAnchor = p;
+                return;
+            }
+            BuildGhost();
+        }
+
+        /// <summary>Build the ghost, if it fits, and select it.</summary>
+        void BuildGhost()
+        {
+            if (ghost == null || ghostProblem != null) return;
+            var net = airport.Taxiways;
             var made = net.Add(ghost.stand);
             net.Rebuild();
             if (made != null) Select(new Pick { kind = Kind.Stand, stand = made, apron = -1 });
@@ -1223,9 +1644,9 @@ namespace AirCity.Dev
         /// The stand or bay the tool would build for a ground point. Where the point is beside a taxiway, or beside
         /// another stand's front line (the taxilane still to be laid), within the depth of the stand's pad (a bay: on
         /// it), it opens onto that line: its centreline under the point (bays: centred on it), pulled against a
-        /// neighbour within reach. Anywhere else it stands free, its pad centred on the point, turned to freeHeading,
-        /// its front line at standAngle to it. Null with a reason if it can't be laid out; a layout with a reason if
-        /// it doesn't fit.
+        /// neighbour within reach. Anywhere else, or anywhere with Ctrl held (placeFree), it stands free, its pad
+        /// centred on the point, turned to freeHeading, its front line at standAngle to it. Null with a reason if it
+        /// can't be laid out; a layout with a reason if it doesn't fit.
         /// </summary>
         StandLayout Ghost(Vector2 p, out string problem)
         {
@@ -1242,10 +1663,10 @@ namespace AirCity.Dev
             // their taxiway's end, or the taxilane still to come)
             var lines = new List<(Vector2 a, Vector2 b, TaxiwayEdge edge, float lane, string name)>();
             foreach (var e in net.edges)
-                if (!e.IsRoad) lines.Add((net.At(e.a), net.At(e.b), e, e.width, "the taxiway"));
+                if (!e.IsRoad && !placeFree) lines.Add((net.At(e.a), net.At(e.b), e, e.width, "the taxiway"));
             foreach (var o in net.Layouts())
             {
-                if (o.stand.kind != stand.kind) continue;
+                if (o.stand.kind != stand.kind || placeFree) continue;
                 var (m0, m1) = o.Mouth;
                 lines.Add((m0 - o.along * 150f, m1 + o.along * 150f, null, o.stand.Lane, $"{o.stand.Name}'s taxilane"));
             }
@@ -1307,7 +1728,9 @@ namespace AirCity.Dev
                     stand.position += Geo.X0Z(p - l.Centre);
                     l = StandLayout.Of(stand);
                 }
-                ghostNote = "free: connect it later with a taxiway along the dashed line";
+                ghostNote = freeTurning ? "free: drag to turn it, release to build it"
+                    : placeFree ? "free (Ctrl): press and drag to turn it; connect it later with a taxiway along the dashed line"
+                    : "free: connect it later with a taxiway along the dashed line";
             }
             if (l == null)
             {
@@ -1710,6 +2133,7 @@ namespace AirCity.Dev
                 outlines.Line(cam, loop, new Color(0.3f, 0.9f, 1f), 4f);
             }
             BridgeRings();
+            if (tool == DevTool.Bridge && pointing) BridgeGhost();
             if ((tool == DevTool.Taxiway || tool == DevTool.Road) && pointing && lineSnapShown)
             {
                 var colour = RoadProblem != null ? DevGui.Danger : new Color(1f, 0.8f, 0.1f);
@@ -1738,7 +2162,7 @@ namespace AirCity.Dev
         void BridgeRings()
         {
             var st = SelectedStand;
-            var sl = st != null && st.bridges.Count > 0 ? airport.Taxiways.Layout(st) : null;
+            var sl = st != null && (st.bridges.Count > 0 || (st.head != null && st.head.Exists)) ? airport.Taxiways.Layout(st) : null;
             if (sl == null) return;
             var types = airport.Bridges.TypesFor(st);
             var head = airport.Bridges.HeadOf(st);
@@ -1747,7 +2171,21 @@ namespace AirCity.Dev
                 loop.Clear();
                 foreach (var c in head.Outline) loop.Add(airport.transform.TransformPoint(Geo.X0Z(c, JetBridgeRules.RotundaFloor)));
                 var hp = head.Placement(airport.Bridges.Site(st));
-                outlines.Loop(cam, loop, hp != BridgeProblem.None ? DevGui.Danger : head.Connected ? DevGui.Accent : new Color(1f, 0.8f, 0.1f), 2.5f);
+                var headColour = hp != BridgeProblem.None ? DevGui.Danger : head.Connected ? DevGui.Accent : new Color(1f, 0.8f, 0.1f);
+                outlines.Loop(cam, loop, headColour, headGrip == HeadGrip.Whole ? 4f : 2.5f);
+                // its ends' grips (HeadDrag)
+                foreach (var (end, grip) in new[] { (head.a, HeadGrip.Near), (head.b, HeadGrip.Far) })
+                {
+                    loop.Clear();
+                    for (int i = 0; i < 16; i++)
+                    {
+                        float a = i / 16f * Mathf.PI * 2f;
+                        loop.Add(airport.transform.TransformPoint(Geo.X0Z(end + new Vector2(Mathf.Cos(a), Mathf.Sin(a)) * 2f, JetBridgeRules.RotundaFloor)));
+                    }
+                    outlines.Loop(cam, loop, headColour, headGrip == grip ? 4f : 2f);
+                }
+                // where its main link leaves the terminal (RootDrag)
+                if (head.HasLink) RootSquare(head.root, JetBridgeRules.RotundaFloor, headColour, draggingRootHead);
             }
             foreach (var b in st.bridges)
             {
@@ -1768,6 +2206,7 @@ namespace AirCity.Dev
                     loop.Add(airport.transform.TransformPoint(Geo.X0Z(l.root)));
                     outlines.Line(cam, loop, new Color(1f, 0.8f, 0.1f), 2f);
                 }
+                else if (l.head == null && l.LinkLength > 0.05f) RootSquare(l.root, JetBridgeRules.RotundaFloor, colour, b == draggingRoot);
                 foreach (var t in types)
                 {
                     if (t.Light || !BridgeLayout.TryDoor(t, b, out _)) continue;
@@ -1779,6 +2218,88 @@ namespace AirCity.Dev
                     outlines.Line(cam, loop, p == BridgeProblem.None ? new Color(0.55f, 1f, 0.55f) : DevGui.Danger, 1.5f);
                 }
             }
+        }
+
+        /// <summary>A square on a terminal's wall where a link leaves it, to drag (RootDrag).</summary>
+        void RootSquare(Vector2 at, float floor, Color colour, bool held)
+        {
+            loop.Clear();
+            float r = 1.4f;
+            foreach (var c in new[] { new Vector2(-r, -r), new Vector2(r, -r), new Vector2(r, r), new Vector2(-r, r) })
+                loop.Add(airport.transform.TransformPoint(Geo.X0Z(at + c, floor)));
+            outlines.Loop(cam, loop, colour, held ? 4f : 2f);
+        }
+
+        /// <summary>Bridge tool: where the link would leave the terminal (a square), and once that's clicked the link to
+        /// the cursor and the rotunda there, green where it can go, red where it can't.</summary>
+        void BridgeGhost()
+        {
+            var colour = bridgeProblem != null ? DevGui.Danger : new Color(0.55f, 1f, 0.55f);
+            if (headMode && bridgeStart != null)
+            {
+                HeadGhost(colour);
+                return;
+            }
+            if (bridgeStart == null)
+            {
+                if (bridgeProblem == null) RootSquare(bridgeCursor, JetBridgeRules.RotundaFloor, new Color(0.3f, 0.9f, 1f), false);
+                return;
+            }
+            var root = bridgeStart.Value;
+            RootSquare(root, JetBridgeRules.RotundaFloor, new Color(0.3f, 0.9f, 1f), true);
+            var p = bridgeCursor;
+            var d = p - root;
+            if (d.magnitude > JetBridgeRules.RotundaRadius)
+            {
+                var r = Geo.Right(d.normalized) * (JetBridgeRules.LinkWidth * 0.5f);
+                var end = p - d.normalized * JetBridgeRules.RotundaRadius;
+                loop.Clear();
+                foreach (var c in new[] { root + r, end + r, end - r, root - r })
+                    loop.Add(airport.transform.TransformPoint(Geo.X0Z(c, JetBridgeRules.RotundaFloor)));
+                outlines.Loop(cam, loop, colour, 2.5f);
+            }
+            loop.Clear();
+            for (int i = 0; i < 20; i++)
+            {
+                float a = i / 20f * Mathf.PI * 2f;
+                loop.Add(airport.transform.TransformPoint(Geo.X0Z(p + new Vector2(Mathf.Cos(a), Mathf.Sin(a)) * JetBridgeRules.RotundaRadius,
+                    JetBridgeRules.RotundaFloor)));
+            }
+            outlines.Loop(cam, loop, colour, 3f);
+            // the stand it would serve
+            var sl = bridgeStand != null ? airport.Taxiways.Layout(bridgeStand) : null;
+            if (sl == null) return;
+            loop.Clear();
+            foreach (var v in sl.Pad) loop.Add(airport.transform.TransformPoint(Geo.X0Z(v)));
+            outlines.Loop(cam, loop, new Color(0.3f, 0.9f, 1f), 2f);
+        }
+
+        /// <summary>Bridge tool placing a head: its main link from the terminal to its near end (the cursor, until that's
+        /// clicked), then the head from there to the cursor, and the stand it would serve.</summary>
+        void HeadGhost(Color colour)
+        {
+            var root = bridgeStart.Value;
+            var cyan = new Color(0.3f, 0.9f, 1f);
+            RootSquare(root, JetBridgeRules.RotundaFloor, cyan, true);
+            var near = headNear ?? bridgeCursor;
+            void Band(Vector2 from, Vector2 to, float width, Color c, float thick)
+            {
+                var d = to - from;
+                if (d.magnitude < 0.2f) return;
+                var r = Geo.Right(d.normalized) * (width * 0.5f);
+                loop.Clear();
+                foreach (var v in new[] { from + r, to + r, to - r, from - r })
+                    loop.Add(airport.transform.TransformPoint(Geo.X0Z(v, JetBridgeRules.RotundaFloor)));
+                outlines.Loop(cam, loop, c, thick);
+            }
+            Band(root, near, JetBridgeRules.MainLinkWidth, headNear == null ? colour : cyan, 2.5f);
+            if (headNear == null) return;
+            Band(near, bridgeCursor, JetBridgeRules.HeadWidth, colour, 3f);
+            var sl = bridgeStand != null ? airport.Taxiways.Layout(bridgeStand) : null;
+            if (sl == null) return;
+            loop.Clear();
+            foreach (var v in sl.Pad) loop.Add(airport.transform.TransformPoint(Geo.X0Z(v)));
+            outlines.Loop(cam, loop, cyan, 2f);
         }
 
         /// <summary>A stand's front line, dashed in amber a stand's width past each side: the taxilane that will

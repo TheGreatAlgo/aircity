@@ -80,6 +80,8 @@ namespace AirCity.Vehicles
         public float cabBottom, cabTop, linkBottom, linkTop;
         /// <summary>A bridge head's width, underside and parapet; its upper storey's underside, and how much wider it is.</summary>
         public float headWidth, headBottom, headTop, headUpperBottom, headUpperWider;
+        /// <summary>A short bridge's sections (ShortTunnel_A/B/C); 0 in a model built before it had them.</summary>
+        public float shortSectionLength;
     }
 
     [Serializable]

@@ -232,7 +232,8 @@ namespace AirCity.Airfield
 
         /// <summary>
         /// What's wrong with the head where it stands (BridgeProblem.None if nothing): a taxi-out stand, its columns (or
-        /// its main link's) unable to keep off the roads and taxiways, the head or its main link where an aircraft the
+        /// its main link's) unable to keep off the roads and taxiways, its main link through a terminal, the head or its
+        /// main link where an aircraft the
         /// stand takes parks, the head over a taxiway or either on another stand's pad, or too near another stand's head
         /// or bridges (`site.neighbours`).
         /// </summary>
@@ -240,6 +241,8 @@ namespace AirCity.Airfield
         {
             if (stand.TaxiOut || stand.stand.DeIcing) return BridgeProblem.TaxiOutStand;
             if (!Columns(site.pavement)) return BridgeProblem.ColumnOnPavement;
+            if (HasLink && LinkLength > JetBridgeRules.MaxLink + 1e-3f) return BridgeProblem.LinkTooLong;
+            if (HasLink && BridgeLayout.ThroughTerminal(root, a, site.terminals)) return BridgeProblem.LinkThroughTerminal;
             var box = Outline;
             var link = LinkFootprint;
             foreach (var t in site.types)
@@ -265,10 +268,12 @@ namespace AirCity.Airfield
         /// left out), and the bridges on it, as at most gates with two or three: the head runs along the stand beside
         /// the aircraft, parallel to it, a bridge's reach out from its doors, from just aft of its aftmost bridge to a
         /// little ahead of the foremost door, clear of every type's wings, and a straight main link runs on from its
-        /// near end to the terminal (or it stands against it). Heads are tried nearest a 19 m tunnel and shortest first;
-        /// on each the bridges are placed in turn from the aftmost door forward (SuggestBridge; the head ends just aft of
-        /// the first, so it can park swung back past the end), which is also the order they park in. The first head
-        /// whose bridges dock every type with their doors wins, else the first that takes most of them. Null if no head
+        /// near end to the terminal (or it stands against it). Heads are tried nearest a 16 m tunnel from the doors
+        /// (their bridges' tunnels are short where they reach, SuggestBridge, so they swing round well clear of the
+        /// aircraft) and shortest first; on each the bridges are placed in turn from the aftmost door forward
+        /// (SuggestBridge; the head ends just aft of the first, which keeps room to park swung back past the end), which
+        /// is also the order they park in. The first head whose bridges dock every type with their doors wins, else the
+        /// one that takes most of them and docks the most types. Null if no head
         /// takes two.
         /// </summary>
         public static (BridgeHead head, List<JetBridge> bridges) Suggest(StandLayout stand, IList<JetBridge> doors, BridgeSite site)
@@ -301,9 +306,9 @@ namespace AirCity.Airfield
             float side = Mathf.Sign(doorX);
             float hw = (JetBridgeRules.HeadWidth + (upper ? JetBridgeRules.HeadUpperWider : 0f)) * 0.5f;
             // each head as long as it could be aft (SuggestBridge trims it to its aftmost bridge)
-            var heads = new List<(float score, BridgeHead head)>();
+            var heads = new List<(float lat, float rest, BridgeHead head)>();
             float sB = sMin - 12f;
-            for (float lat = 14f; lat <= 34f; lat += 2f)
+            for (float lat = 12f; lat <= 34f; lat += 2f)
             {
                 float x = doorX + side * (lat + JetBridgeRules.HeadToRotunda);
                 if (x - hw < stand.x0 || x + hw > stand.x1) continue;
@@ -315,15 +320,17 @@ namespace AirCity.Airfield
                     float len = sA - sB, link = sWall - sA;
                     if (len > JetBridgeRules.MaxHead + 12f) break;
                     if (link <= JetBridgeRules.MaxLink)
-                        heads.Add((0.6f * Mathf.Abs(lat - 24f) + 0.12f * (sA - sMin) + 0.05f * link,
+                        heads.Add((lat, 0.12f * (sA - sMin) + 0.05f * link,
                             new BridgeHead { from = new Vector2(x, sA), to = new Vector2(x, sB), root = new Vector2(x, sWall) }));
                     if (last) break;
                 }
             }
-            heads.Sort((p, q) => p.score.CompareTo(q.score));
-            (BridgeHead head, List<JetBridge> bridges) best = (null, null);
+            // the rotundas as far out from the doors as a 16 m tunnel, square on, reaches
+            float target = 16f + JetBridgeRules.TunnelStart + JetBridgeRules.CabReach;
+            heads.Sort((p, q) => (0.6f * Mathf.Abs(p.lat - target) + p.rest).CompareTo(0.6f * Mathf.Abs(q.lat - target) + q.rest));
+            (BridgeHead head, List<JetBridge> bridges, int docks) best = (null, null, -1);
             int tried = 0;
-            foreach (var (_, longest) in heads)
+            foreach (var (_, _, longest) in heads)
             {
                 var h = Of(longest, stand, site.terminals, upper);
                 if (!h.Connected || InTerminal(h, site.terminals)) continue;
@@ -334,7 +341,7 @@ namespace AirCity.Airfield
                 foreach (var d in want)
                 {
                     // the first bridge (the aftmost) sets where the head ends
-                    var b = Place(h, d, placed, site.With(h), placed.Count == 0, out bool allDock, out var trimmed);
+                    var b = Place(h, d, TunnelSize.Short, placed, site.With(h), placed.Count == 0, out bool allDock, out var trimmed);
                     if (b == null)
                     {
                         all = false;
@@ -347,10 +354,18 @@ namespace AirCity.Airfield
                 }
                 if (bridges.Count < 2) continue;
                 if (all && bridges.Count == want.Count) return (h.head, bridges);
-                if (best.bridges == null || bridges.Count > best.bridges.Count) best = (h.head, bridges);
+                // else the most bridges, docking the most types between them
+                int docks = 0;
+                var hs = site.With(h);
+                foreach (var l in placed)
+                    foreach (var (t, p) in BridgeLayout.Check(l, placed, hs))
+                        if (t != null && p == BridgeProblem.None) docks++;
+                if (best.bridges == null || bridges.Count > best.bridges.Count || (bridges.Count == best.bridges.Count && docks > best.docks))
+                    best = (h.head, bridges, docks);
             }
-            return best;
+            return (best.head, best.bridges);
         }
+
 
         /// <summary>The largest type the stand takes with this door (not a light one), or null.</summary>
         static AircraftType Design(IList<AircraftType> types, JetBridge door)
@@ -384,7 +399,8 @@ namespace AirCity.Airfield
             return sWall < float.MaxValue;
         }
 
-        static bool InTerminal(HeadLayout h, IList<Terminal> terminals)
+        /// <summary>Does the head stand in a terminal (more than a touch)?</summary>
+        public static bool InTerminal(HeadLayout h, IList<Terminal> terminals)
         {
             var o = h.Outline;
             foreach (var t in terminals)
@@ -397,16 +413,20 @@ namespace AirCity.Airfield
         /// head facing the aircraft, on a stub link. As BridgeLayout.Suggest: it must dock the largest type with that
         /// door without crossing the head or the stand's other bridges (`others`), checked against `site` (whose head is
         /// this one); places that dock every type with the door, the others still docking all they did, come first
-        /// (allDock), then for the largest type the tunnel square to the fuselage (the cab turned least) and nearest
-        /// 20 m. Null if nowhere along the head works.
+        /// (allDock), then a tunnel of `door`'s size (a short one, TunnelSize.Short, off a head close to the aircraft
+        /// needn't reach far, and retracted it swings round clear of it) before the other, and for the largest type the
+        /// tunnel square to the fuselage (the cab turned least) and nearest 14 m (long: 20 m). Null if nowhere along the
+        /// head works. (A new head's aftmost bridge, `trim`, must be able to park swung back along the head and swing
+        /// round from there to dock the largest type, BridgeLayout.CanParkToward: the bridges ahead dock across where
+        /// it would otherwise park.)
         /// </summary>
         public static JetBridge SuggestBridge(HeadLayout h, JetBridge door, IList<BridgeLayout> others, BridgeSite site, out bool allDock) =>
-            Place(h, door, others, site, false, out allDock, out _);
+            Place(h, door, door.tunnel, others, site, false, out allDock, out _);
 
-        /// <summary>SuggestBridge; with `trim`, the head cut to end just aft of the bridge, whichever place it takes (as
-        /// `trimmed`; else the head itself).</summary>
-        static JetBridge Place(HeadLayout h, JetBridge door, IList<BridgeLayout> others, BridgeSite site, bool trim, out bool allDock,
-            out HeadLayout trimmed)
+        /// <summary>SuggestBridge, a `size` tunnel first; with `trim`, the head cut to end just aft of the bridge,
+        /// whichever place it takes (as `trimmed`; else the head itself).</summary>
+        static JetBridge Place(HeadLayout h, JetBridge door, TunnelSize prefer, IList<BridgeLayout> others, BridgeSite site, bool trim,
+            out bool allDock, out HeadLayout trimmed)
         {
             allDock = false;
             trimmed = h;
@@ -421,15 +441,23 @@ namespace AirCity.Airfield
             {
                 if (trim && t + edge < JetBridgeRules.MinHead) continue;
                 var (rot, root) = h.Spot(t, side);
-                var b = new JetBridge
+                foreach (var size in new[] { TunnelSize.Short, TunnelSize.Long })
                 {
-                    door = door.door, side = door.side, upper = door.upper,
-                    rotunda = BridgeLayout.ToStand(stand, rot), root = BridgeLayout.ToStand(stand, root),
-                };
-                var l = BridgeLayout.Of(b, stand, site.terminals, h);
-                var pose = l.Dock(design, out var problem);
-                if (problem != BridgeProblem.None) continue;
-                candidates.Add((0.3f * Mathf.Abs(pose.length - 20f) + 0.1f * Mathf.Abs(pose.cabTurn), b, t));
+                    var b = new JetBridge
+                    {
+                        door = door.door, side = door.side, upper = door.upper, tunnel = size,
+                        rotunda = BridgeLayout.ToStand(stand, rot), root = BridgeLayout.ToStand(stand, root),
+                    };
+                    var l = BridgeLayout.Of(b, stand, site.terminals, h);
+                    var pose = l.Dock(design, out var problem);
+                    if (problem != BridgeProblem.None) continue;
+                    float aim = size == TunnelSize.Short ? 14f : 20f;
+                    float score = 0.3f * Mathf.Abs(pose.length - aim) + 0.1f * Mathf.Abs(pose.cabTurn) + (size == prefer ? 0f : 3f);
+                    // the aftmost bridge: the ones ahead angle back past it, so it must be able to park swung back along
+                    // the head, out of their way, and swing round from there to its door
+                    if (trim && !l.CanParkToward(BridgePose.Rotate(h.Dir, side * -20f), site.types, design)) continue;
+                    candidates.Add((score, b, t));
+                }
             }
             candidates.Sort((p, q) => p.score.CompareTo(q.score));
             JetBridge fallback = null;

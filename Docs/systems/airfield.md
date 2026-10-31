@@ -266,6 +266,7 @@ Added 2026-10-29. The user's choices:
 | Doors | each bridge serves one left-hand passenger door, L1, L2 … counted from the front (`AircraftType` `PassengerDoor` points with `normal.x < 0`) |
 | Long bridges | the fixed link from the terminal to the rotunda runs 0–60 m, for a curved terminal end whose stands fan out |
 | Bridge heads (2026-10-30) | two or three bridges on one side of a stand share a head, as at most real gates: one main link from the terminal to a building on columns beside the aircraft, the bridges off its side. A double-deck gate's head has a second storey, so the upper-deck bridge's link is level |
+| Short tunnels, staged moves (2026-10-31) | the user saw bridges swing round with their tunnels out and hit the aircraft. A bridge on a head stands close to the aircraft and needn't reach far, so it gets a short tunnel that retracts out of the way; every bridge now swings round only retracted, then telescopes out. The head can be dragged to place it where the player wants |
 
 **Loose coupling.** Terminals know nothing of stands. A bridge is saved in its stand's frame (x across, s along, as
 `StandLayout`), so it moves with the stand. Its link *root* is connected when it lies on or within
@@ -274,8 +275,9 @@ moves a bridge; it only disconnects it, and an unconnected bridge never docks.
 
 **Geometry (`JetBridgeRules`, built into the JetBridge model to the same numbers, checked by a test).** Rotunda floor
 4 m (an upper-deck bridge's raised rotunda: 7.8 m), radius 2.3; three 13 m tunnel sections telescoping from 14 to
-36 m; a 2.6 m cab, its rear a half circle round its pivot, that turns up to 95°; slope at most 1:10; the drive 4 m
-back from the tunnel's end. Every link that leaves a terminal leaves it at the 4 m floor.
+36 m, or on a short bridge (`JetBridge.tunnel` = `TunnelSize.Short`, the model's `ShortTunnel_A/B/C`) three 8.5 m
+sections from 9.5 to 22.5 m; a 2.6 m cab, its rear a half circle round its pivot, that turns up to 95°; slope at most
+1:10; the drive 4 m back from the tunnel's end. Every link that leaves a terminal leaves it at the 4 m floor.
 
 **Doors (2026-10-29: right-hand and upper-deck doors).** A bridge serves one door: `side` (Left / Right), `upper`
 (upper deck) and `door` (counted from the front on that side and deck): L1, R2, UL1 ... (`JetBridge.DoorName`). A
@@ -318,14 +320,35 @@ clear of the neighbours' heads and bridges. A bridge on a head reports its head'
 
 **Placing a head (`HeadLayout.Suggest`, used by `AirportBridges.SetBridges`).** For two or more doors on one side
 of the aircraft (L1 + R1 can't share one). The head runs parallel to the stand's axis beside the aircraft, its
-centreline 14–34 m (plus the 7 m from rotunda to centreline) out from the largest type's doors, within the stand's
-sides; its near end from a little ahead of the foremost door to the terminal wall straight ahead (the main link
-covering the rest, at most 60 m). The bridges are placed on it from the aftmost door forward (`SuggestBridge`: the
-side facing the aircraft, every metre along it, preferring the tunnel square to the fuselage and near 20 m), and the
-first one also sets where the head ends, just aft of it. A bridge is only accepted where the bridges placed before it
-still dock everything they did (`BridgeLayout.Rate`). The first head whose bridges dock every type with their doors
-wins, else the first that takes the most. `SetBridges` keeps the head unless placing the bridges each with its own
-link takes more of them. `ChangeDoor` places a bridge on the stand's head first.
+centreline 12–34 m (plus the 7 m from rotunda to centreline) out from the largest type's doors, nearest a 16 m tunnel
+first, within the stand's sides; its near end from a little ahead of the foremost door to the terminal wall straight
+ahead (the main link covering the rest, at most 60 m). The bridges are placed on it from the aftmost door forward
+(`SuggestBridge`: the side facing the aircraft, every metre along it, a short tunnel before a long one, preferring
+the tunnel square to the fuselage and near 14 m, long: 20 m), and the first one also sets where the head ends, just
+aft of it. That first bridge must be able to park swung back along the head and swing round from there to its door
+(`BridgeLayout.CanParkToward`): the ones ahead dock across where it would otherwise park. A bridge is only accepted
+where the bridges placed before it still dock everything they did (`BridgeLayout.Rate`). The first head whose bridges
+dock every type with their doors wins, else the one that takes the most and docks the most types. `SetBridges` keeps the head unless placing the bridges each with its own
+link takes more of them. `ChangeDoor` places a bridge on the stand's head first (a short tunnel first there). A bridge keeps its tunnel size
+when moved; the inspector's Long / Short buttons (Bridges pop-out) change it (`JetBridge.tunnel`).
+
+**Placing by hand (dev tool, 2026-10-31).** The user wants to choose where bridges and their links leave the
+terminal. `AirportBridges` has the pieces: `AddBridge` (a rotunda and a link root; it serves the free door nearest it along
+the aircraft that it docks at least one type at, short tunnel first: placed by hand it serves the door it was put
+beside), `PlaceHead` / `HeadProblem` (a head from a main link root, near end and far end; a head may stand with no
+bridges on it), `RemoveHead` (with the bridges on it), `MoveBridge` (rotunda; the link keeps its terminal end while that works),
+`MoveRoot` (where a bridge's or the head's main link leaves the terminal, along its walls), `RemoveBridge` (its head
+stays), `WhereProblem` (a quick check for a rotunda before a door is picked). A link may not run
+through a terminal (`BridgeProblem.LinkThroughTerminal`) nor be longer than 60 m (`LinkTooLong`), a head's main link
+included, and a head may not stand in a terminal (`HeadInTerminal`). Hand placements are checked by the same rules as placed ones; the inspector's Auto-place buttons
+(`SetBridges`) place all of a stand's bridges afresh, throwing hand placements away.
+
+**Dragging a head (dev tool, 2026-10-31).** The user's ask: say where the head starts, before the bridges branch off.
+On a selected stand the head's two ends show rings: drag one to move that end (the head turns and stretches about
+the other, 10–60 m long), or the head itself to move it whole. Its bridges go with it, each on its side of it at its
+distance along it from the end that stays put, and its main link follows to the nearest terminal wall. A place where
+the head, its main link or a bridge's rotunda would stand where the aircraft parks, on pavement, on the next stand or
+in a terminal is refused (it stays where it last stood right); other problems show in the inspector.
 
 **Docking (`BridgeLayout.Dock(type)`).** The cab's bumper stops 0.1 m off the door's sill, square on to the
 fuselage; the tunnel runs straight from the rotunda to the cab. It fails (`BridgeProblem`) if it's too close or too far,
@@ -344,13 +367,22 @@ roads. A link's columns (one per 18 m) are evenly spaced, or, where one would st
 link off it with every span still within 18 m (`BridgeLayout.Columns`, `ColumnOnPavement` if no spacing works).
 Parked (retracted, level, pointing at its door on the largest type with it, swung away as far as needed), it clears
 every type by 1.5 m, stays off the taxiways, keeps its wheels off roads and stays off the other stands' pads. An
-upper-deck bridge parks tilted up 1:10 with its tunnel and cab over the wings (its drive stays off them), passing
-over the main-deck bridges docking under it. A stand's bridges park in its list's order, each swung clear of its head
+upper-deck bridge parks with its cab raised 1.39 m (`JetBridgeRules.ParkRise`: 1:10 on a long tunnel, steeper on a
+short one, as it carries no passengers parked) with its tunnel and cab over the wings (its drive stays off them),
+passing over the main-deck bridges docking under it. A stand's bridges park in its list's order, each swung clear of its head
 and of the ones before it as well (`BridgeLayout.ParkAll`, used by `Check` and at work), so two never swing into
 each other; if it can, each also parks out of where the others dock the types it can't (`BridgeLayout.Clear`: an L2
-bridge left parked for a narrow-body mustn't block L1's way to it), swinging round further if it must. Rotundas stand at least 7.6 m apart. A stand's bridges keep clear of each other
-(see above) parked, docked to each type and on the way (the stand's bridges set off together; checked at four steps
-along), and of the neighbouring stands' bridges parked or docked (`BridgeSite.neighbours`). The types a stand takes
+bridge left parked for a narrow-body mustn't block L1's way to it, nor its way out there), swinging round further if
+it must. Rotundas stand at least 7.6 m apart. A stand's bridges keep clear of each other (see above) parked, docked to
+each type and on the way (the stand's bridges set off together; checked at eight steps along the staged move below),
+and of the neighbouring stands' bridges parked or docked (`BridgeSite.neighbours`).
+
+**Moving (`BridgePose.Move`, 2026-10-31).** A bridge moves as an operator drives one: going out it first swings round,
+as retracted as it is, to its docking heading, then telescopes out, tilts and turns its cab; coming back in it does
+those first and swings last. Each stage takes its share of the 50 s by how far it goes (the swing measured at the cab).
+So it never sweeps across the aircraft with its tunnel out. Swinging round, retracted, it must keep 0.5 m off the
+aircraft (`BridgeLayout.SwingClear`, `BridgeProblem.SwingHitsAircraft`; an upper-deck bridge's tunnel passes over the
+wings, its drive doesn't). The types a stand takes
 are `Airport.aircraftTypes` filtered by code and length (`AirportBridges.TypesFor`); if that list is empty, the types
 in the scene.
 
@@ -372,8 +404,8 @@ stretched to its length, an end wall at each end, the `Link` widened as its main
 mode it also places them before each render, so the editor and captures show them.
 
 **Not done yet:** interiors; terminal styles beyond the one curtain wall; a bridge shared by two stands (by choice,
-not planned); a head shared by two stands (bridges off both its sides, as at many piers); dragging a head (it moves
-only by placing the stand's bridges again); pre-conditioned air and ground power on the bridge. On the double-deck
+not planned); a head shared by two stands (bridges off both its sides, as at many piers); placing a head by hand
+from nothing (drag one placed by the bridge count buttons); pre-conditioned air and ground power on the bridge. On the double-deck
 stand a narrow-body gets no bridge: L2, parked, stands in L1's way to its door.
 
 ## Gameplay rules (RunwayRules)

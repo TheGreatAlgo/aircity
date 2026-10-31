@@ -59,8 +59,11 @@ ROTUNDA_FLOOR = 4.0        # rotunda floor above the ground
 ROTUNDA_R = 2.3            # drum's outer radius
 TUNNEL_START = 2.3         # Tunnel_A's pivot from the rotunda centre
 SECTION_L = 13.0
+SHORT_SECTION_L = 8.5      # the short bridge's sections (ShortTunnel_A/B/C): bridges on a head, close to the aircraft,
+                           # which retract to 9.5 m instead of 14
 # (name, exterior width, exterior bottom, exterior top), relative to the section's floor line
 SECTIONS = [("Tunnel_A", 2.50, -0.25, 2.55), ("Tunnel_B", 2.80, -0.40, 2.70), ("Tunnel_C", 3.10, -0.55, 2.85)]
+SHORT = "Short"            # the short sections' names: "ShortTunnel_A" ...
 CAB_REACH, CAB_W = 2.6, 3.4
 CAB_BOT, CAB_TOP = -0.75, 3.18  # the cab's underside and roof rim: below and above Tunnel_C pitched 1 in 10
 DRIVE_FROM_END = 4.0       # the drive yoke under Tunnel_C, this far before its outer end
@@ -88,6 +91,7 @@ BRIDGE = {
     "rotundaRadius": ROTUNDA_R,
     "tunnelStart": TUNNEL_START,
     "sectionLength": SECTION_L,
+    "shortSectionLength": SHORT_SECTION_L,
     "sections": [[w, b, t] for _, w, b, t in SECTIONS],
     "cabReach": CAB_REACH,
     "cabWidth": CAB_W,
@@ -111,7 +115,7 @@ WALL = 0.12                # tunnel wall thickness (B's inside holds A, C's hold
 RECESS = 0.02              # glass set back from the wall face
 WIN = (0.98, 1.92)         # window band above the floor line (tunnels, link and rotunda line up)
 
-MOVERS = ["Tunnel_A", "Tunnel_B", "Tunnel_C", "DriveLegs", "Drive", "Cab", "Link", "LinkColumnFoot", "LinkColumn",
+MOVERS = ["Tunnel_A", "Tunnel_B", "Tunnel_C", "ShortTunnel_A", "ShortTunnel_B", "ShortTunnel_C", "DriveLegs", "Drive", "Cab", "Link", "LinkColumnFoot", "LinkColumn",
           "LinkColumnHead", "RotundaHigh", "Head", "HeadUpper", "HeadEnd", "HeadUpperEnd"]
 WHEELS = []
 SPINNERS = []
@@ -122,7 +126,8 @@ STRETCH = {"Link": "f", "DriveLegs": "z", "LinkColumn": "z", "Head": "f", "HeadU
 # where each part sits for the bake (right offset), apart so no part shades another
 LAYOUT = {"Rotunda": 0.0, "Tunnel_A": 8.0, "Tunnel_B": 13.0, "Tunnel_C": 19.0, "Cab": 26.0, "Drive": 33.0,
           "DriveLegs": 38.0, "Link": 42.0, "LinkColumnFoot": 46.0, "LinkColumn": 49.0, "LinkColumnHead": 52.0,
-          "RotundaHigh": 58.0, "Head": 66.0, "HeadUpper": 76.0, "HeadEnd": 86.0, "HeadUpperEnd": 96.0}
+          "RotundaHigh": 58.0, "Head": 66.0, "HeadUpper": 76.0, "HeadEnd": 86.0, "HeadUpperEnd": 96.0,
+          "ShortTunnel_A": 104.0, "ShortTunnel_B": 109.0, "ShortTunnel_C": 115.0}
 # the parts that stand on the apron (road dust low down) and their half-width round their LAYOUT x
 GROUNDED = {"Rotunda": 2.5, "RotundaHigh": 2.5, "Drive": 1.6, "LinkColumnFoot": 0.8}
 # the profile's bounds: the (low) rotunda, the one part that stays put
@@ -277,15 +282,15 @@ def rotunda(name="Rotunda", F=ROTUNDA_FLOOR):
     return b
 
 
-def tunnel(name, W, bot, top):
-    """One telescoping section, SECTION_L long from its pivot (the inner end's floor line) forward. Exterior W x
+def tunnel(name, W, bot, top, L=SECTION_L):
+    """One telescoping section, L long from its pivot (the inner end's floor line) forward. Exterior W x
     bot..top, walls WALL thick near the open ends (the next smaller section slides inside), grey cladding with
     horizontal grooves, a glass band with posts, a lighter roof with seams, darker frames at the ends. Tunnel_A's
     skin runs on 1 m behind its pivot into the rotunda, so the drum's curve and the tunnel's pitch leave no gap.
-    Tunnel_C carries the drive yoke."""
+    Tunnel_C carries the drive yoke. The short bridge's sections (ShortTunnel_*) are the same, shorter."""
     b = Part(name)
-    h, L = W / 2, SECTION_L
-    first = name == "Tunnel_A"
+    h = W / 2
+    first = name.endswith("Tunnel_A")
     lip_in = 0.0 if first else 0.16
     lip_out = 0.12
     y0, y1 = (-1.0 if first else lip_in), L - lip_out
@@ -318,7 +323,7 @@ def tunnel(name, W, bot, top):
     # roof seams
     for y in frange(start + 0.65, y1 - 0.3, 1.3):
         b.box((-h + 0.09, y - 0.025, top - 0.021), (h - 0.09, y + 0.025, top), "Cladding")
-    if name == "Tunnel_C":
+    if name.endswith("Tunnel_C"):
         # drive yoke: a crossbeam under the floor, sleeves at the ends that the legs end in
         yc = L - DRIVE_FROM_END
         b.box((-1.3, yc - 0.25, YOKE_BOTTOM), (1.3, yc + 0.25, bot), "SteelDark")
@@ -545,6 +550,7 @@ def head_end(name, h, bot, t):
 
 def build():
     parts = [rotunda()] + [tunnel(n, w, bo, t) for n, w, bo, t in SECTIONS] + [legs(), drive(), cab(), link()]
+    parts += [tunnel(SHORT + n, w, bo, t, SHORT_SECTION_L) for n, w, bo, t in SECTIONS]
     parts += [link_column_foot(), link_column(), link_column_head(), rotunda("RotundaHigh", UPPER_FLOOR)]
     hu = (HEAD_W + HEAD_UPPER_WIDER) / 2
     parts += [head_storey("Head", HEAD_W / 2, HEAD_BOT), head_storey("HeadUpper", hu, HEAD_UPPER_BOT),
@@ -577,12 +583,13 @@ def _column(out, at, yaw, under, tag="", widen=1.0):
     out["LinkColumnHead" + tag] = M(at[0], at[1], under, yaw=yaw) @ Matrix.Diagonal((widen, 1.0, 1.0, 1.0))
 
 
-def _bridge(at, floor, heading, pitch, run, column=None, cab_turn=None, link_from=None, tag=""):
+def _bridge(at, floor, heading, pitch, run, column=None, cab_turn=None, link_from=None, tag="", short=False):
     """A docked bridge (preview only): rotunda centre `at` (right, forward), floor height, heading and pitch of the
     tunnel, its run (Tunnel_A's pivot to the cab's pivot), the cab's turn from the tunnel (else square to the
     fuselage), and its link, level at its floor, from `link_from` (default: straight out of the terminal's face)
-    with a column `column` metres along it (None: none, a stub). Returns part name (+ `tag` for copies) -> world
-    matrix; "Rotunda" stands for the high one on an upper-deck bridge."""
+    with a column `column` metres along it (None: none, a stub); `short`: on the short sections. Returns part name
+    (+ `tag` for copies) -> world matrix; "Rotunda" stands for the high one on an upper-deck bridge, "Tunnel_A" ...
+    for the short sections on a short bridge."""
     yaw = math.radians(heading)
     d = (math.sin(yaw), math.cos(yaw))
     p = math.radians(pitch)
@@ -592,12 +599,13 @@ def _bridge(at, floor, heading, pitch, run, column=None, cab_turn=None, link_fro
     def along(s):
         return (a[0] + s * ax[0], a[1] + s * ax[1], a[2] + s * ax[2])
 
-    c0 = run - SECTION_L                                   # Tunnel_C's pivot; B halfway, A at the start
+    sec, pre = (SHORT_SECTION_L, SHORT) if short else (SECTION_L, "")
+    c0 = run - sec                                         # Tunnel_C's pivot; B halfway, A at the start
     out = {"Rotunda": M(at[0], at[1], 0.0, yaw=heading)}
     for n, s in (("Tunnel_A", 0.0), ("Tunnel_B", c0 / 2), ("Tunnel_C", c0)):
-        out[n + tag] = M(*along(s), yaw=heading, pitch=pitch)
+        out[pre + n + tag] = M(*along(s), yaw=heading, pitch=pitch)
     out["Cab" + tag] = M(*along(run), yaw=CAB_HEADING if cab_turn is None else heading + cab_turn)
-    yoke = out["Tunnel_C" + tag] @ V(0.0, SECTION_L - DRIVE_FROM_END, YOKE_BOTTOM)
+    yoke = out[pre + "Tunnel_C" + tag] @ V(0.0, sec - DRIVE_FROM_END, YOKE_BOTTOM)
     out["Drive" + tag] = M(yoke.x, yoke.y, 0.0, yaw=heading)
     out["DriveLegs" + tag] = M(yoke.x, yoke.y, LEG_BASE, yaw=heading) @ Matrix.Diagonal(
         (1.0, 1.0, yoke.z - LEG_BASE, 1.0))
@@ -624,18 +632,19 @@ LOWER = dict(at=(0.0, 0.0), floor=ROTUNDA_FLOOR, heading=-60.0, pitch=-2.0, run=
 TURNED_VIEWS = ("turned", "turnedin")
 # the head views: a double-deck gate. The head's centreline runs out from y = 8 to y = 36 (x = 0), its main link
 # straight out of the terminal's face; off its left side a main-deck bridge (L) and an upper-deck one (UL, on
-# RotundaHigh, level with the head's upper floor) dock at doors on a fuselage whose side is 32 m to the left: L 5.2 m
-# up at y = 26, UL 7.9 m up 12.5 m further aft.
+# RotundaHigh, level with the head's upper floor), both on the short sections, dock at doors on a fuselage whose side
+# is 26 m to the left: L 5.2 m up at y = 26, UL 7.9 m up 12.5 m further aft.
 HEAD_A, HEAD_B = 8.0, 36.0
 HEAD_STATIONS = (9.2, 22.0, 34.8)          # its column pairs (forward)
 _wall = -HEAD_W / 2
 _rx = _wall - HEAD_STUB - ROTUNDA_R
-_pivot = -32.0 + CAB_REACH + 0.1
+_pivot = -26.0 + CAB_REACH + 0.1
 _h, _p, _r = _aim((_rx, 30.0), ROTUNDA_FLOOR, (_pivot, 26.0), 5.2)
-HEAD_MAIN = dict(at=(_rx, 30.0), floor=ROTUNDA_FLOOR, heading=_h, pitch=_p, run=_r, link_from=(_wall + INTO_WALL, 30.0))
+HEAD_MAIN = dict(at=(_rx, 30.0), floor=ROTUNDA_FLOOR, heading=_h, pitch=_p, run=_r, link_from=(_wall + INTO_WALL, 30.0),
+                 short=True)
 _h, _p, _r = _aim((_rx, 16.0), UPPER_FLOOR, (_pivot, 13.5), 7.9)
 HEAD_UPPER = dict(at=(_rx, 16.0), floor=UPPER_FLOOR, heading=_h, pitch=_p, run=_r, link_from=(_wall + INTO_WALL, 16.0),
-                  tag=":u")
+                  tag=":u", short=True)
 HEAD_VIEWS = ("head34", "headside", "headend", "headunder")
 _copies = {}               # preview-only copies of parts (name ":" tag), sharing their meshes (made after export)
 

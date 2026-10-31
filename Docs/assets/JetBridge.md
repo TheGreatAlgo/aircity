@@ -27,6 +27,7 @@ The game's rules use the same numbers, read from the `"bridge"` object in `JetBr
 | Rotunda | floor 4.0 m (`rotundaFloor`), drum radius 2.3 m (`rotundaRadius`), drum 3.6–6.9 m, roof with parapet to 7.15 m (vent 7.26 m) |
 | High rotunda | floor 7.8 m (`upperFloor`); the same drum 3.8 m higher (7.4–10.7 m, parapet 10.95 m, vent 11.06 m); column radius 0.52 m (low: 0.45) with a base sleeve to 1.42 m and two splice flanges. At 7.8 m its tunnel clears a main-deck link (roof 6.75 m) by 0.5 m |
 | Tunnels | 13.0 m each (`sectionLength`); Tunnel_A's pivot 2.3 m from the rotunda centre (`tunnelStart`) |
+| Short tunnels (2026-10-31) | `ShortTunnel_A/B/C`: the same sections 8.5 m long (`shortSectionLength`), 9.5–22.5 m together, for a bridge close to the aircraft (on a head) that retracts out of its way. A bridge shows one set and hides the other (`JetBridge.tunnel`) |
 | Sections (`sections`: width, bottom, top) | A 2.50 / −0.25 / 2.55, B 2.80 / −0.40 / 2.70, C 3.10 / −0.55 / 2.85; walls 0.12 m, so each inside clears the next smaller outside by 3 cm all round |
 | Drive yoke | under Tunnel_C, 4.0 m before its outer end (`driveFromEnd`), underside at −0.95 (`yokeBottom`) |
 | Drive | frame 2.9 m wide, top at 1.0 m (`legBase`); dual solid tyres, radius 0.43 m |
@@ -51,6 +52,7 @@ space (+X right, +Y up, +Z forward).
 | `RotundaHigh` | column centre on the ground | the same drum with its floor at 7.8 m, on a stouter column | an upper-deck bridge's rotunda instead of `Rotunda` |
 | `Tunnel_A` | inner end, centre of the floor line | +Z 0..13; the skin also runs 1.0 m behind the pivot (−Z) into the drum | at `tunnelStart` from the rotunda centre, floor at `rotundaFloor`; pitches about its pivot |
 | `Tunnel_B`, `Tunnel_C` | inner end, centre of the floor line | +Z 0..13, open ends with a rubber-lipped frame at the inner end | slide along A's axis |
+| `ShortTunnel_A/B/C` | as `Tunnel_A/B/C` | +Z 0..8.5 | as the long ones, on a short bridge |
 | `DriveLegs` | bottom centre | Y 0..1 | at the drive's top (y 1.0), scaled in local Y up to the yoke |
 | `Drive` | ground centre | frame top at y 1.0 | under the yoke; keep its yaw equal to the legs' (the legs stand on the frame at x ±1.2) |
 | `Cab` | rear centre, floor level | +Z −1.7..2.6 (bumper face at 2.6), the rear a half circle round the pivot | at Tunnel_C's outer end; may yaw to face the door |
@@ -111,7 +113,8 @@ pitched 2° down, cab turned square to an imaginary fuselage, link 10.4 m. Views
 - `aerial34`, `side`, `cab`, `top`
 - a double-deck gate's head (`HEAD_VIEWS`: `head34`, `headside`, `headend`, `headunder`): a 28 m two-storey head on
   three column pairs, its 20 m main link from the terminal face on one column, a main-deck bridge to a 5.2 m sill and
-  an upper-deck bridge on `RotundaHigh` to a 7.9 m sill 12.5 m further aft, both off the head's side on 1.2 m stubs.
+  an upper-deck bridge on `RotundaHigh` to a 7.9 m sill 12.5 m further aft, both on the short sections, off the
+  head's side on 1.2 m stubs.
   `preview_pose` copies the parts it needs twice after the export (preview only).
 - `turned`, `turnedin`: the main bridge with its cab turned 85° from the tunnel, from outside and inside the turn
 - close-ups for checking joints: `rotunda`, `drive`, `joint` (cab / Tunnel_C), `lip` (Tunnel_B's inner end round
