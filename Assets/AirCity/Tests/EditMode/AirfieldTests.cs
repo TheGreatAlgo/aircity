@@ -462,6 +462,36 @@ namespace AirCity.Tests.Airfield
         }
 
         [Test]
+        public void TaxiRouting_AtNightOnlyOverLitTaxiways()
+        {
+            var airport = NewAirport();
+            var net = airport.Taxiways;
+            int a = net.AddNode(new Vector3(0f, 0f, 0f));
+            int b = net.AddNode(new Vector3(400f, 0f, 0f));
+            int c = net.AddNode(new Vector3(400f, 0f, 400f));
+            int d = net.AddNode(new Vector3(0f, 0f, 400f));
+            net.Connect(a, b, 15f, PavementSurface.Asphalt);      // short way, unlit
+            net.Connect(b, c, 15f, PavementSurface.Asphalt);
+            net.Connect(a, d, 15f, PavementSurface.Asphalt, true);   // long way round, lit
+            net.Connect(d, c, 15f, PavementSurface.Asphalt, true);
+            var jet = Type("Narrowbody");
+            AircraftLights.Glow = 0f;
+            CollectionAssert.AreEqual(new[] { a, b, c }, net.FindRoute(a, c, jet), "by day lights don't matter");
+            AircraftLights.Glow = 1f;
+            CollectionAssert.AreEqual(new[] { a, d, c }, net.FindRoute(a, c, jet), "at night only the lit way");
+            net.SetLit(net.edges.Where(e => e.a == a && e.b == d || e.a == d && e.b == a).ToList(), false);
+            Assert.IsNull(net.FindRoute(a, c, jet), "a dark section closes the way at night");
+
+            // only paved taxiways take lights, and a section is lit on its own
+            var dirt = net.Connect(c, net.AddNode(new Vector3(800f, 0f, 400f)), 15f, PavementSurface.Dirt).First();
+            Assert.IsTrue(net.SetLit(net.edges.ToList(), true));
+            Assert.IsFalse(dirt.lit, "dirt isn't lit");
+            Assert.IsTrue(net.edges.Where(e => e != dirt).All(e => e.lit));
+            Assert.IsFalse(net.SetLit(net.edges.ToList(), true), "nothing left to change");
+            CollectionAssert.AreEqual(new[] { a, b, c }, net.FindRoute(a, c, jet), "all lit: the short way again");
+        }
+
+        [Test]
         public void SandboxAirport_GeometryFacesUpAndIsFinite()
         {
             var airport = AirfieldSetup.BuildSandboxAirport();

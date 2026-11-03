@@ -1,0 +1,179 @@
+{
+  "name": "BeltLoader",
+  "displayName": "Baggage belt loader",
+  "kind": "BeltLoader",
+  "bounds": {
+    "min": [
+      -1.01,
+      0.0,
+      -2.0106
+    ],
+    "max": [
+      0.977,
+      2.0048,
+      5.8915
+    ]
+  },
+  "wheelbase": 3.6,
+  "wheels": [
+    {
+      "name": "Wheel_FL",
+      "centre": [
+        -0.83,
+        0.33,
+        3.6
+      ],
+      "radius": 0.33,
+      "steerable": true
+    },
+    {
+      "name": "Wheel_FR",
+      "centre": [
+        0.83,
+        0.33,
+        3.6
+      ],
+      "radius": 0.33,
+      "steerable": true
+    },
+    {
+      "name": "Wheel_RL",
+      "centre": [
+        -0.83,
+        0.33,
+        0.0
+      ],
+      "radius": 0.33,
+      "steerable": false
+    },
+    {
+      "name": "Wheel_RR",
+      "centre": [
+        0.83,
+        0.33,
+        0.0
+      ],
+      "radius": 0.33,
+      "steerable": false
+    }
+  ],
+  "spinners": [],
+  "lights": [
+    {
+      "name": "Beacon",
+      "type": "Beacon",
+      "position": [
+        -0.75,
+        1.71,
+        1.05
+      ],
+      "direction": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "color": "#FF9A1A",
+      "size": 0.55,
+      "phase": 0
+    },
+    {
+      "name": "Head_L",
+      "type": "Head",
+      "position": [
+        -0.78,
+        0.64,
+        4.39
+      ],
+      "direction": [
+        0.0,
+        -0.1,
+        1.0
+      ],
+      "color": "#FFF4E0",
+      "size": 0.45,
+      "phase": 0
+    },
+    {
+      "name": "Head_R",
+      "type": "Head",
+      "position": [
+        0.78,
+        0.64,
+        4.39
+      ],
+      "direction": [
+        0.0,
+        -0.1,
+        1.0
+      ],
+      "color": "#FFF4E0",
+      "size": 0.45,
+      "phase": 0
+    }
+  ],
+  "work": {
+    "laneWidth": 2.02,
+    "workSpeed": 0.6,
+    "transitSpeed": 4.0,
+    "turnRadius": 5.0
+  },
+  "parking": [
+    0.0,
+    0.0,
+    0.0
+  ],
+  "baggage": {
+    "rearHitch": [
+      0.0,
+      0.38,
+      -0.87
+    ],
+    "operator": [
+      -0.65,
+      0.89,
+      1.88
+    ],
+    "beltRear": [
+      0.3,
+      0.82,
+      -1.95
+    ],
+    "beltLength": 7.8,
+    "beltFrontHeight": 1.45,
+    "beltSupportOffset": 0.68,
+    "frontMinHeight": 1.2,
+    "frontMaxHeight": 4.3,
+    "rearMinHeight": 0.7,
+    "rearMaxHeight": 1.1,
+    "rearLift": {
+      "centre": 0.2,
+      "base": 0.1,
+      "length": 1.6,
+      "stages": 1
+    },
+    "frontLift": {
+      "centre": 3.3,
+      "base": 0.1,
+      "length": 1.75,
+      "stages": 2
+    }
+  },
+  "lodMovers": [
+    "Wheel_FL",
+    "Wheel_FR",
+    "Wheel_RL",
+    "Wheel_RR",
+    "Conveyor",
+    "BeltSurface",
+    "RearRoller",
+    "FrontRoller",
+    "LiftRear_0",
+    "LiftRear_1",
+    "LiftFront_0",
+    "LiftFront_1",
+    "LiftFront_2",
+    "LiftFront_3",
+    "LiftRear_Head",
+    "LiftFront_Head"
+  ]
+}

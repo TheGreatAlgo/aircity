@@ -213,6 +213,8 @@ namespace AirCity.Traffic
 
         void StepReady()
         {
+            string baggage = traffic.Airport.Baggage.DepartureBlocker(aircraft);
+            if (baggage != null) { Waiting = baggage; return; }
             if (!traffic.RouteValid(this))
             {
                 replanTimer -= 0.25f;

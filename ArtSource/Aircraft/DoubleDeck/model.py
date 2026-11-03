@@ -13,6 +13,8 @@ from parts import P, Y, Fuselage, S_REF  # noqa: F401  (Fuselage / S_REF are rea
 from pipeline import Mover
 
 NAME = "DoubleDeck"
+CARGO_HINGES = {"Cargo_Fwd": ("Top", 145.0, 10.0), "Cargo_Aft": ("Top", 145.0, 10.0),
+                "Cargo_Bulk": ("Top", -100.0, 3.5)}
 DISPLAY_NAME = "Double-deck quadjet"
 CATEGORY = "Airliner"
 AO_DISTANCE = 4.5

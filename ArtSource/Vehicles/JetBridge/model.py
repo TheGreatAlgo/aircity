@@ -91,6 +91,9 @@ BRIDGE = {
     "rotundaRadius": ROTUNDA_R,
     "tunnelStart": TUNNEL_START,
     "sectionLength": SECTION_L,
+    "minOverlap": 1.5,
+    "tunnelSections": [dict(part=n, length=SECTION_L, modelLength=SECTION_L, width=w, bottom=b, top=t)
+                       for n, w, b, t in SECTIONS],
     "shortSectionLength": SHORT_SECTION_L,
     "sections": [[w, b, t] for _, w, b, t in SECTIONS],
     "cabReach": CAB_REACH,
@@ -116,7 +119,7 @@ RECESS = 0.02              # glass set back from the wall face
 WIN = (0.98, 1.92)         # window band above the floor line (tunnels, link and rotunda line up)
 
 MOVERS = ["Tunnel_A", "Tunnel_B", "Tunnel_C", "ShortTunnel_A", "ShortTunnel_B", "ShortTunnel_C", "DriveLegs", "Drive", "Cab", "Link", "LinkColumnFoot", "LinkColumn",
-          "LinkColumnHead", "RotundaHigh", "Head", "HeadUpper", "HeadEnd", "HeadUpperEnd"]
+          "LinkColumnHead", "RotundaHigh", "RotundaColumn", "RotundaHighColumn", "Head", "HeadUpper", "HeadEnd", "HeadUpperEnd"]
 WHEELS = []
 SPINNERS = []
 LIGHTS = []
@@ -127,9 +130,10 @@ STRETCH = {"Link": "f", "DriveLegs": "z", "LinkColumn": "z", "Head": "f", "HeadU
 LAYOUT = {"Rotunda": 0.0, "Tunnel_A": 8.0, "Tunnel_B": 13.0, "Tunnel_C": 19.0, "Cab": 26.0, "Drive": 33.0,
           "DriveLegs": 38.0, "Link": 42.0, "LinkColumnFoot": 46.0, "LinkColumn": 49.0, "LinkColumnHead": 52.0,
           "RotundaHigh": 58.0, "Head": 66.0, "HeadUpper": 76.0, "HeadEnd": 86.0, "HeadUpperEnd": 96.0,
-          "ShortTunnel_A": 104.0, "ShortTunnel_B": 109.0, "ShortTunnel_C": 115.0}
+          "ShortTunnel_A": 104.0, "ShortTunnel_B": 109.0, "ShortTunnel_C": 115.0,
+          "RotundaColumn": 122.0, "RotundaHighColumn": 127.0}
 # the parts that stand on the apron (road dust low down) and their half-width round their LAYOUT x
-GROUNDED = {"Rotunda": 2.5, "RotundaHigh": 2.5, "Drive": 1.6, "LinkColumnFoot": 0.8}
+GROUNDED = {"Rotunda": 2.5, "RotundaHigh": 2.5, "Drive": 1.6, "LinkColumnFoot": 0.8, "RotundaColumn": 1.2, "RotundaHighColumn": 1.2}
 # the profile's bounds: the (low) rotunda, the one part that stays put
 BOUNDS = ((-ROTUNDA_R - 0.15, -ROTUNDA_R - 0.15, 0.0), (ROTUNDA_R + 0.15, ROTUNDA_R + 0.15, 7.26))
 
@@ -260,6 +264,12 @@ def rotunda(name="Rotunda", F=ROTUNDA_FLOOR):
     # roof vent
     b.cyl((0, 0, F + 3.02), (0, 0, F + 3.2), 0.32, "Under", segs=16)
     b.cyl((0, 0, F + 3.2), (0, 0, F + 3.26), 0.4, "Trim", segs=16)
+    return b
+
+
+def rotunda_column(name="RotundaColumn", F=ROTUNDA_FLOOR):
+    """Separate support: the game stretches it without distorting the drum above it."""
+    b = Part(name)
     # column: footing, base plate, round column, flared head, slewing ring under the drum
     high = F > ROTUNDA_FLOOR
     cr = 0.52 if high else 0.45
@@ -551,7 +561,8 @@ def head_end(name, h, bot, t):
 def build():
     parts = [rotunda()] + [tunnel(n, w, bo, t) for n, w, bo, t in SECTIONS] + [legs(), drive(), cab(), link()]
     parts += [tunnel(SHORT + n, w, bo, t, SHORT_SECTION_L) for n, w, bo, t in SECTIONS]
-    parts += [link_column_foot(), link_column(), link_column_head(), rotunda("RotundaHigh", UPPER_FLOOR)]
+    parts += [link_column_foot(), link_column(), link_column_head(), rotunda("RotundaHigh", UPPER_FLOOR),
+              rotunda_column(), rotunda_column("RotundaHighColumn", UPPER_FLOOR)]
     hu = (HEAD_W + HEAD_UPPER_WIDER) / 2
     parts += [head_storey("Head", HEAD_W / 2, HEAD_BOT), head_storey("HeadUpper", hu, HEAD_UPPER_BOT),
               head_end("HeadEnd", HEAD_W / 2, HEAD_BOT, 0.05), head_end("HeadUpperEnd", hu, HEAD_UPPER_BOT, 0.08)]
@@ -560,6 +571,20 @@ def build():
         bmesh.ops.translate(p.bm, vec=V(dx, 0.0, 0.0), verts=p.bm.verts[:])
         p.pivot = V(dx, 0.0, 0.0)
     return parts
+
+
+def prepare_export(objects):
+    """Face zones survive the shared baked atlas: red cladding, green glazing, blue roof."""
+    zones = {"Cladding": (1, 0, 0, 1), "CabWhite": (1, 0, 0, 1),
+             "BridgeGlass": (0, 1, 0, 1), "Roof": (0, 0, 1, 1)}
+    for ob in objects:
+        mesh = ob.data
+        colors = mesh.color_attributes.new(name="BridgeZones", type="FLOAT_COLOR", domain="CORNER")
+        for polygon in mesh.polygons:
+            material = mesh.materials[polygon.material_index]
+            color = zones.get(material.name.split(".")[0], (0, 0, 0, 1))
+            for loop in polygon.loop_indices:
+                colors.data[loop].color = color
 
 
 # ============================================================== previews: the bridge assembled, docked
@@ -601,7 +626,8 @@ def _bridge(at, floor, heading, pitch, run, column=None, cab_turn=None, link_fro
 
     sec, pre = (SHORT_SECTION_L, SHORT) if short else (SECTION_L, "")
     c0 = run - sec                                         # Tunnel_C's pivot; B halfway, A at the start
-    out = {"Rotunda": M(at[0], at[1], 0.0, yaw=heading)}
+    out = {"Rotunda": M(at[0], at[1], 0.0, yaw=heading),
+           "RotundaColumn": M(at[0], at[1], 0.0)}
     for n, s in (("Tunnel_A", 0.0), ("Tunnel_B", c0 / 2), ("Tunnel_C", c0)):
         out[pre + n + tag] = M(*along(s), yaw=heading, pitch=pitch)
     out["Cab" + tag] = M(*along(run), yaw=CAB_HEADING if cab_turn is None else heading + cab_turn)
@@ -690,7 +716,7 @@ def preview_pose(view):
         pose = _head()
         pose.update(_bridge(**HEAD_MAIN))
         for n, m in _bridge(**HEAD_UPPER).items():
-            pose["RotundaHigh" if n == "Rotunda" else n] = m
+            pose[{"Rotunda": "RotundaHigh", "RotundaColumn": "RotundaHighColumn"}.get(n, n)] = m
     else:
         pose = _bridge(**(dict(LOWER, cab_turn=-85.0) if view in TURNED_VIEWS else LOWER))
     shown = set()

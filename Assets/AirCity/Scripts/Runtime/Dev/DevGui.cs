@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.InputSystem;
@@ -36,6 +37,11 @@ namespace AirCity.Dev
 
         /// <summary>H hides the whole HUD (screenshots).</summary>
         public static bool Visible = true;
+        public static bool GateDesignerOpen { get; set; }
+        public static bool WorldHandleCaptured { get; set; }
+        static bool keyboardCaptured;
+        /// <summary>Runtime text fields own the keyboard until focus leaves them.</summary>
+        public static bool KeyboardCaptured { get => Visible && keyboardCaptured; set => keyboardCaptured = value; }
 
         /// <summary>Pixels per HUD unit: 1 up to 1000 px tall, more on bigger screens.</summary>
         public static float Scale { get; private set; } = 1f;
@@ -44,8 +50,8 @@ namespace AirCity.Dev
         public static float U(float units) => Mathf.Round(units * Scale);
 
         public static GUIStyle Label, Bold, Small, Caption, Title, Hint;
-        static GUIStyle buttonText, buttonOnText, dangerText, dangerOnText, keyHint, keyHintOn;
-        static Color Text, PanelFill, PanelEdge, ButtonFill, ButtonHover, Shadow, AccentFill, DangerFill, DangerHover;
+        static GUIStyle buttonText, buttonOnText, dangerText, dangerOnText, keyHint, keyHintOn, cardSub, cardSubOn;
+        static Color Text, OnText, PanelFill, PanelEdge, ButtonFill, ButtonHover, Shadow, AccentFill, DangerFill, DangerHover, Well;
         static float builtScale;
 
         static readonly List<Rect> covered = new List<Rect>();
@@ -66,8 +72,9 @@ namespace AirCity.Dev
             AccentFill = GUI(Accent);
             DangerFill = GUI(Danger);
             DangerHover = GUI(new Color(Danger.r, Danger.g, Danger.b, 0.28f));
+            Well = GUI(new Color(0f, 0f, 0f, 0.32f));
             var dim = GUI(muted);
-            var onDark = GUI(onText);
+            var onDark = OnText = GUI(onText);
             GUIStyle Style(float size, Color color, FontStyle font = FontStyle.Normal, TextAnchor align = TextAnchor.MiddleLeft) =>
                 new GUIStyle
                 {
@@ -87,6 +94,8 @@ namespace AirCity.Dev
             dangerOnText = Style(12f, Color.white, FontStyle.Bold, TextAnchor.MiddleCenter);
             keyHint = Style(10f, dim);
             keyHintOn = Style(10f, new Color(onDark.r, onDark.g, onDark.b, 0.6f));
+            cardSub = Style(10f, dim, FontStyle.Normal, TextAnchor.MiddleCenter);
+            cardSubOn = Style(10f, new Color(onDark.r, onDark.g, onDark.b, 0.7f), FontStyle.Normal, TextAnchor.MiddleCenter);
         }
 
         // ------------------------------------------------------------------ what the HUD covers
@@ -175,6 +184,66 @@ namespace AirCity.Dev
             }
             UnityEngine.GUI.enabled = was;
             return clicked;
+        }
+
+        /// <summary>
+        /// A square tool button showing its icon (white art, drawn light, dark while on, red for danger), or
+        /// `fallback` text if there's no icon; its key small in the corner and its tip on hover.
+        /// </summary>
+        public static bool IconButton(Rect r, Texture icon, string fallback, string tip = null, bool on = false, bool danger = false,
+            string hint = null)
+        {
+            bool clicked = Button(r, icon != null ? "" : fallback, tip, on, danger, true, hint);
+            if (icon != null && Event.current.type == EventType.Repaint)
+            {
+                float s = Mathf.Round(Mathf.Min(r.width, r.height) * 0.54f);
+                var ir = new Rect(Mathf.Round(r.center.x - s * 0.5f), Mathf.Round(r.center.y - s * 0.5f - (hint != null ? U(2f) : 0f)), s, s);
+                var tint = on ? (danger ? Color.white : OnText) : danger ? DangerFill : Text;
+                UnityEngine.GUI.DrawTexture(ir, icon, ScaleMode.ScaleToFit, true, 0f, tint, 0f, 0f);
+            }
+            return clicked;
+        }
+
+        /// <summary>
+        /// A choice card (the tools' tray): a picture in a dark well at the top (`picture` draws it into the rect it
+        /// gets, at repaint), its name under it and an optional small line under that; amber while chosen, faded
+        /// when it can't be had.
+        /// </summary>
+        public static bool Card(Rect r, Action<Rect> picture, string label, string sub, string tip, bool on, bool enabled = true)
+        {
+            bool hover = enabled && r.Contains(Event.current.mousePosition);
+            var fill = on ? AccentFill : hover ? ButtonHover : ButtonFill;
+            if (on && hover) fill = Color.Lerp(fill, Color.white, 0.15f);
+            Fill(r, fill, U(6f));
+            bool was = UnityEngine.GUI.enabled;
+            UnityEngine.GUI.enabled = was && enabled;
+            bool clicked = UnityEngine.GUI.Button(r, new GUIContent("", tip), GUIStyle.none);
+            UnityEngine.GUI.enabled = was;
+            if (Event.current.type != EventType.Repaint) return clicked;
+            float inset = U(4f), text = sub != null ? U(30f) : U(20f);
+            var well = new Rect(r.x + inset, r.y + inset, r.width - inset * 2f, r.height - inset - text);
+            Fill(well, Well, U(4f));
+            picture?.Invoke(well);
+            UnityEngine.GUI.Label(new Rect(r.x, well.yMax + U(2f), r.width, U(16f)), label, on ? buttonOnText : buttonText);
+            if (sub != null) UnityEngine.GUI.Label(new Rect(r.x, well.yMax + U(16f), r.width, U(12f)), sub, on ? cardSubOn : cardSub);
+            if (!enabled) Fill(r, new Color(PanelFill.r, PanelFill.g, PanelFill.b, 0.6f), U(6f));
+            return clicked;
+        }
+
+        /// <summary>A white icon tinted, scaled to fit the rect (repaint only).</summary>
+        public static void DrawIcon(Rect r, Texture icon, Color tint)
+        {
+            if (icon == null || Event.current.type != EventType.Repaint) return;
+            UnityEngine.GUI.DrawTexture(r, icon, ScaleMode.ScaleToFit, true, 0f, GUI(tint), 0f, 0f);
+        }
+
+        static readonly Dictionary<string, Texture2D> icons = new Dictionary<string, Texture2D>();
+
+        /// <summary>A HUD icon (ArtSource/UI/icons.py, in Resources/AirCityIcons), or null if there's none.</summary>
+        public static Texture2D Icon(string name)
+        {
+            if (!icons.TryGetValue(name, out var tex) || tex == null) icons[name] = tex = Resources.Load<Texture2D>("AirCityIcons/" + name);
+            return tex;
         }
 
         public static float Width(string text, GUIStyle style) => style.CalcSize(new GUIContent(text)).x;

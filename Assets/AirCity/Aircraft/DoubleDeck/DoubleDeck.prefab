@@ -71,6 +71,9 @@ PrefabInstance:
     - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: e73c3b715bb6c40cfa2978b465863321, type: 3}
       insertIndex: -1
       addedObject: {fileID: 9132630607615603008}
+    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: e73c3b715bb6c40cfa2978b465863321, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 2656865800964597593}
     - targetCorrespondingSourceObject: {fileID: -8404873288495061894, guid: e73c3b715bb6c40cfa2978b465863321, type: 3}
       insertIndex: -1
       addedObject: {fileID: 8676473742065367518}
@@ -321,6 +324,18 @@ MonoBehaviour:
   logo: 0
   spotLightDistance: 180
   spotIntensity: 40
+--- !u!114 &2656865800964597593
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4363219010453775338}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 40626c2cffdba4c819f049355ef8fa6d, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: AirCity.Runtime::AirCity.Aircraft.AircraftCargoDoors
 --- !u!4 &4402695492546173217 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: 960860437639104410, guid: e73c3b715bb6c40cfa2978b465863321, type: 3}

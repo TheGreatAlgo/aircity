@@ -173,7 +173,10 @@ namespace AirCity.Tests.Aircraft
             spawned.Add(go);
             var lods = go.GetComponent<LODGroup>().GetLODs();
             Assert.AreEqual(3, lods.Length);
-            int[] maxDraws = { 24, 4, 2 };   // submeshes = draw calls per pass
+            // Cargo doors retain painted skin + trim at close/medium range; the far mesh merges them.
+            int doorDraws = profile.cargoDoors.Length * 2;
+            // Close panels crossing the registration patch also retain its separate material.
+            int[] maxDraws = { 24 + profile.cargoDoors.Length * 3, 4 + doorDraws, 2 };   // submeshes = draw calls per pass
             var tris = new int[lods.Length];
             var draws = new int[lods.Length];
             var report = new System.Text.StringBuilder("LODs:");

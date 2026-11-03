@@ -35,7 +35,7 @@ namespace AirCity.Dev
             // set from outside (the inspector, a script): zoom from there
             if (!Mathf.Approximately(distance, applied)) targetDistance = distance;
 
-            if (mouse != null)
+            if (mouse != null && !DevGui.WorldHandleCaptured)
             {
                 Vector2 delta = mouse.delta.ReadValue();
                 if (mouse.rightButton.isPressed)
@@ -52,7 +52,7 @@ namespace AirCity.Dev
                     targetDistance = Mathf.Clamp(targetDistance * Mathf.Pow(1f + zoomStep, -scroll), distanceLimits.x, distanceLimits.y);
             }
 
-            if (keys != null)
+            if (keys != null && !DevGui.KeyboardCaptured && !DevGui.WorldHandleCaptured)
             {
                 float speed = distance * 0.8f * panSpeed * dt * (keys.leftShiftKey.isPressed ? 3f : 1f);
                 float x = (keys.dKey.isPressed ? 1 : 0) - (keys.aKey.isPressed ? 1 : 0);

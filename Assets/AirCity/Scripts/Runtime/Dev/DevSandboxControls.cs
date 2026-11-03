@@ -139,7 +139,7 @@ namespace AirCity.Dev
             if (mouse != null && cam != null)
             {
                 Aircraft.Aircraft under = null;
-                bool free = !DevGui.PointerOverHud;
+                bool free = !DevGui.PointerOverHud && !DevGui.GateDesignerOpen;
                 if (free) Aircraft.Aircraft.TryPick(cam.ScreenPointToRay(mouse.position.ReadValue()), out under);
                 if (under != hovered)
                 {
@@ -173,21 +173,23 @@ namespace AirCity.Dev
                     }
                 }
             }
-            if (keys == null) return;
-            if (keys.nKey.wasPressedThisFrame) Night = !Night;
-            if (keys.equalsKey.isPressed || keys.minusKey.isPressed)
+            if (keys != null && !DevGui.KeyboardCaptured)
             {
-                night = Mathf.Clamp01(night + (keys.equalsKey.isPressed ? 0.5f : -0.5f) * Time.deltaTime);
-                ApplyTimeOfDay();
+                if (keys.nKey.wasPressedThisFrame) Night = !Night;
+                if (keys.equalsKey.isPressed || keys.minusKey.isPressed)
+                {
+                    night = Mathf.Clamp01(night + (keys.equalsKey.isPressed ? 0.5f : -0.5f) * Time.deltaTime);
+                    ApplyTimeOfDay();
+                }
+                if (keys.digit1Key.wasPressedThisFrame) Beacons = !Beacons;
+                if (keys.digit2Key.wasPressedThisFrame) Strobes = !Strobes;
+                if (keys.digit3Key.wasPressedThisFrame) Landing = !Landing;
+                if (keys.digit4Key.wasPressedThisFrame) Logos = !Logos;
+                if (keys.rKey.wasPressedThisFrame) Engines = !Engines;
+                if (keys.tKey.wasPressedThisFrame) Taxiing = !Taxiing;
+                if (keys.gKey.wasPressedThisFrame) AddDirt();
+                if (keys.enterKey.wasPressedThisFrame || keys.numpadEnterKey.wasPressedThisFrame) PushBack(keys.shiftKey.isPressed);
             }
-            if (keys.digit1Key.wasPressedThisFrame) Beacons = !Beacons;
-            if (keys.digit2Key.wasPressedThisFrame) Strobes = !Strobes;
-            if (keys.digit3Key.wasPressedThisFrame) Landing = !Landing;
-            if (keys.digit4Key.wasPressedThisFrame) Logos = !Logos;
-            if (keys.rKey.wasPressedThisFrame) Engines = !Engines;
-            if (keys.tKey.wasPressedThisFrame) Taxiing = !Taxiing;
-            if (keys.gKey.wasPressedThisFrame) AddDirt();
-            if (keys.enterKey.wasPressedThisFrame || keys.numpadEnterKey.wasPressedThisFrame) PushBack(keys.shiftKey.isPressed);
 
             foreach (var l in FindObjectsByType<AircraftLights>(FindObjectsInactive.Exclude))
             {

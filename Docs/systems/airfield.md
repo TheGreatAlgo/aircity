@@ -6,6 +6,13 @@ or changed. Things that change all the time (wear, snow, grass length, ploughs o
 vertex channels, never rebuilt. Gameplay rules (lengths, widths, closures, wear, verge widths) live in one place,
 `RunwayRules`, and are tested.
 
+`Airport.Baggage` coordinates requested bulk baggage turnarounds and automatic manifests on assigned stands.
+`BaggageStation` saves hall endpoints, equipment parking, hold compatibility and per-visit demand;
+optional `Stand.baggageEntryNode` / `baggageExitNode` choose service-road
+access. Operational service poses are derived from the parked aircraft and equipment data. Active baggage
+turnarounds and airports with automatic handling interleave maintenance, baggage, traffic and bridges at
+0.05 game-second boundaries; the existing simulation path remains otherwise. See [baggage](baggage.md).
+
 Design choices the user made (2026-10-23):
 
 | Topic | Choice |
@@ -14,7 +21,7 @@ Design choices the user made (2026-10-23):
 | Taxiways | straight segments with automatic curves and fillets |
 | Lengths | real-world distances |
 | Surfaces | dirt, grass, asphalt, concrete; they differ by wear, weather and upkeep, with no weight limits; jets need pavement |
-| Lighting | a per-runway upgrade; unlit runways close at night |
+| Lighting | an upgrade placed by hand (2026-11-03, the dev Lights tool) on what's built: a runway's level (`Runway.lighting`: basic for night, precision for fog and low cloud) and each taxiway section's edge lights (`TaxiwayEdge.lit`, paved taxiways only, `TaxiwayNetwork.Lightable` / `SetLit(sections, lit)`). At night aircraft use only lit runways (`AirTraffic.Usable`) and taxi only on lit sections (`TaxiwayNetwork.TaxiOk`), so only part of the airfield may stay open. Vehicles drive anywhere. New taxiways are laid unlit |
 | Snow | builds up, must be ploughed |
 | Grass | grows, must be mowed; so do the verges (the graded grass of the runway and taxiway strips) |
 | Service roads | vehicle-only, white markings, give way at taxiways; aircraft never use them |
@@ -41,7 +48,7 @@ Stands, 2026-10-24:
 | `Runway.cs` | One runway: thresholds, surface, width, lighting, wear, snow, grass, verge grass, letter; `Check(type)`; rebuild |
 | `TaxiwayNetwork.cs` | Taxiway and service-road graph (`TaxiwayNode`, `TaxiwayEdge`), editing (`Connect` splits crossings), routing (aircraft; vehicles with roads preferred and aprons crossable), `Run` (chains of sections for the depots' teams); stands (`AddStand`, `Layout`, `Fits`, `CheckStand`, `StandsFor`) |
 | `Stand.cs` | `Stand` (saved: kind, number, code, surface, exit, position, heading, `bridges`, `head`) and `StandLayout` (pad, clearances, stop bar, taxi-out hairpin, frontage, `ParkPosition`) |
-| `Terminal.cs` | `Terminal` (saved: corners, a bulge per edge, floors): outline with arcs, `Contains`, `ClosestOnWall` |
+| `Terminal.cs` / `BuildingExterior.cs` | Saved footprint/arcs, individual storey heights, per-face facade styles and lean; wall sections at boarding elevations |
 | `JetBridge.cs` | `JetBridge` (saved per stand: door, rotunda, root), `BridgeHead` (saved per stand), `JetBridgeRules`, `BridgePose`, `BridgeLayout` (`Dock`, `Parked`, `ParkAll`, `Columns`, `Shape`, `Placement`, `Check`, `Suggest`), `BridgeSite`, `BridgeShape` / `Solid` (clearance between bridges), `BridgeProblem` |
 | `HeadLayout.cs` | A stand's bridge head laid out: walls, main link, columns, `Shape`, `Placement`; `Suggest` (a head and its bridges), `SuggestBridge` |
 | `AirportBridges.cs` | `Airport.Bridges`: bridges docking and pulling back in game seconds, `Clear(aircraft)`, `SetBridges(stand, n)`, `Check` / `FirstProblem`, `HeadOf(stand)` |
@@ -257,15 +264,19 @@ leaves out its verges (split round the stand) and edge lights.
 
 ## Terminals and jet bridges
 
+Configurable bridge families, bent corridors, boarding heights, branch heads, the Gate Designer and automatic
+aircraft-specific service plans are described in [gates.md](gates.md). Numbers below describe the original family.
+
 Added 2026-10-29. The user's choices:
 
 | Topic | Choice |
 |---|---|
-| Terminal shape | a polygon whose edges can bow out (or in) into arcs, up to a half circle: curved ends, satellites, bowed frontages. Floors 1–4. No interiors yet; deeper customisation comes later |
+| Terminal shape | a polygon whose edges can bow out (or in) into arcs, up to a half circle. Floors 1–12 with individual heights; facade finish and lean per original edge. No interiors yet |
 | Bridge ownership | a bridge belongs to one stand (`Stand.bridges`, 0–3) and never serves another. It may stand on either side of the stand's centreline |
+| Customization (2026-10-31) | place terminals, bridges and aircraft stops; the game calculates doors, angles and connections. Aircraft-specific service configurations are wanted. Do not expose saved bridge parking poses or operating sequences |
 | Doors | each bridge serves one left-hand passenger door, L1, L2 … counted from the front (`AircraftType` `PassengerDoor` points with `normal.x < 0`) |
 | Long bridges | the fixed link from the terminal to the rotunda runs 0–60 m, for a curved terminal end whose stands fan out |
-| Bridge heads (2026-10-30) | two or three bridges on one side of a stand share a head, as at most real gates: one main link from the terminal to a building on columns beside the aircraft, the bridges off its side. A double-deck gate's head has a second storey, so the upper-deck bridge's link is level |
+| Bridge heads | two or three bridges can share a grounded concourse building, with an optional elevated-on-columns form. The incoming corridor has independent supports. Main/upper boarding floors and facade style are independent of aircraft door assignments |
 | Short tunnels, staged moves (2026-10-31) | the user saw bridges swing round with their tunnels out and hit the aircraft. A bridge on a head stands close to the aircraft and needn't reach far, so it gets a short tunnel that retracts out of the way; every bridge now swings round only retracted, then telescopes out. The head can be dragged to place it where the player wants |
 
 **Loose coupling.** Terminals know nothing of stands. A bridge is saved in its stand's frame (x across, s along, as
@@ -303,11 +314,12 @@ upper-deck tunnel clears a main-deck link by 0.5 m; it can't pass over a main-de
 
 **Bridge heads (2026-10-30, `BridgeHead`, `HeadLayout`).** The user's ask: real gates don't run each bridge's link
 the full way from the terminal; one main link reaches a fixed head, and the bridges split off from it, and a
-double-deck gate's head has an upper floor so the upper-deck bridge needn't ramp. A stand has at most one head
-(`Stand.head`, saved in the stand's frame: its centreline `from` (near end) to `to`, and the main link's `root` on the
-terminal; `from == to`: none). It is 7 m wide (`JetBridgeRules.HeadWidth`), floor 4 m, on pairs of link columns 2.2 m
-either side of its centreline at most 18 m apart, its ends overhanging the end pairs by at most 5 m, kept off roads
-and taxiways like link columns (`HeadLayout.Columns`). Its main link is a link 3.6 m wide on its own columns, straight
+double-deck gate's head has an upper floor so the upper-deck bridge needn't ramp. A stand has a primary head and optional branch heads
+(`Stand.head` / `Stand.additionalHeads`, saved in the stand's frame: its centreline `from` (near end) to `to`, and the main link's `root` on the
+terminal; `from == to`: none). It is 7 m wide (`JetBridgeRules.HeadWidth`), boarding floor 4 m, with a building envelope
+down to the apron by default (`HeadFoundation.Building`). The optional `Columns` form uses paired columns 2.2 m
+either side of its centreline, spans at most 18 m and ends overhanging at most 5 m. Grounded heads occupy their entire
+footprint and may not cover a road. Its main link is a link 3.6 m wide on its own columns, straight
 from the terminal to the head's near end, or none if the head stands against the terminal. A head has a second storey
 (floor 7.8 m, `HeadLayout.upper`) when an upper-deck bridge stands on it. A bridge stands on the head when its link
 root touches the head's wall (`HeadLayout.Touches`, `BridgeLayout.head`): its rotunda 1.2 m off the wall on a level
@@ -403,7 +415,7 @@ to the link and a head. Each bridge head is another copy of the model showing on
 stretched to its length, an end wall at each end, the `Link` widened as its main link, and the columns. Outside Play
 mode it also places them before each render, so the editor and captures show them.
 
-**Not done yet:** interiors; terminal styles beyond the one curtain wall; a bridge shared by two stands (by choice,
+**Not done yet:** interiors; custom facade panel/roof asset libraries beyond the parameterized facade system; a bridge shared by two stands (by choice,
 not planned); a head shared by two stands (bridges off both its sides, as at many piers); placing a head by hand
 from nothing (drag one placed by the bridge count buttons); pre-conditioned air and ground power on the bridge. On the double-deck
 stand a narrow-body gets no bridge: L2, parked, stands in L1's way to its door.
@@ -449,7 +461,8 @@ stand a narrow-body gets no bridge: L2, parked, stands in L1's way to its door.
   used by the depots' vehicles. They take several start nodes, each with a cost already spent, and the nearest of
   several targets. Links blocked by a parked aircraft are left out.
 - **Night:** `Airport.IsNight` is `AircraftLights.Glow > 0.5`. That global is set by the dev "N" key and
-  `SceneCapture -captureNight`.
+  `SceneCapture -captureNight`. At night `TaxiOk` also leaves out unlit taxiway sections (aircraft only; the routes
+  are worked out when a flight plans, so one already taxiing when night falls carries on).
 
 ## How it builds
 
@@ -488,14 +501,17 @@ stand a narrow-body gets no bridge: L2, parked, stands in L1's way to its door.
   - Centreline: 30 m dashes with 20 m gaps.
   - Side stripes, aiming point and touchdown zone marks.
   - Blast pads (60 m) with chevrons on runways 30 m and wider.
-- **Basic lighting:**
+- **Basic lighting** (for night):
   - Edge lights every 60 m or less. The last 600 m are yellow on precision runways.
   - Green / red threshold and end lights.
   - PAPI.
-- **Precision lighting** adds:
+- **Precision lighting** (for fog and low cloud) adds:
   - Centreline lights (red / white near the end).
   - Touchdown-zone lights.
   - Approach lights out to 720 m with sequenced flashers.
+  - Stop bars at its taxiways' holding positions.
+- At night either level keeps a runway open. Precision is meant for low-visibility weather (fog, low cloud), which
+  isn't in yet; until it is, precision works like basic.
 - **Unpaved runways:** a fringed surface with orange / white edge cones and no paint.
 
 **Layer stacking.** Overlapping pavements aren't cut against each other. They are stacked a few mm apart, all
@@ -695,7 +711,7 @@ taxiway.
 | `GrassStrip_*` | growth, closure and mowing |
 | `Runway_BuildsSurfacePaintAndLights` | generated runway geometry |
 | `Taxiways_*` | split crossings |
-| `TaxiRouting_*` | routes respect width and surface |
+| `TaxiRouting_*` | routes respect width and surface; at night only lit sections, and only paved ones take lights |
 | `SandboxAirport_*` | no down-facing or NaN triangles (surfaces, paint, verges), depot and road present |
 | `Vehicles_*` | vehicle import |
 

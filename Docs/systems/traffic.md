@@ -6,6 +6,17 @@ takes off; an arrival flies a 3° final, lands, takes the first exit it can and 
 aircraft apart on the runways, through junctions and along taxiways. Flights are simulated in game seconds from
 `Airport.Simulate`, like the depots' teams, so tests run them headless.
 
+Aircraft with an explicitly requested [baggage turnaround](baggage.md#airport-connected-bulk-turnaround) wait
+in `FlightPhase.Ready` until incoming bags have reached arrivals, outgoing bags are loaded and equipment has
+returned clear. `Flight.StepReady` checks `Airport.Baggage.DepartureBlocker` before requesting a tug or starting
+engines; the existing bridge clearance remains required. Baggage service reservations exclude stands from
+arrivals allocation, and moving/parked baggage equipment participates in traffic's vehicle obstacle checks.
+Flights without a baggage request retain the existing behaviour.
+
+Stations with automatic handling create manifests when their configured aircraft parks on an assigned stand.
+The sandbox supplies configurable arriving/departing demand, including repeated cart trips. Direct tug
+push-back also checks baggage readiness. See [sandbox baggage handling](baggage.md#sandbox-handling-and-larger-manifests).
+
 The user's choices (2026-10-28):
 
 | Topic | Choice |

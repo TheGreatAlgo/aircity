@@ -75,6 +75,14 @@ namespace AirCity.Airfield.Building
             }
             paint.Strip(OffUnpaved(l, new List<Vector2> { l.entry + l.axis * straight, l.stop }), LineHalfWidth, yellow);
             StopBar(l, paint, span);
+            foreach (var configuration in l.stand.serviceConfigurations)
+            {
+                if (configuration == null || configuration.aircraft == null || !configuration.allowed ||
+                    Mathf.Abs(configuration.stopOffset) < 0.05f || !l.ParkingFits(configuration.aircraft)) continue;
+                var at = l.StopFor(configuration.aircraft);
+                paint.Box(at, l.Right, StopBarHalfWidth, Mathf.Clamp(configuration.aircraft.Wingspan * 0.08f, 1.5f, 4f), yellow);
+                paint.Text(at + l.Right * 5f, l.axis, configuration.aircraft.model, 1f, yellow);
+            }
 
             float half = span * 0.5f + clr * 0.25f;
             float rear = l.tailS - clr * 0.25f, front = l.noseS + clr * 0.25f;

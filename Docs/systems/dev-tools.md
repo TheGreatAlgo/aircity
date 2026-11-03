@@ -14,6 +14,26 @@ How to build, test and look at things without the GUI, and the sandbox controls.
 
 ## Unity batch commands (from the repo root)
 
+The sandbox's **BAGGAGE** section shows the selected station and its queues; **View station** frames its apron.
+Expand **STATION SETUP** to place endpoints/loader parking, set headings and demand, add stations and assign
+stands. Select an aircraft for handling counts, screening release, cancellation and retry. **Send to reclaim**
+frees arrivals bay capacity while retaining baggage records. **AirCity > Vehicles > Enable Sandbox Baggage**
+adds the initial service stand to an existing sandbox. See [baggage](baggage.md#sandbox-handling-and-larger-manifests).
+
+The main sandbox's **CONTAINERS > View station** frames its widebody service area. **CONTAINER STATION SETUP**
+provides aircraft/hold compatibility, demand, station creation, endpoint placement/headings and stand assignment.
+Setup starts folded; long sidebar panels scroll so their lower controls remain accessible.
+The panel and aircraft inspector expose screening, access blocking, cancellation/retry and arrivals/reclaim.
+**AirCity > Vehicles > Enable Sandbox Containers** installs the example while preserving the existing airport;
+`ContainerSandboxSetup.FromCommandLine` validates automatic container/bulk handling through departure and
+captures `Captures/ContainerSandbox/loading.png`. See [sandbox containers](baggage.md#main-sandbox-container-handling).
+
+**AirCity > Vehicles > Create Container Turnaround Review** creates the widebody LD3 review scene at
+`Assets/AirCity/Scenes/ContainerTurnaround.unity`. Enter Play for container/bulk handling, pause/speed,
+blocked-access and cancellation/retry controls. Its batch entry point is
+`AirCity.EditorTools.Vehicles.ContainerTurnaroundSetup.FromCommandLine`; it captures both loader platforms
+and verifies baggage conservation and departure clearance. See [container handling](baggage.md#widebody-container-turnaround).
+
 ```sh
 U=/Applications/Unity/Hub/Editor/6000.6.7f1/Unity.app/Contents/MacOS/Unity
 
@@ -88,25 +108,33 @@ one). The camera carries `DevOrbitCamera`, `DevSandboxControls`,
 
 An IMGUI HUD, dev only (not game UI):
 
-- **Bottom:** the tool buttons (Select, Runway, Taxiway, Road, Apron, Terminal, Depot, Stand, De-ice, Bridge, then
-  Delete). On a narrow screen the buttons get narrower so the bar fits.
-- **Inspector, top right (2026-10-31):** a column of labelled rows for the current tool (surface, width, taxiway
-  lights, a depot's fleet; a stand's code A–F, surface, angle, exit and light aircraft) or, in Select, for the
+- **Bottom (2026-11-02):** the tools as square icon buttons in groups: Select | Runway, Taxiway, Road, Apron | Lights |
+  Terminal, Stand, Bridge, Gates | De-icing bay, Depot | Delete. Hover a button for its name and what it does; clicking the tool
+  that's on again goes back to Select. The icons come from `ArtSource/UI/icons.py`. On a narrow screen the buttons get smaller so the
+  bar fits.
+- **Tray, over the tool that's on:** a card for each kind it can build, side by side in captioned groups, showing what
+  they look like. Runway: surface (a patch of the real ground texture) and width (a strip of the chosen surface drawn
+  to scale, with its size code). Taxiway: the same. Road and apron: surface. Terminal: floors
+  (1, 2, 3, 4, 6, 8; `[ ]` gives any up to 12). De-icing bay: size code, surface (paved only) and Turn round. The
+  chosen card is amber; the keys still work (V, `[ ]`, Shift+Z) and the tray follows them. Lights: what the lights tool
+  puts down (taxiway edge; runway basic, "night": edge, threshold and end with PAPI; runway precision, "fog": plus
+  centreline and approach lights, its picture fading into fog) and Remove. Stand, Bridge and Gates
+  open the gate designer instead, and Select, Depot and Delete have no tray. The tools' inspector keeps only its hints and problems.
+- **Inspector, top right (2026-10-31):** a column of labelled rows for the current tool (its hints and problems, a
+  depot's fleet; a stand's code A–F, surface, angle, exit and light aircraft; the tray has the rest) or, in Select, for the
   selection (surface, width, lighting, wear / repair, plough / mow / verges, fleet, a stand's settings and bridges;
   for an aircraft depart / push back / park / taxi / dirt, or its progress), Delete at the bottom, and its hints and
   problems wrapped under it. It replaced a single strip above the tools that ran off screen for stands.
-- **Pop-outs:** settings with many choices are one button showing the current value (Surface, a stand's Angle, its
-  Bridges). Clicking it opens their options in a panel to the left of the inspector, beside that row; the button
-  again, Esc, or a press anywhere else closes it. The Bridges pop-out stays open while the world is clicked (bridges
-  are picked and dragged there) and opens by itself when a bridge's ring is clicked. It holds Auto-place 0–3, a row
-  per bridge (door, tunnel, OK or a red "!", click to pick it), the picked bridge's side / deck / door / tunnel and
-  Delete, and Delete head.
+- **Pop-outs:** non-gate settings with many choices (such as Surface) open beside the inspector. Gates use one
+  dedicated workspace: Stand/Bridge open placement, and clicking a stand or bridge opens editing. The same panel
+  contains model/sections, finishes, parking and removal; there is no separate stand-owned bridge menu.
 - **Sidebar, under the inspector** (beside it, to its left, when the two won't fit one above the other): weather,
   time speed, day / night, snowfall, grass growth, plough / mow everything, auto-dispatch, traffic, and the aircraft
   lights and engines. Click a section's caption to fold it.
 - **Top left:** the airfield panel (`DevAirfieldTool`).
 
-Every button shows its key, and hovering shows a tip. Every key below still works.
+Buttons show their keys where available, and hovering shows a tip. Keyboard shortcuts are suspended while typing
+in a gate designer text field.
 
 How it's built:
 
@@ -130,14 +158,14 @@ How it's built:
 | Space / "Depart" | the selected aircraft departs: pushed back if it needs to be, taxis to the runway in use and takes off (`DevTrafficControls`). A selected aircraft's route is drawn on the ground (a parked one's as it would go now); the inspector shows its flight's status. Sidebar TRAFFIC: Land per type, Auto traffic, wind. See [traffic.md](traffic.md) |
 | B | next build tool: select / runway / taxiway / road / apron / terminal / depot / stand / de-icing bay / bridge |
 | Placing (all tools) | free by default. A point sticks to something already built only within about 14 pixels (never under 1.5 m), or anywhere on the pavement of a line of its own kind. A ring shows where the next point goes before any click: cyan where it sticks (the inspector says "joins …"), white where it's free, red where it can't go. **Hold Shift for steps:** lines turn in 10° steps counted from what they start on or near (a taxiway, road, runway, apron or stand edge; else the line's last stretch; else the nearest runway; else north), so they run parallel, square or 10°, 20° … off it, and come in whole 5 m |
-| Runway tool: drag (Shift = steps) | lay a runway; with Shift, 10° from north and 50 m steps |
-| Taxiway / road tool: click, right-click / Esc | add points; end the line. The new pavement's outline follows the cursor from the last point. A taxiway sticks to taxiways and runways and joins a road only when clicked on the road's pavement; a road sticks to roads and joins a taxiway or runway only when clicked on it (so a road laid beside a taxiway stays beside it). The road tool lays 7 m service roads (only paint across paved aprons); it also sticks to a point 12 m in front of a depot's doors and to the head of a parking stand (edge on the pad's edge, running on half a road width past each corner; coming at it end-on, onto the head). A line that would cross a stand turns red and won't build |
+| Runway tool: click, click (or drag); right-click / Esc | like the line tools: a ring shows where the threshold goes. Click it, then the other threshold, or drag from one to the other. The runway is built as the cursor moves, so it shows as it will look (its surface and width can still be changed in the tray), and the inspector gives its designation and length. Shorter than 100 m, the ring turns red and it won't end there. Shift: 10° from north and 50 m steps. Right-click (not a right-drag, which turns the camera) or Esc drops it |
+| Taxiway / road tool: click, right-click / Esc | add points; end the line (a right-drag turns the camera and leaves the line going). The next stretch is built as it will look (surface, paint, verges; `TaxiwayPreview`, never part of the airport), from the last point to the cursor, with a faint outline that turns red where it can't go. It stays while the pointer is over the HUD, so a width or surface picked in the tray shows on it. A taxiway sticks to taxiways and runways and joins a road only when clicked on the road's pavement; a road sticks to roads and joins a taxiway or runway only when clicked on it (so a road laid beside a taxiway stays beside it). The road tool lays 7 m service roads (only paint across paved aprons); it also sticks to a point 12 m in front of a depot's doors and to the head of a parking stand (edge on the pad's edge, running on half a road width past each corner; coming at it end-on, onto the head). A line that would cross a stand turns red and won't build |
 | Apron tool: click, drag, right-click / Esc | click corners; they stick to the corners and edges of aprons and stand pads, so a new apron joins an existing one edge to edge. Click the first corner again or right-click to finish; Esc drops it. Dragging from the first press lays a rectangle lined up with what it starts on (an apron or stand edge, a taxiway or road), else the nearest runway. The outline is green, or red with the reason in the inspector (edges crossing, too small, overlapping an apron of a surface it can't overlap). V / the surface chips pick the surface, also for a selected apron |
 | Terminal tool: click, drag, right-click / Esc | a terminal's footprint, drawn like an apron (corners stick to aprons' and stands' corners and edges; drag for a rectangle). It may not stand on a runway, taxiway, road or stand pad, nor overlap another terminal (red, with the reason). Click a terminal to select it. [ ] (or the Floors stepper) sets the floors, 1–4, also for the selected one |
 | Shift+scroll on a selected terminal (Alt: fine) | the wall nearest the cursor is outlined in cyan; scrolling bows it out or in, 2 m a notch (Alt 0.5 m), up to a half circle. A bulge that would hit something isn't made (the inspector says why) |
-| Selected push-back stand: Bridges ▸ Auto-place 0 / 1 / 2 / 3 | that many jet bridges, to doors L1.., placed where they work (`AirportBridges.SetBridges`). If fewer fit, the inspector says so. A ring marks each rotunda: amber if connected to a terminal, yellow with a line to its link root if not, red if it has a problem. Thin lines show where it reaches to dock each type (green docks, red can't). The panel lists each bridge's link, state and verdict per type |
+| Stand / Bridge toolbar buttons; click a stand or bridge | opens one Gate designer workspace for parking, bridge models/sections, glass finishes, world handles, aircraft stops and removal. Choose bridge settings before placement; a successful placement selects that bridge for editing. Click a bridge model directly without first selecting its stand. Delete in the Jetbridges page removes only the current bridge |
 | Select tool: click a rotunda ring | picks that bridge: the inspector shows its door (Left / Right, Main / Upper, and which, counted from the front). Changing it places the bridge again where it works for the new door; a door no type at the stand has, or no place that works, is refused with the reason. **Tunnel Long / Short** gives it 13 m sections (14–36 m) or 8.5 m ones (9.5–22.5 m, as on a head, close to the aircraft); the inspector says what's wrong if it no longer reaches |
-| Bridge tool: click, click, right-click / Esc | place a jet bridge by hand (2026-10-31). Click a terminal's wall where its link should leave the building (a click within a few metres sticks to the wall; a stand's bridge head's wall works too, for a bridge on that head), then click where the rotunda stands. It serves the stand beside it (on its pad, else the nearest within 40 m, outlined in cyan), and the door nearest it along the aircraft that no bridge there serves yet and that it can dock at, with a short tunnel if that docks as many types (`AirportBridges.AddBridge`). The link and rotunda show green where they can go, red with the reason where they can't (`WhereProblem`). Placed, the stand is selected and the tool stays on for the next. Right-click or Esc drops the start. Up to 3 a stand. **Place: Head** in the inspector places a bridge head instead: click the terminal wall where its main link leaves, then where the head starts (on the wall: no main link), then where it ends (10–60 m); it serves the stand beside its middle (`AirportBridges.PlaceHead`, checked live by `HeadProblem`). A head with no bridges yet still stands and shows; the tool then goes back to Bridge, so the next clicks (on the head's wall, then a rotunda) put bridges on it. A stand's new head replaces its old one, taking the bridges on it along |
+| Bridge placement in Gate designer: click, click, right-click / Esc | choose the model and finish, click a terminal/concourse wall, then the bridge base. The full model and blue preview aircraft show the fit. Green/red uses the same complete family-specific check as the click. A refused click keeps the root and red model; Escape/right-click cancels. Successful placement opens editing, with the same model/finish controls and world handles. Build > Concourses places a concourse using wall, near-end and far-end clicks |
 | Select tool: drag a rotunda ring | move that bridge (`AirportBridges.MoveBridge`); its link keeps leaving the terminal where it did while that still works, else follows to the nearest terminal wall within 60 m, and it moves onto the stand's head if the head is nearer. A spot where the rotunda or link would stand in the aircraft's way, on pavement, on the next stand or through a terminal is refused (it stays put); other problems are shown in the inspector |
 | Select tool: drag a link's square | a square on the terminal wall marks where each link leaves the building (a bridge's, and a head's main link's). Drag it along the walls (it sticks to the nearest one); the rotunda or head stays put (`AirportBridges.MoveRoot`). Refused where the link would be over 60 m, run through a terminal or over where the aircraft parks, or its columns couldn't keep off pavement |
 | Selected bridge: Delete | the inspector's **Delete L1** (or Del / Backspace) takes just the clicked bridge off its stand (its head stays). With no bridge picked, **Delete head** takes the stand's head and the bridges on it. Click the stand away from its rings to drop the bridge pick, and Delete takes the stand |
@@ -146,9 +174,10 @@ How it's built:
 | Depot tool: drag, click | drag from the door front the way the doors face (Shift: 10° steps from what it's beside) to build a depot; click one to select it |
 | Stand / de-ice tool: click | a ghost pad follows the cursor. Within a stand's depth of a taxiway, or of another stand's front line (the taxilane still to come), it opens onto that line, its centreline under the cursor, pulled against a stand beside it within 40% of its width. Anywhere else it stands free, centred on the cursor. **Hold Ctrl (Mac: or Cmd)** and it stands free wherever the cursor is, never pulled onto a taxiway or against a stand; Ctrl+press and drag turns it to point at the cursor, any angle, and it is built where the button comes up. Green fits, red doesn't (the inspector says why). A stand without a taxiway shows its front line dashed in amber (also while laying taxiways), and the taxiway tool sticks to that line and says "connects it"; a taxiway can run along it but not across the pad. Click builds it; click a stand to select it |
 | De-ice tool: click | the same for a drive-through de-icing bay, centred on the taxiway under the cursor |
-| [ ], V, Z / Shift+Z, I | stand / bay tools and a selected stand: size code down / up, surface (grass and dirt for A / B only, bays always paved), angle (Z: the next of 90 / 60 / 45 / 30 down) / lean the other way (bays: turn round), push-back / taxi-out ("No small" chip: turn small aircraft away). A change that wouldn't fit is undone |
+| [ ], V, Z / Shift+Z, I | stand / bay tools and a selected stand: size code down / up, surface (grass and dirt for A / B only, bays always paved), angle (Z: the next of 90 / 60 / 45 / 30 down) / lean the other way (bays: turn round), push-back / taxi-out ("No small" chip: turn small aircraft away). A change that wouldn't fit is undone. Size code and push-back / taxi-out apply to new stands only: a placed stand or bay keeps the ones it was built with (the inspector shows them, `DevAirfieldTool.StandFixed`); delete and re-place it to change them |
 | Shift+scroll (Alt: fine) | the stand being placed, or the selected one: turn it 5° a notch (Alt: 1°). Against a taxiway or front line: its angle to it, 25° to 155°, so past 90° it leans the other way. Free (and unconnected selected ones): all the way round, about the pad's middle. The camera doesn't zoom meanwhile. The inspector's angle stepper does the same; Lean (Shift+Z) mirrors it |
-| V, [ ], L | surface, width, lighting (taxiway tool: all taxiway lights). V / [ ] also change a selected runway |
+| V, [ ], L | surface, width; L: a selected runway's lighting (none / basic / precision for fog). V / [ ] also change a selected runway |
+| Lights tool: click / drag (Shift = whole run) | lights are an upgrade placed by hand on what's already built, so only the parts of the airfield that should work at night need them; new taxiways are laid unlit. Pick a kind in the tray. **Taxiway edge:** click a taxiway section to light it, or hold and drag along sections to light each one passed; Shift lights the section's whole run (roads left out). **Runway basic / precision:** click a runway to give it that lighting (or change its level). Basic is for night; precision adds centreline and approach lights for fog and low cloud (that weather isn't in yet, so for now it works like basic). **Remove:** takes the lights out of sections and runways. The section or runway under the cursor is outlined (blue for taxiway lights, warm white for a runway's, red to remove or where it can't go), and the inspector says what a click does ("light taxiway section, 150 m", "Runway 09/27: precision (fog) → basic") or why not (roads, dirt and grass can't be lit). It also gives how much is lit (km of taxiway, runways) and has **Light all taxiways** / **Clear all** |
 | C | weather: dry / rain / snowing |
 | K / J | wear / repair the selected runway |
 | P / M / Shift+M | plough / mow / mow the verges (the selected runway or taxiway / road run; with the taxiway or road tool, all taxiways and roads; with nothing selected, everything) |
@@ -171,10 +200,34 @@ What deleting does:
 - A team whose runway or taxiways are removed gives the job up and drives home (`VehicleTeam.Recall`, checked in
   `AirportMaintenance.Simulate`). If one of its vehicles is still pulling out of the yard, the team waits until all
   of them are out first.
-- Everything the tools change happens in Play mode, so it all comes back when you stop playing.
+- Everything the tools change happens in Play mode, so it all comes back when you stop playing. Gate designer
+  presets saved to disk remain available next session.
 
 A depot built when the airport has none copies its vehicle types and prefabs from the tool's asset fields (which
 the airfield bootstrap fills in); otherwise from the first depot.
 
 `DevAirfieldTool.Active` stops `DevSandboxControls` from taking left clicks while a tool other than Select is on.
 `DevAirfieldTool.Deleting` makes them remove aircraft instead.
+
+## Gate Designer
+
+In Play mode, click **Gates** in the bottom toolbar, or click an existing stand/bridge. The runtime panel
+has Build / Aircraft / Appearance / Saved gates views for models, placement, aircraft service and reusable layouts,
+aircraft-specific stops, facade styles, isolated aircraft previews and persistent mirrored gate presets. It pauses the
+airport while open by default. Numeric settings use steppers or Enter/focus loss. Corridor shaping uses world handles. Door assignments and movement stay automatic.
+An aircraft preview appears automatically at the selected gate's parking stop. The Aircraft page can change or hide
+it. The Stand and Bridge toolbar buttons open this same workspace. Click a bridge model directly to select, edit or remove it; the owning stand is resolved automatically. Build > Parking edits or places stands, while Build > Jetbridges exposes model/section and finish choices before placement, even before stands exist. The old stand bridge pop-out has been removed. The Bridge placement tool also shows a blue temporary aircraft labelled PREVIEW AIRCRAFT and a full bridge model, tinted green/red using the
+same complete placement decision as the click (including door reach and moving clearance). A refused click keeps
+the connection selected; move the cursor to adjust it, or right-click/Escape to cancel.
+
+**Build > Concourses** offers Building / Elevated forms. **Build > Terminal** edits storey heights and boarding
+levels. **Appearance** provides four coordinated glass facades (Classic, Minimal, Framed, Colonnade), plus Clear/Blue/Green/Smoke glass tints. Separate **Facade angle** and **Roof shape** pages expose wall lean and Flat/Wave/Scalloped forms with rise, direction and canopy extension. Column gap moves the architectural supports away from the glass; the roof covers them automatically. Moving jetbridges offer glass or enclosed panels.
+Blue world handles edit bridge bases, connections, concourse ends and corridor corners: click + to insert a corner,
+Shift-drag for height, Ctrl/Cmd for 0.5 m steps, right-click/Delete to remove a corner, Escape to cancel a gesture.
+Alt reveals column handles. Supports and bend coordinates are absent from the palette.
+Selecting a terminal exposes **Design building** directly; no stand is required for terminal editing.
+
+`DevToolbar` owns `DevGateDesigner`; the existing Sandbox camera needs no additional component. `GateAircraftPreview`
+uses inactive models supplied by `DevTrafficControls`, so previews remain available after the original aircraft
+departs. The Unity editor's **AirCity > Airfield > Gate Designer** remains available for scene authoring and project
+asset presets. See [gates.md](gates.md).

@@ -43,18 +43,35 @@ namespace AirCity.EditorTools.Vehicles
                 }
                 var go = (GameObject)PrefabUtility.InstantiatePrefab(fbx);
                 go.name = model;
-                var lights = go.AddComponent<VehicleLights>();
-                lights.type = type;
-                lights.glowMaterial = glow;
-                if (!type.IsBuilding)
+                if (type.IsBaggageEquipment || type.kind == VehicleKind.ContainerULD)
+                    PrefabUtility.UnpackPrefabInstance(go, PrefabUnpackMode.Completely, InteractionMode.AutomatedAction);
+                VehicleLights lights = null;
+                if (type.kind != VehicleKind.BaggageProp && type.kind != VehicleKind.ContainerULD)
+                {
+                    lights = go.AddComponent<VehicleLights>();
+                    lights.type = type;
+                    lights.glowMaterial = glow;
+                }
+                if (type.IsBaggageEquipment && type.kind != VehicleKind.ContainerLoader)
+                {
+                    var rig = go.AddComponent<BaggageEquipmentRig>();
+                    rig.type = type;
+                    rig.FindParts();
+                    rig.Apply();
+                }
+                if (type.container != null)
+                {
+                    var rig = go.AddComponent<ContainerEquipmentRig>(); rig.type = type; rig.Apply();
+                }
+                if (!type.IsBuilding && type.kind != VehicleKind.BaggageProp && type.kind != VehicleKind.ContainerULD)
                 {
                     var v = go.AddComponent<Vehicle>();
                     v.type = type;
-                    v.sprayMaterial = spray;
+                    v.sprayMaterial = type.IsBaggageEquipment ? null : spray;
                     v.FindParts();
                     lights.flood = false;
                 }
-                else
+                else if (lights != null)
                 {
                     lights.headlights = lights.work = false;
                     // a tower's aerodrome beacon turns from dusk to dawn, its obstruction lights with it
@@ -64,15 +81,40 @@ namespace AirCity.EditorTools.Vehicles
                 Object.DestroyImmediate(go);
                 Debug.Log($"VehicleSetup: created {path}");
             }
+            CreateBaggagePropPrefabs();
             AssetDatabase.SaveAssets();
         }
 
-        public static readonly string[] Models = { "SnowPlough", "Mower", "Depot", "TowerSmall", "TowerMedium", "TowerLarge", "TugSmall", "TugLarge", "JetBridge" };
+        static void CreateBaggagePropPrefabs()
+        {
+            const string folder = Root + "/BaggageProps/Props";
+            var fbx = AssetDatabase.LoadAssetAtPath<GameObject>($"{Root}/BaggageProps/Models/BaggageProps.fbx");
+            if (fbx == null) return;
+            EnsureFolder(folder);
+            foreach (var source in fbx.GetComponentsInChildren<MeshRenderer>(true))
+            {
+                if (!source.name.StartsWith("Bag_")) continue;
+                string path = $"{folder}/{source.name}.prefab";
+                if (AssetDatabase.LoadAssetAtPath<GameObject>(path) != null) continue;
+                var bag = Object.Instantiate(source.gameObject);
+                bag.name = source.name;
+                bag.transform.position = Vector3.zero;
+                PrefabUtility.SaveAsPrefabAsset(bag, path);
+                Object.DestroyImmediate(bag);
+            }
+        }
+
+        public static readonly string[] Models = { "SnowPlough", "Mower", "Depot", "TowerSmall", "TowerMedium", "TowerLarge", "TugSmall", "TugLarge", "JetBridge",
+            "BaggageTractor", "BaggageCart", "BeltLoader", "BaggageProps", "ContainerLD3", "ContainerDolly", "ContainerLoader" };
         /// <summary>The control towers, smallest first: a grass airfield's, a regional airport's, a hub's.</summary>
         public static readonly string[] Towers = { "TowerSmall", "TowerMedium", "TowerLarge" };
 
         public static string PrefabPath(string model) => $"{Root}/{model}/{model}.prefab";
         public static GameObject Prefab(string model) => AssetDatabase.LoadAssetAtPath<GameObject>(PrefabPath(model));
+        public static GameObject[] BagPrefabs() => new[] {
+            AssetDatabase.LoadAssetAtPath<GameObject>(Root + "/BaggageProps/Props/Bag_HardSmall.prefab"),
+            AssetDatabase.LoadAssetAtPath<GameObject>(Root + "/BaggageProps/Props/Bag_Soft.prefab"),
+            AssetDatabase.LoadAssetAtPath<GameObject>(Root + "/BaggageProps/Props/Bag_Duffel.prefab") };
         public static VehicleType Type(string model) => AssetDatabase.LoadAssetAtPath<VehicleType>($"{Root}/{model}/{model}.vehicle");
 
         /// <summary>Give a depot its vehicle types, prefabs and building, and its tugs.</summary>

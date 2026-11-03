@@ -2,7 +2,8 @@
     "name": "AirCity.Editor",
     "rootNamespace": "AirCity",
     "references": [
-        "AirCity.Runtime"
+        "AirCity.Runtime",
+        "Unity.InputSystem"
     ],
     "includePlatforms": [
         "Editor"

@@ -1,0 +1,114 @@
+{
+  "name": "BaggageCart",
+  "displayName": "Covered baggage cart",
+  "kind": "BaggageCart",
+  "bounds": {
+    "min": [
+      -0.833,
+      0.0,
+      -0.71
+    ],
+    "max": [
+      0.833,
+      2.045,
+      3.8026
+    ]
+  },
+  "wheelbase": 2.16,
+  "wheels": [
+    {
+      "name": "Wheel_FL",
+      "centre": [
+        -0.67,
+        0.203,
+        2.16
+      ],
+      "radius": 0.203,
+      "steerable": false
+    },
+    {
+      "name": "Wheel_FR",
+      "centre": [
+        0.67,
+        0.203,
+        2.16
+      ],
+      "radius": 0.203,
+      "steerable": false
+    },
+    {
+      "name": "Wheel_RL",
+      "centre": [
+        -0.67,
+        0.203,
+        0.0
+      ],
+      "radius": 0.203,
+      "steerable": false
+    },
+    {
+      "name": "Wheel_RR",
+      "centre": [
+        0.67,
+        0.203,
+        0.0
+      ],
+      "radius": 0.203,
+      "steerable": false
+    }
+  ],
+  "spinners": [],
+  "lights": [],
+  "work": {
+    "laneWidth": 1.65,
+    "workSpeed": 1.4,
+    "transitSpeed": 5.0,
+    "turnRadius": 3.0
+  },
+  "parking": [
+    0.0,
+    0.0,
+    0.0
+  ],
+  "baggage": {
+    "frontHitch": [
+      0.0,
+      0.38,
+      3.72
+    ],
+    "rearHitch": [
+      0.0,
+      0.38,
+      -0.64
+    ],
+    "loadMin": [
+      -0.72,
+      0.61,
+      -0.31
+    ],
+    "loadMax": [
+      0.72,
+      1.83,
+      2.48
+    ],
+    "payload": 1800.0,
+    "steeringPivot": [
+      0.0,
+      0.33,
+      2.16
+    ]
+  },
+  "lodMovers": [
+    "Wheel_FL",
+    "Wheel_FR",
+    "Wheel_RL",
+    "Wheel_RR",
+    "FrontAxle",
+    "Drawbar",
+    "Curtain_L",
+    "Curtain_R",
+    "CurtainRoll_L",
+    "CurtainRoll_R",
+    "Load"
+  ]
+}

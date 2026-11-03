@@ -6,8 +6,8 @@ namespace AirCity.Airfield.Building
     /// Runway geometry, paint and lights, laid out to ICAO Annex 14 (scaled to the runway's width and length):
     ///  - surface, paved shoulders and blast pads (paved runways 30 m and wider);
     ///  - paint: threshold stripes, designation, centreline, side stripes, aiming point and touchdown zone marks;
-    ///  - lights (with lighting): edge (yellow caution zone), threshold / end, PAPI; precision adds centreline,
-    ///    touchdown zone and approach lights with sequenced flashers;
+    ///  - lights (with lighting): edge (yellow caution zone), threshold / end, PAPI; precision (for fog and low cloud)
+    ///    adds centreline, touchdown zone and approach lights with sequenced flashers;
     ///  - dirt and grass strips: ragged edges and orange / white edge cones instead of paint and lights.
     /// Surface submeshes: 0 = runway (its surface's material), 1 = shoulders and blast pads (asphalt).
     /// </summary>

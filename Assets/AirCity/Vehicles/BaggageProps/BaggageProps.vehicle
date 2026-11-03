@@ -1,0 +1,27 @@
+{
+  "name": "BaggageProps",
+  "displayName": "Baggage prop set",
+  "kind": "BaggageProp",
+  "bounds": {
+    "min": [
+      -1.092,
+      0.0025,
+      -0.155
+    ],
+    "max": [
+      1.31,
+      0.745,
+      0.155
+    ]
+  },
+  "wheelbase": 0.0,
+  "wheels": [],
+  "spinners": [],
+  "lights": [],
+  "work": {},
+  "parking": [
+    0.0,
+    0.0,
+    0.0
+  ]
+}

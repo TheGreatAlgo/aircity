@@ -61,6 +61,8 @@ namespace AirCity.Airfield
         NotConnected,
         /// <summary>It turns small (light) aircraft away (Stand.noSmallAircraft).</summary>
         NoSmallAircraft,
+        ServiceExcluded,
+        StopOutsideStand,
     }
 
     /// <summary>

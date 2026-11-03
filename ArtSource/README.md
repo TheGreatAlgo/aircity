@@ -91,6 +91,21 @@ The photo sources are CC0 (no attribution required): Poly Haven `clean_asphalt`,
 blotches (so they tile over kilometres) and matches each set's mean colour. Glyph shapes are drawn as strokes in
 `glyph_strokes()`; keep `CHARS` / cell sizes in sync with `PaintBuilder`.
 
+## UI
+
+`UI/icons.py` (plain Python 3: Pillow) draws the bottom toolbar's tool icons into
+`Assets/AirCity/UI/Resources/AirCityIcons/<name>.png`: white pictograms on clear, 128 px, drawn at 4x and scaled down.
+The HUD tints them when it draws them (`DevGui.IconButton`) and loads them by name (`DevGui.Icon("taxiway")`).
+`UiIconPostprocessor` imports them uncompressed with mipmaps. It also writes `UI/Build/icons_sheet.png`, a contact sheet
+at full size and at 32 px.
+
+```sh
+python3 ArtSource/UI/icons.py
+```
+
+Each icon is a function on a 128-unit grid: shapes are added (`polygon`, `rect`, `circle`, `line`, `path`) or cut out
+(`on=False`, such as a runway's centreline). Add an icon there and to `ICONS`, then name it in `DevToolbar.Tools`.
+
 ## Vehicles
 
 `Vehicles/` builds the airport's maintenance vehicles and tugs, their depot and the control towers in Blender, lighter than the aircraft pipeline:
@@ -110,6 +125,9 @@ $B -b --factory-startup --python build.py -- --model Mower --geometry --views fr
 | `SnowPlough` | cab-forward 4x4 runway plough-sweeper: 6.1 m blade at 30°, angled mid-mount broom, air-blast nozzle |
 | `Mower` | cab tractor with a 4.6 m batwing rotary mower |
 | `TugSmall` / `TugLarge` | towbarless aircraft tugs (U-shaped, nose-wheel cradle between the rear legs) for narrow-bodies (6 m) and up to an A380 (10 m); shared parts in `Common/tug.py` |
+| `BaggageTractor` / `BaggageCart` / `BeltLoader` | compact baggage tractor, covered articulated cart and full-size adjustable conveyor; shared parts and bag geometry in `Common/baggage.py`; see `Docs/assets/BaggageEquipment.md` |
+| `BaggageProps` | independent large/small hard cases, soft suitcase and duffel; Unity setup creates individual bag prefabs |
+| `ContainerLD3` / `ContainerDolly` / `ContainerLoader` | unbranded AKE container, articulated roller-bed dolly and dual-platform lower-deck loader; shared helpers in `Common/container_gse.py`; see `Docs/assets/ContainerEquipment.md` |
 | `Depot` | steel-clad maintenance garage: four roller doors, office end, flood lights |
 | `TowerSmall` / `TowerMedium` / `TowerLarge` | control towers for a grass airfield (cab on a two-storey office, 13.6 m), a regional airport (square shaft, 38 m) and a hub (round Schiphol-like shaft, radome, 99 m); shared parts in `Common/tower.py` |
 | `JetBridge` | apron-drive passenger boarding bridge: rotunda on a column, three telescoping tunnels, wheel bogie on two legs, cab with canopy, link corridor and column, plus a 7 m rotunda and column for upper-deck (A380) bridges; separate parts the game assembles, no LODs |
@@ -130,4 +148,28 @@ LOD1 / LOD2 merged and decimated), `Textures/<Model>_Albedo.png` and `_MetalGlos
   laid out apart for the bake), `STRETCH` (`{part: "f" | "z" | "r"}`: parts the game scales along that axis;
   their UVs collapse after the bake so the texture doesn't vary along it), `BRIDGE` (written into the `.vehicle` as
   `"bridge"`), and `preview_pose(view)` (places the parts before each preview render).
+- Optional baggage equipment: `BAGGAGE` exports coupling/operator/load interfaces and conveyor/lift ranges.
+  `SEPARATE_MOVERS = True` with `MOVING_LODS = True` gives each mover its own three meshes; Unity restores
+  their shared named pivots from the generated `lodMovers` list so all detail levels follow the same pose.
+- Optional container equipment: `CONTAINER` exports the ULD code, contour dimensions, tare/gross limits,
+  transfer points, platform ranges and lift geometry into the `.vehicle` profile's `container` block.
+  Dolly coupling points remain in `BAGGAGE`. Equipment labels contain IDs and capacity markings only.
 
+
+### Aircraft cargo hatches
+
+`Aircraft/Common/cargo_doors.py` cuts each cargo panel from the baked skin in stage 2, preserving paint UVs
+and normals. Each model supplies `CARGO_HINGES`; `POINTS` remains the source of opening positions/sizes.
+Run `finish.py --model <Model>` to regenerate the FBX and the `cargoDoors` profile data. LOD0/1 keep hinged
+panels; LOD2 merges them closed. See `Docs/systems/aircraft.md` for motion, prefab migration and close-up captures.
+`finish.py --service-data --model <Model>` refreshes just the generated service-clearance outlines from the
+stage-1 cache, without rewriting meshes or textures. Normal stage 2 also writes these outlines and each
+cargo hatch's usable hold depth; liners use a flat back plane for visible loading.
+`finish.py --reuse-paint` skips repainting when the stage-1 UV layout has not changed. On machines where Metal
+baking stalls, `build.py --texture --bake-device CPU` keeps the same atlas resolution and bake sample counts.
+
+Narrowbody cargo layout is shared by painted seams, service points and openings through
+`CARGO_STATIONS` / `CARGO_SILL`. `CARGO_HOLDS` supplies the longitudinal ends of its lined compartments;
+the shared cargo-door builder fits flat floors inside the shell. Service-clearance data separates wing and
+engine footprints and includes wing/tail underside heights, so low equipment can pass below high surfaces
+while low engines remain protected. Regenerate changed door layouts with full stage 2 to refresh the paint.

@@ -1,0 +1,132 @@
+{
+  "name": "ContainerLoader",
+  "displayName": "Lower-deck container loader",
+  "kind": "ContainerLoader",
+  "bounds": {
+    "min": [
+      -1.805,
+      0.0,
+      -1.5082
+    ],
+    "max": [
+      1.795,
+      2.822,
+      7.835
+    ]
+  },
+  "wheelbase": 6.2,
+  "wheels": [
+    {
+      "name": "Wheel_FL",
+      "centre": [
+        -1.5,
+        0.38,
+        6.2
+      ],
+      "radius": 0.38,
+      "steerable": true
+    },
+    {
+      "name": "Wheel_FR",
+      "centre": [
+        1.5,
+        0.38,
+        6.2
+      ],
+      "radius": 0.38,
+      "steerable": true
+    },
+    {
+      "name": "Wheel_RL",
+      "centre": [
+        -1.5,
+        0.38,
+        0.0
+      ],
+      "radius": 0.38,
+      "steerable": false
+    },
+    {
+      "name": "Wheel_RR",
+      "centre": [
+        1.5,
+        0.38,
+        0.0
+      ],
+      "radius": 0.38,
+      "steerable": false
+    }
+  ],
+  "spinners": [],
+  "lights": [],
+  "work": {
+    "laneWidth": 3.6,
+    "workSpeed": 0.5,
+    "transitSpeed": 4.0,
+    "turnRadius": 8.7
+  },
+  "parking": [
+    0.0,
+    0.0,
+    0.0
+  ],
+  "container": {
+    "code": "AKE",
+    "maxGross": 7000.0,
+    "deckWidth": 2.52,
+    "deckLength": 4.8,
+    "sideBridgeReach": 2.5,
+    "mainTransfer": [
+      0.0,
+      0.508,
+      1.0
+    ],
+    "frontTransfer": [
+      0.0,
+      1.8,
+      5.65
+    ],
+    "mainMinHeight": 0.485,
+    "mainMaxHeight": 3.7,
+    "frontMinHeight": 1.8,
+    "frontMaxHeight": 3.7,
+    "mainLift": {
+      "centre": 1.0,
+      "base": 0.15,
+      "length": 4.9,
+      "stages": 1
+    },
+    "frontLift": {
+      "centre": 5.65,
+      "base": 0.2,
+      "length": 2.2,
+      "stages": 2
+    }
+  },
+  "lodMovers": [
+    "Wheel_FL",
+    "Wheel_FR",
+    "Wheel_RL",
+    "Wheel_RR",
+    "MainPlatform",
+    "MainPlatformStopRear",
+    "MainPlatformStopFront",
+    "MainPlatformLift_0",
+    "MainPlatformLift_1",
+    "FrontPlatform",
+    "FrontPlatformStopRear",
+    "FrontPlatformStopFront",
+    "FrontPlatformLift_0",
+    "FrontPlatformLift_1",
+    "FrontPlatformLift_2",
+    "FrontPlatformLift_3",
+    "Stabiliser_0",
+    "Stabiliser_1",
+    "Stabiliser_2",
+    "Stabiliser_3",
+    "Stabiliser_4",
+    "Stabiliser_5",
+    "MainPlatformGate",
+    "SideBridge"
+  ]
+}

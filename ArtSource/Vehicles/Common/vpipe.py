@@ -140,7 +140,7 @@ def check_normals(objs):
         if n:
             bad[name] = n
         bm.free()
-    print("NORMALS (flipped faces per object):", bad or "all consistent")
+    print("NORMALS (flipped faces per object):", bad or "all consistent", flush=True)
 
 
 # ============================================================== uv atlas + bakes
@@ -201,7 +201,15 @@ def bake(objs, ao_distance):
     """Bake into the atlas: (colour rgb, metallic, smoothness, coverage) per texel, world position, AO."""
     select_only(objs)
     sc = bpy.context.scene
-    texturing._cycles(4)
+    def cycles(samples):
+        if arg("--bake-device") == "CPU":
+            sc.render.engine = "CYCLES"
+            sc.cycles.device = "CPU"
+            sc.cycles.samples = samples
+            sc.cycles.use_denoising = False
+        else:
+            texturing._cycles(samples)
+    cycles(4)
     results = {}
     # one emit bake per channel set; every material slot is temporarily swapped for a constant emitter
     for kind in ("color", "metal", "pos", "ao"):
@@ -230,15 +238,15 @@ def bake(objs, ao_distance):
         if kind == "ao":
             sc.world = sc.world or bpy.data.worlds.new("BakeWorld")
             sc.world.light_settings.distance = ao_distance
-            texturing._cycles(256)
+            cycles(256)
             bpy.ops.object.bake(type="AO", margin=12, margin_type="EXTEND", use_clear=True)
         else:
-            texturing._cycles(1 if kind != "pos" else 2)
+            cycles(1 if kind != "pos" else 2)
             bpy.ops.object.bake(type="EMIT", margin=12, margin_type="EXTEND", use_clear=True)
         for ob, i, m in saved:
             ob.material_slots[i].material = m
         results[kind] = _read(img)
-        print("baked", kind)
+        print("baked", kind, flush=True)
     return results
 
 
@@ -314,7 +322,8 @@ def make_lods(model, root, objs):
     movers = set(model.MOVERS)
     static = [ob for n, ob in objs.items() if n not in movers]
     select_only(static, static[0])
-    bpy.ops.object.join()
+    if len(static) > 1:
+        bpy.ops.object.join()
     body = static[0]
     if model.LOD_RATIOS is None:
         return [body] + [objs[n] for n in model.MOVERS]
@@ -329,11 +338,23 @@ def make_lods(model, root, objs):
             c.matrix_world = objs[n].matrix_world.copy()
             extras.append(c)
         select_only([ob] + extras, ob)
-        bpy.ops.object.join()
+        if extras:
+            bpy.ops.object.join()
         ob.parent = root
         ob.matrix_parent_inverse = root.matrix_world.inverted()
         decimate(ob, ratio)
         out.append(ob)
+    if getattr(model, "MOVING_LODS", False):
+        # Export flat to avoid FBX's nested-axis issue. Unity restores a named pivot per moving part.
+        for name in model.MOVERS:
+            ob = objs[name]
+            ob.name = ob.data.name = name + "_LOD0"
+            out.append(ob)
+            for level, ratio in ((1, model.LOD_RATIOS[0]), (2, model.LOD_RATIOS[1])):
+                low = copy_object(ob, f"{name}_LOD{level}")
+                decimate(low, ratio)
+                out.append(low)
+        return out
     return out + [objs[n] for n in model.MOVERS]
 
 
@@ -383,6 +404,16 @@ def write_profile(model, objs, path):
         data["interior"] = {"min": to_unity(lo), "max": to_unity(hi)}
     if hasattr(model, "BRIDGE"):
         data["bridge"] = model.BRIDGE          # plain numbers the game's jet-bridge rig shares, as given
+    if hasattr(model, "BAGGAGE"):
+        data["baggage"] = {k: (to_unity(v) if isinstance(v, (tuple, list)) else v)
+                           for k, v in model.BAGGAGE.items()}
+    if hasattr(model, "CONTAINER"):
+        data["container"] = {k: (to_unity(v) if isinstance(v, (tuple, list)) else v)
+                             for k, v in model.CONTAINER.items()}
+    if getattr(model, "MOVING_LODS", False):
+        data["lodMovers"] = list(model.MOVERS)
+    elif getattr(model, "SEPARATE_MOVERS", False):
+        data["lodAlways"] = list(model.MOVERS)
     with open(path, "w") as fh:
         json.dump(data, fh, indent=2)
     print("wrote", path)
@@ -486,7 +517,7 @@ def run():
     unity = os.path.join(ASSETS, model.NAME)
     root, objs, mats = build_objects(model)
     tris = sum(sum(len(p.vertices) - 2 for p in ob.data.polygons) for ob in objs.values())
-    print("TRIANGLES", tris, {k: len(o.data.polygons) for k, o in objs.items()})
+    print("TRIANGLES", tris, {k: len(o.data.polygons) for k, o in objs.items()}, flush=True)
     if arg("--check"):
         check_normals(objs)
     if arg("--geometry"):
@@ -509,9 +540,23 @@ def run():
     texturing.save_png(albedo, albedo_path)
     texturing.save_png(mg, mg_path)            # alpha = smoothness
     write_profile(model, mesh_objs, os.path.join(unity, f"{model.NAME}.vehicle"))
+    if hasattr(model, "prepare_export"):
+        model.prepare_export(mesh_objs)
     export = make_lods(model, root, objs)
     export_fbx(model, root, export, os.path.join(unity, "Models", f"{model.NAME}.fbx"))
     if arg("--previews"):
+        if getattr(model, "MOVING_LODS", False):
+            for name in model.MOVERS:
+                reference = objs[name]
+                pivot = bpy.data.objects.new(name, None)
+                bpy.context.scene.collection.objects.link(pivot)
+                pivot.parent = root
+                pivot.matrix_world = reference.matrix_world.copy()
+                for level in range(3):
+                    child = bpy.data.objects[name + f"_LOD{level}"]
+                    world = child.matrix_world.copy()
+                    child.parent = pivot
+                    child.matrix_world = world
         setup_preview(model, True, albedo_path, mg_path)
         for ob in export:
             if ob.name.endswith(("_LOD1", "_LOD2")):

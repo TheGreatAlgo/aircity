@@ -1,0 +1,176 @@
+{
+  "name": "BaggageTractor",
+  "displayName": "Baggage tractor",
+  "kind": "BaggageTractor",
+  "bounds": {
+    "min": [
+      -0.73,
+      0.0,
+      -0.75
+    ],
+    "max": [
+      0.73,
+      1.855,
+      2.43
+    ]
+  },
+  "wheelbase": 1.6,
+  "wheels": [
+    {
+      "name": "Wheel_FL",
+      "centre": [
+        -0.57,
+        0.3,
+        1.6
+      ],
+      "radius": 0.3,
+      "steerable": true
+    },
+    {
+      "name": "Wheel_FR",
+      "centre": [
+        0.57,
+        0.3,
+        1.6
+      ],
+      "radius": 0.3,
+      "steerable": true
+    },
+    {
+      "name": "Wheel_RL",
+      "centre": [
+        -0.55,
+        0.3,
+        0.0
+      ],
+      "radius": 0.3,
+      "steerable": false
+    },
+    {
+      "name": "Wheel_RR",
+      "centre": [
+        0.55,
+        0.3,
+        0.0
+      ],
+      "radius": 0.3,
+      "steerable": false
+    }
+  ],
+  "spinners": [],
+  "lights": [
+    {
+      "name": "Beacon",
+      "type": "Beacon",
+      "position": [
+        -0.49,
+        1.78,
+        -0.18
+      ],
+      "direction": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "color": "#FF9A1A",
+      "size": 0.55,
+      "phase": 0
+    },
+    {
+      "name": "Head_L",
+      "type": "Head",
+      "position": [
+        -0.51,
+        0.72,
+        2.25
+      ],
+      "direction": [
+        0.0,
+        -0.1,
+        1.0
+      ],
+      "color": "#FFF4E0",
+      "size": 0.45,
+      "phase": 0
+    },
+    {
+      "name": "Head_R",
+      "type": "Head",
+      "position": [
+        0.51,
+        0.72,
+        2.25
+      ],
+      "direction": [
+        0.0,
+        -0.1,
+        1.0
+      ],
+      "color": "#FFF4E0",
+      "size": 0.45,
+      "phase": 0
+    },
+    {
+      "name": "Tail_L",
+      "type": "Tail",
+      "position": [
+        -0.54,
+        0.7,
+        -0.61
+      ],
+      "direction": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "color": "#E0181C",
+      "size": 0.35,
+      "phase": 0
+    },
+    {
+      "name": "Tail_R",
+      "type": "Tail",
+      "position": [
+        0.54,
+        0.7,
+        -0.61
+      ],
+      "direction": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "color": "#E0181C",
+      "size": 0.35,
+      "phase": 0
+    }
+  ],
+  "work": {
+    "laneWidth": 1.47,
+    "workSpeed": 1.4,
+    "transitSpeed": 6.0,
+    "turnRadius": 2.9
+  },
+  "parking": [
+    0.0,
+    0.0,
+    0.0
+  ],
+  "baggage": {
+    "rearHitch": [
+      0.0,
+      0.38,
+      -0.68
+    ],
+    "frontHitch": [
+      0.0,
+      0.38,
+      2.34
+    ],
+    "operator": [
+      0.0,
+      0.88,
+      0.27
+    ]
+  }
+}

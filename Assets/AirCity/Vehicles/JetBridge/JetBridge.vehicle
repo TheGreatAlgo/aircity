@@ -29,6 +29,33 @@
     "rotundaRadius": 2.3,
     "tunnelStart": 2.3,
     "sectionLength": 13.0,
+    "minOverlap": 1.5,
+    "tunnelSections": [
+      {
+        "part": "Tunnel_A",
+        "length": 13.0,
+        "modelLength": 13.0,
+        "width": 2.5,
+        "bottom": -0.25,
+        "top": 2.55
+      },
+      {
+        "part": "Tunnel_B",
+        "length": 13.0,
+        "modelLength": 13.0,
+        "width": 2.8,
+        "bottom": -0.4,
+        "top": 2.7
+      },
+      {
+        "part": "Tunnel_C",
+        "length": 13.0,
+        "modelLength": 13.0,
+        "width": 3.1,
+        "bottom": -0.55,
+        "top": 2.85
+      }
+    ],
     "shortSectionLength": 8.5,
     "sections": [
       [

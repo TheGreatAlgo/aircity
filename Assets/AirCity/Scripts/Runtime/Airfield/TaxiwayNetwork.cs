@@ -579,6 +579,8 @@ namespace AirCity.Airfield
             var l = Layout(stand);
             if (l == null || l.edge == null) return StandProblem.NotConnected;
             if (stand.noSmallAircraft && !stand.DeIcing && type.Light) return StandProblem.NoSmallAircraft;
+            if (stand.ServiceFor(type)?.allowed == false) return StandProblem.ServiceExcluded;
+            if (!l.ParkingFits(type)) return StandProblem.StopOutsideStand;
             float width = l.edge.width;
             if (LaneLimits().TryGetValue(l.edge, out char max)) width = Mathf.Min(width, RunwayRules.TaxiwayWidthFor(max));
             return RunwayRules.CheckStand(type, stand.Code, stand.surface, width, l.edge.surface);
@@ -630,8 +632,24 @@ namespace AirCity.Airfield
         /// <summary>Set the lighting upgrade on every paved edge.</summary>
         public void SetLit(bool lit)
         {
-            foreach (var e in edges) e.lit = lit && e.surface.IsPaved() && !e.IsRoad;
+            foreach (var e in edges) e.lit = lit && Lightable(e);
             Rebuild();
+        }
+
+        /// <summary>Light some sections (or put their lights out); the ones that can't be lit stay dark. True if any
+        /// changed (and the network was rebuilt).</summary>
+        public bool SetLit(IEnumerable<TaxiwayEdge> sections, bool lit)
+        {
+            bool changed = false;
+            foreach (var e in sections)
+            {
+                bool want = lit && Lightable(e);
+                if (e.lit == want) continue;
+                e.lit = want;
+                changed = true;
+            }
+            if (changed) Rebuild();
+            return changed;
         }
 
         /// <summary>Wear from an aircraft taxiing along an edge (half a runway movement's).</summary>
@@ -747,7 +765,7 @@ namespace AirCity.Airfield
 
         /// <summary>
         /// Shortest route between two nodes for an aircraft type: only taxiways it fits (width, surface) and that
-        /// aren't closed (repair, snow, grass, ploughs / mowers), never service roads, plus runway segments between
+        /// aren't closed (repair, snow, grass, ploughs / mowers; at night, unlit), never service roads, plus runway segments between
         /// runway nodes (back-taxiing, counted as longer so taxiways are preferred). Returns node ids from start to
         /// goal, or null.
         /// </summary>
@@ -765,9 +783,13 @@ namespace AirCity.Airfield
         {
             var limits = LaneLimits();
             char code = type.SizeCode;
+            bool night = Airport.IsNight;
             return e => !e.IsRoad && RunwayRules.CanTaxi(type, e.surface, e.width) && e.wear < RunwayRules.ClosedWear && !Closed(e) &&
-                        (!limits.TryGetValue(e, out char max) || code <= max);
+                        (e.lit || !night) && (!limits.TryGetValue(e, out char max) || code <= max);
         }
+
+        /// <summary>Can a section carry edge lights? Paved taxiways only (never roads, dirt or grass).</summary>
+        public static bool Lightable(TaxiwayEdge e) => !e.IsRoad && e.surface.IsPaved();
 
         static Func<Runway, bool> RunwayOk(AircraftType type) =>
             r => (r.Paved || type.unpavedRunways) && !r.IsPloughing && !r.IsMowing &&

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using AirCity.Aircraft;
 using AirCity.Airfield.Building;
 using AirCity.Traffic;
@@ -129,6 +130,7 @@ namespace AirCity.Airfield
         AirportMaintenance maintenance;
         AirTraffic traffic;
         AirportBridges bridges;
+        AirportBaggage baggage;
         Pavement pavement;
         int layoutVersion, pavementVersion = -1;
 
@@ -192,6 +194,9 @@ namespace AirCity.Airfield
 
         /// <summary>The stands' jet bridges at work: docking with parked aircraft, pulling back for push-back.</summary>
         public AirportBridges Bridges => bridges ??= new AirportBridges(this);
+
+        /// <summary>Baggage manifests, equipment, stand service and turnaround departure clearance.</summary>
+        public AirportBaggage Baggage => baggage ??= new AirportBaggage(this);
 
         /// <summary>Bumped whenever runways, taxiways, stands, aprons or terminals are rebuilt.</summary>
         public int LayoutVersion => layoutVersion;
@@ -306,17 +311,21 @@ namespace AirCity.Airfield
         public string TerminalProblem(Terminal t, Terminal except = null)
         {
             if (t.corners.Count < 3) return "needs three corners";
+            string envelope = t.EnvelopeProblem();
+            if (envelope != null) return envelope;
             var o = t.Outline();
             if (Geo.SelfIntersects(o)) return "its walls cross";
             if (Mathf.Abs(Geo.SignedArea(o)) < MinTerminalArea) return "too small";
+            var footprints = t.Footprints().ToList();
+            bool Overlaps(IList<Vector2> other) => footprints.Any(part => Geo.Overlap(part, other));
             foreach (var other in terminals)
-                if (other != except && other != null && Geo.Overlap(o, other.Outline())) return "overlaps another terminal";
+                if (other != except && other != null && other.Footprints().Any(Overlaps)) return "overlaps another terminal";
             foreach (var r in Runways)
             {
                 var a = Geo.XZ(r.start);
                 var b = Geo.XZ(r.end);
                 var right = Geo.Right(r.Axis2D) * r.HalfWidthTotal;
-                if (Geo.Overlap(o, new[] { a + right, b + right, b - right, a - right })) return "on " + r.name;
+                if (Overlaps(new[] { a + right, b + right, b - right, a - right })) return "on " + r.name;
             }
             var net = GetComponentInChildren<TaxiwayNetwork>();
             if (net != null)
@@ -327,11 +336,11 @@ namespace AirCity.Airfield
                     var b = net.At(e.b);
                     if ((b - a).sqrMagnitude < 1e-4f) continue;
                     var right = Geo.Right((b - a).normalized) * (e.width * 0.5f);
-                    if (Geo.Overlap(o, new[] { a + right, b + right, b - right, a - right }))
+                    if (Overlaps(new[] { a + right, b + right, b - right, a - right }))
                         return e.IsRoad ? "across a road" : "across a taxiway";
                 }
                 foreach (var l in net.Layouts())
-                    if (Geo.Overlap(o, l.Pad)) return "on " + l.stand.Name;
+                    if (Overlaps(l.Pad)) return "on " + l.stand.Name;
             }
             return null;
         }
@@ -353,6 +362,9 @@ namespace AirCity.Airfield
             t.corners = new List<Vector2>(changed.corners);
             t.bulge = new List<float>(changed.bulge);
             t.floors = changed.floors;
+            t.storeyHeights = new List<float>(changed.storeyHeights);
+            t.exterior = changed.exterior.Clone();
+            t.boardingHeight = changed.boardingHeight;
             BuildGround();
             return true;
         }
@@ -513,9 +525,19 @@ namespace AirCity.Airfield
             foreach (var r in Runways) r.Simulate(seconds, rate, grow, verges);
             var t = GetComponentInChildren<TaxiwayNetwork>();
             if (t != null) t.Simulate(seconds, rate, grow, verges);
-            Maintenance.Simulate(seconds);
-            Traffic.Simulate(seconds);
-            Bridges.Simulate(seconds);
+            if (Baggage.NeedsSimulation)
+            {
+                // Arrivals, baggage and departures see each other's progress at the same game-time boundary.
+                for (float left = seconds; left > 0.00001f;)
+                {
+                    float dt = Mathf.Min(left, 0.05f); left -= dt;
+                    Maintenance.Simulate(dt); Baggage.Simulate(dt); Traffic.Simulate(dt); Bridges.Simulate(dt);
+                }
+            }
+            else
+            {
+                Maintenance.Simulate(seconds); Traffic.Simulate(seconds); Bridges.Simulate(seconds);
+            }
             ApplyGlobals();
         }
 
@@ -590,7 +612,7 @@ namespace AirCity.Airfield
             var terminalMesh = new TerminalBuilder();
             foreach (var t in terminals)
                 if (t != null) terminalMesh.Build(t);
-            terminalPart.Set(terminalMesh.mesh.Apply(terminalPart.Target, "Terminals", false, 1), building);
+            terminalPart.Set(terminalMesh.mesh.Apply(terminalPart.Target, "Terminals", false, 2), building);
             terminalPart.Renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.On;
             LayoutChanged();
         }

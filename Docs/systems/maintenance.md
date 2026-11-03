@@ -6,6 +6,12 @@ plough, which needs many passes; more vehicles make the work faster, and more th
 once. `AirportMaintenance` (`airport.Maintenance`) holds one job queue for the whole airport and gives each job to the
 nearest free team of the right kind, from whichever depot.
 
+Baggage jobs have their own coordinator (`Airport.Baggage`), equipment leases and game-time simulation; they
+are never dispatched as plough/mower teams. Maintenance avoidance includes baggage equipment footprints, and
+baggage vehicles also wait for maintenance vehicles. A managed baggage turnaround must finish and return its
+equipment before `Flight.StepReady` requests the push-back tug. Direct `Maintenance.PushBack` requests also
+check baggage readiness, including automatically generated station manifests. See [baggage](baggage.md).
+
 Teams drive out of their doors onto whatever is in front of the depot (a service road, a taxiway or an apron) and
 along the network. Each team works one of these jobs pass by pass:
 

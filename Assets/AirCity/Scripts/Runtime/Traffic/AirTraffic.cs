@@ -424,7 +424,8 @@ namespace AirCity.Traffic
             var t = airport.transform;
             foreach (var l in net.Layouts())
             {
-                if (l.stand.DeIcing || l.edge == null || net.CheckStand(l.stand, type) != StandProblem.None) continue;
+                if (l.stand.DeIcing || l.edge == null || net.CheckStand(l.stand, type) != StandProblem.None ||
+                    airport.Baggage.Reserved(l.stand)) continue;
                 bool taken = false;
                 foreach (var a in Aircraft.Aircraft.All)
                 {
@@ -1021,6 +1022,7 @@ namespace AirCity.Traffic
             float end = Mathf.Min(along + look, path.Length);
             var others = Outlines();
             var vehicles = airport.Maintenance.VehicleBoxes(f.aircraft);
+            vehicles.AddRange(airport.Baggage.VehicleBoxes());
             float reach = f.type.Length + 2f * look;
             for (float d = along + 1.5f; d <= end + 1e-3f; d += 2f)
             {

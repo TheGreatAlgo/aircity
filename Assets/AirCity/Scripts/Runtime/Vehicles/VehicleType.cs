@@ -18,6 +18,14 @@ namespace AirCity.Vehicles
         Tug = 4,
         /// <summary>Not a vehicle: a passenger boarding bridge (JetBridge), its parts placed by BridgeRig.</summary>
         JetBridge = 5,
+        BaggageTractor = 6,
+        BaggageCart = 7,
+        BeltLoader = 8,
+        /// <summary>Reusable bags, sharing the generated vehicle art pipeline.</summary>
+        BaggageProp = 9,
+        ContainerDolly = 10,
+        ContainerULD = 11,
+        ContainerLoader = 12,
     }
 
     public enum VehicleLightType
@@ -92,6 +100,33 @@ namespace AirCity.Vehicles
         public float rpm;
     }
 
+    /// <summary>A stack of fixed-length crossed lift arms with sliding end bearings.</summary>
+    [Serializable]
+    public class BaggageLiftDimensions
+    {
+        public float centre, @base, length;
+        public int stages;
+    }
+
+    /// <summary>Generated equipment interfaces and mechanical ranges, in local Unity metres.</summary>
+    [Serializable]
+    public class BaggageEquipmentDimensions
+    {
+        public Vector3 frontHitch, rearHitch, @operator, loadMin, loadMax, steeringPivot, beltRear;
+        public float payload, beltLength, beltFrontHeight, beltSupportOffset, frontMinHeight, frontMaxHeight, rearMinHeight, rearMaxHeight;
+        public BaggageLiftDimensions rearLift, frontLift;
+    }
+
+    [Serializable]
+    public class ContainerEquipmentDimensions
+    {
+        public string code;
+        public float baseWidth, baseLength, height, tare, maxGross, deckWidth, deckLength, sideBridgeReach;
+        public Vector3 transfer, mainTransfer, frontTransfer;
+        public float mainMinHeight, mainMaxHeight, frontMinHeight, frontMaxHeight;
+        public BaggageLiftDimensions mainLift, frontLift;
+    }
+
     /// <summary>
     /// A ground vehicle (or the depot building), imported from ArtSource/Vehicles' &lt;Model&gt;.vehicle. Unity space:
     /// origin on the ground under the rear axle, +Z forward, +X right. Gameplay (teams, StripWork) reads the
@@ -114,6 +149,10 @@ namespace AirCity.Vehicles
         [Tooltip("Buildings: the hall's free floor space, where vehicles park.")]
         public Bounds interior;
 
+        [Header("Baggage equipment")]
+        public BaggageEquipmentDimensions baggage;
+        public ContainerEquipmentDimensions container;
+
         [Header("Work")]
         [Tooltip("Width each vehicle clears / cuts per pass, with overlap (metres).")]
         public float laneWidth = 5f;
@@ -131,6 +170,8 @@ namespace AirCity.Vehicles
 
         [Header("Jet bridge")]
         public JetBridgeDimensions bridge;
+        public Airfield.JetBridgeDefinition[] bridgeDefinitions;
+        public Shader bridgeShader;
 
         [Header("Towing (tugs)")]
         [Tooltip("The lightest and heaviest aircraft it moves (maximum takeoff mass, kg).")]
@@ -148,6 +189,8 @@ namespace AirCity.Vehicles
         /// <summary>The depot, the control towers and the jet bridges: placed, never driven.</summary>
         public bool IsBuilding => kind == VehicleKind.Depot || kind == VehicleKind.Tower || kind == VehicleKind.JetBridge;
         public bool IsTug => kind == VehicleKind.Tug;
+        public bool IsBaggageEquipment => kind == VehicleKind.BaggageTractor || IsBaggageTrailer || kind == VehicleKind.BeltLoader || kind == VehicleKind.ContainerLoader;
+        public bool IsBaggageTrailer => kind == VehicleKind.BaggageCart || kind == VehicleKind.ContainerDolly;
 
         /// <summary>Can this tug push back or tow an aircraft of a type (by its maximum takeoff mass)?</summary>
         public bool CanTow(AircraftType aircraft) =>

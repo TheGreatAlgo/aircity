@@ -16,12 +16,16 @@ gotchas, and `README.md` / `ArtSource/README.md` are the human-facing guides.
 | [systems/aircraft.md](systems/aircraft.md) | aircraft models, the Blender pipeline, `AircraftType`, prefabs, lights, LODs |
 | [systems/liveries.md](systems/liveries.md) | paint schemes, registrations, tail logos, the runtime compositor |
 | [systems/airfield.md](systems/airfield.md) | runways, taxiways, service roads, stands and de-icing bays, aprons, verges, runway rules, weather (snow, rain, grass), airfield shaders |
+| [systems/gates.md](systems/gates.md) | gate/building designer, grounded concourse heads, terminal storeys/facades, bridge families, aircraft stops and automatic door assignment |
+| [systems/baggage.md](systems/baggage.md) | sandbox automation and station controls, repeated cart trips, bulk/container turnarounds, departure clearance, manifests and planned terminal expansion |
 | [systems/maintenance.md](systems/maintenance.md) | depots, snow ploughs, mowers, tugs and push-back, teams, jobs and dispatch, turning round, keeping clear, the ploughing / mowing pass pattern |
 | [systems/traffic.md](systems/traffic.md) | flights: taxi route planning, holds and clearances, takeoffs, landings, go-arounds, the wind, the sandbox's traffic controls |
 | [taxi-todo.md](taxi-todo.md) | what's left in ground traffic: the jams the soak test still finds, ideas, tuning |
 | [systems/dev-tools.md](systems/dev-tools.md) | batch commands, tests, captures, the sandbox controls |
 | [assets/Cessna172.md](assets/Cessna172.md), [assets/Narrowbody.md](assets/Narrowbody.md), [assets/Widebody.md](assets/Widebody.md), [assets/DoubleDeck.md](assets/DoubleDeck.md), [assets/Quadjet.md](assets/Quadjet.md) | one aircraft type |
 | [assets/SnowPlough.md](assets/SnowPlough.md), [assets/Mower.md](assets/Mower.md), [assets/Tugs.md](assets/Tugs.md), [assets/Depot.md](assets/Depot.md), [assets/ControlTowers.md](assets/ControlTowers.md), [assets/JetBridge.md](assets/JetBridge.md) | one vehicle / building |
+| [assets/BaggageEquipment.md](assets/BaggageEquipment.md) | baggage tractor, covered cart, belt loader, bag props, mechanical posing and the standalone review scene |
+| [assets/ContainerEquipment.md](assets/ContainerEquipment.md) | unbranded LD3, container dolly, dual-platform loader, interfaces, references and generation |
 | [assets/airfield-textures.md](assets/airfield-textures.md) | ground textures and airfield materials |
 
 ## Architecture in one screen
@@ -45,7 +49,8 @@ Scripts/Runtime  (assembly AirCity.Runtime)
               VehicleManeuver turns; a tug's push-back in VehicleTeam.Tow) ─► Vehicle (visual), VehicleLights
               TowJob + PushBackPath (an aircraft's way off its stand)
   Dev/        DevOrbitCamera, DevSandboxControls (aircraft keys), DevTrafficControls (flights, routes drawn), DevAirfieldTool (airfield / depot tools + panel),
-              DevToolbar + DevGui (the HUD: tool bar, context strip, sidebar), DevOutlines (hover / selection outlines)
+              DevToolbar + DevGui (the HUD: tool bar, context strip, sidebar), DevGateDesigner (runtime gates and saved presets),
+              GateAircraftPreview (visual-only aircraft), DevOutlines (hover / selection outlines)
   Rendering/  Bc1TextureBuilder
 Scripts/Editor   (AirCity.Editor): importers (.aircraft, .vehicle, .regfont), asset postprocessors, *Setup (prefabs,
                  materials, sandbox), SceneCapture

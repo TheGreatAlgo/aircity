@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using AirCity.Vehicles;
+using AirCity.Airfield;
 using UnityEditor.AssetImporters;
 using UnityEngine;
 
@@ -11,7 +12,7 @@ namespace AirCity.EditorTools.Vehicles
     /// Imports &lt;Model&gt;.vehicle (JSON written by the vehicle pipeline in ArtSource/Vehicles) as a
     /// <see cref="VehicleType"/>. Positions are already in Unity space (+Z forward, +X right).
     /// </summary>
-    [ScriptedImporter(8, "vehicle")]
+    [ScriptedImporter(12, "vehicle")]
     public class VehicleTypeImporter : ScriptedImporter
     {
 #pragma warning disable 0649   // assigned by JsonUtility
@@ -20,6 +21,20 @@ namespace AirCity.EditorTools.Vehicles
         [Serializable] class SpinnerJson { public string name; public float[] axis; public float rpm; }
         [Serializable] class LightJson { public string name, type, color; public float[] position, direction; public float size, phase; }
         [Serializable] class DoorJson { public string name; public float[] position; public float width, height; }
+        [Serializable] class BaggageJson
+        {
+            public float[] frontHitch, rearHitch, @operator, loadMin, loadMax, steeringPivot, beltRear;
+            public float payload, beltLength, beltFrontHeight, beltSupportOffset, frontMinHeight, frontMaxHeight, rearMinHeight, rearMaxHeight;
+            public BaggageLiftDimensions rearLift, frontLift;
+        }
+        [Serializable] class ContainerJson
+        {
+            public string code;
+            public float baseWidth, baseLength, height, tare, maxGross, deckWidth, deckLength, sideBridgeReach;
+            public float[] transfer, mainTransfer, frontTransfer;
+            public float mainMinHeight, mainMaxHeight, frontMinHeight, frontMaxHeight;
+            public BaggageLiftDimensions mainLift, frontLift;
+        }
 
         [Serializable]
         class WorkJson
@@ -39,6 +54,8 @@ namespace AirCity.EditorTools.Vehicles
         [Serializable]
         class BridgeJson
         {
+            public BridgeTunnelSection[] tunnelSections;
+            public float minOverlap;
             public float rotundaFloor, rotundaRadius, tunnelStart, sectionLength, cabReach, cabWidth, driveFromEnd, linkWidth, yokeBottom, upperFloor,
                 cabBottom, cabTop, linkBottom, linkTop, headWidth, headBottom, headTop, headUpperBottom, headUpperWider, shortSectionLength;
         }
@@ -57,6 +74,8 @@ namespace AirCity.EditorTools.Vehicles
             public DoorJson[] doors;
             public BoundsJson interior;
             public BridgeJson bridge;
+            public BaggageJson baggage;
+            public ContainerJson container;
         }
 #pragma warning restore 0649
 
@@ -75,6 +94,28 @@ namespace AirCity.EditorTools.Vehicles
                 t.bounds = b;
             }
             t.wheelbase = json.wheelbase;
+            if (json.container != null)
+            {
+                var c = json.container;
+                t.container = new ContainerEquipmentDimensions { code = c.code, baseWidth = c.baseWidth, baseLength = c.baseLength,
+                    height = c.height, tare = c.tare, maxGross = c.maxGross, deckWidth = c.deckWidth, deckLength = c.deckLength, sideBridgeReach = c.sideBridgeReach,
+                    transfer = V3(c.transfer), mainTransfer = V3(c.mainTransfer), frontTransfer = V3(c.frontTransfer),
+                    mainMinHeight = c.mainMinHeight, mainMaxHeight = c.mainMaxHeight, frontMinHeight = c.frontMinHeight,
+                    frontMaxHeight = c.frontMaxHeight, mainLift = c.mainLift, frontLift = c.frontLift };
+            }
+            if (json.baggage != null)
+            {
+                var b = json.baggage;
+                t.baggage = new BaggageEquipmentDimensions
+                {
+                    frontHitch = V3(b.frontHitch), rearHitch = V3(b.rearHitch), @operator = V3(b.@operator),
+                    loadMin = V3(b.loadMin), loadMax = V3(b.loadMax), steeringPivot = V3(b.steeringPivot),
+                    beltRear = V3(b.beltRear), payload = b.payload, beltLength = b.beltLength,
+                    beltFrontHeight = b.beltFrontHeight, beltSupportOffset = b.beltSupportOffset,
+                    frontMinHeight = b.frontMinHeight, frontMaxHeight = b.frontMaxHeight,
+                    rearMinHeight = b.rearMinHeight, rearMaxHeight = b.rearMaxHeight, rearLift = b.rearLift, frontLift = b.frontLift,
+                };
+            }
 
             var wheels = new List<VehicleWheel>();
             foreach (var w in json.wheels ?? Array.Empty<WheelJson>())
@@ -135,6 +176,9 @@ namespace AirCity.EditorTools.Vehicles
             }
             if (json.bridge != null && json.bridge.sectionLength > 0f)
             {
+                const string bridgeShader = "Assets/AirCity/Shaders/JetBridge.shader";
+                ctx.DependsOnArtifact(bridgeShader);
+                t.bridgeShader = UnityEditor.AssetDatabase.LoadAssetAtPath<Shader>(bridgeShader);
                 var b = json.bridge;
                 t.bridge = new JetBridgeDimensions
                 {
@@ -144,6 +188,41 @@ namespace AirCity.EditorTools.Vehicles
                     cabBottom = b.cabBottom, cabTop = b.cabTop, linkBottom = b.linkBottom, linkTop = b.linkTop,
                     headWidth = b.headWidth, headBottom = b.headBottom, headTop = b.headTop, headUpperBottom = b.headUpperBottom,
                     headUpperWider = b.headUpperWider, shortSectionLength = b.shortSectionLength,
+                };
+                JetBridgeDefinition Definition(string label, bool shortOne, bool twoSections)
+                {
+                    var definition = ScriptableObject.CreateInstance<JetBridgeDefinition>();
+                    definition.name = label;
+                    var d = definition.specification;
+                    if (b.tunnelSections != null && b.tunnelSections.Length >= 2)
+                        d.sections = Array.ConvertAll(b.tunnelSections, section => new BridgeTunnelSection
+                        {
+                            part = section.part, length = section.length, modelLength = section.modelLength,
+                            width = section.width, bottom = section.bottom, top = section.top,
+                        });
+                    if (b.minOverlap > 0f) d.minOverlap = b.minOverlap;
+                    d.rotundaFloor = b.rotundaFloor; d.upperFloor = b.upperFloor;
+                    d.rotundaRadius = b.rotundaRadius; d.tunnelStart = b.tunnelStart;
+                    d.cabReach = b.cabReach; d.cabWidth = b.cabWidth;
+                    d.cabBottom = b.cabBottom; d.cabTop = b.cabTop;
+                    d.driveFromEnd = b.driveFromEnd; d.yokeBottom = b.yokeBottom;
+                    d.linkWidth = b.linkWidth; d.linkBottom = b.linkBottom; d.linkTop = b.linkTop;
+                    float length = shortOne && b.shortSectionLength > 0f ? b.shortSectionLength : b.sectionLength;
+                    foreach (var section in d.sections)
+                    {
+                        section.length = section.modelLength = length;
+                        if (shortOne) section.part = "Short" + section.part;
+                    }
+                    if (twoSections) d.sections = new[] { d.sections[0], d.sections[d.sections.Length - 1] };
+                    ctx.AddObjectToAsset(label, definition);
+                    return definition;
+                }
+                t.bridgeDefinitions = new[]
+                {
+                    Definition("Three-section long", false, false),
+                    Definition("Three-section short", true, false),
+                    Definition("Two-section long", false, true),
+                    Definition("Two-section short", true, true),
                 };
             }
             ctx.AddObjectToAsset("type", t);

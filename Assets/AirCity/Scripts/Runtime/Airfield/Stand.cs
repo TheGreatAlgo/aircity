@@ -47,6 +47,22 @@ namespace AirCity.Airfield
         [Tooltip("The bridge head its bridges share, if they do: a building on columns beside the aircraft, a main link " +
                  "from it to the terminal.")]
         public BridgeHead head = new BridgeHead();
+        public List<BridgeHead> additionalHeads = new List<BridgeHead>();
+        public IEnumerable<BridgeHead> BridgeHeads
+        {
+            get
+            {
+                if (head != null && head.Exists) yield return head;
+                foreach (var h in additionalHeads) if (h != null && h.Exists) yield return h;
+            }
+        }
+        [Tooltip("Aircraft-specific eligibility and nose-wheel stops. Bridge angles and door assignments are automatic.")]
+        public List<StandServiceConfiguration> serviceConfigurations = new List<StandServiceConfiguration>();
+        [Tooltip("Optional baggage approach/exit service-road nodes; 0 chooses the nearest suitable nodes.")]
+        public int baggageEntryNode, baggageExitNode;
+
+        public StandServiceConfiguration ServiceFor(AircraftType type) =>
+            serviceConfigurations?.Find(c => c != null && c.aircraft == type);
         // false for stands saved as a point on a taxiway, before stands had their own front line (TaxiwayNetwork.Layout
         // frames them from that taxiway)
         [SerializeField, HideInInspector] bool framed;
@@ -86,6 +102,10 @@ namespace AirCity.Airfield
             copy.position = new Vector3(at.x, 0f, at.z);
             copy.bridges = bridges.ConvertAll(b => b.Clone());
             copy.head = head != null ? head.Clone() : new BridgeHead();
+            copy.additionalHeads = additionalHeads.ConvertAll(h => h.Clone());
+            copy.head.id = Guid.NewGuid().ToString("N");
+            foreach (var h in copy.additionalHeads) h.id = Guid.NewGuid().ToString("N");
+            copy.serviceConfigurations = serviceConfigurations.ConvertAll(c => c.Clone());
             return copy;
         }
         /// <summary>"12", "D2": what's painted on it.</summary>
@@ -151,7 +171,25 @@ namespace AirCity.Airfield
 
         /// <summary>Where an aircraft of this type stands (its origin, under the main gear) with its nose gear on the
         /// stop bar, and the way it faces.</summary>
-        public Vector2 ParkPosition(AircraftType type) => stop - nose * type.Wheelbase;
+        public Vector2 StopFor(AircraftType type) => stop + axis * (stand.ServiceFor(type)?.stopOffset ?? 0f);
+        public Vector2 ParkPosition(AircraftType type) => StopFor(type) - nose * type.Wheelbase;
+
+        public bool ParkingFits(AircraftType type)
+        {
+            float offset = stand.ServiceFor(type)?.stopOffset ?? 0f;
+            if (Mathf.Abs(offset) < 0.001f) return true;
+            if (TaxiOut || stand.DeIcing) return false;
+            var park = ParkPosition(type);
+            foreach (float x in new[] { type.bounds.min.x, type.bounds.max.x })
+                foreach (float z in new[] { type.bounds.min.z, type.bounds.max.z })
+                {
+                    var p = park + Geo.Right(nose) * x + nose * z;
+                    var local = BridgeLayout.ToStand(this, p);
+                    if (local.x < x0 || local.x > x1 || local.y > far ||
+                        local.y * sin + local.x * k < clearance - 0.01f) return false;
+                }
+            return true;
+        }
 
         /// <summary>The middle of the pad.</summary>
         public Vector2 Centre

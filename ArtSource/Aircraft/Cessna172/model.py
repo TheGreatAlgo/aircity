@@ -15,6 +15,7 @@ from parts import P, Y, Fuselage, S_REF  # noqa: F401  (Fuselage / S_REF are rea
 from pipeline import Mover
 
 NAME = "Cessna172"
+CARGO_HINGES = {"Baggage": ("Forward", 105.0, 2.5)}
 DISPLAY_NAME = "Light single"
 CATEGORY = "GeneralAviation"
 AO_DISTANCE = 0.9

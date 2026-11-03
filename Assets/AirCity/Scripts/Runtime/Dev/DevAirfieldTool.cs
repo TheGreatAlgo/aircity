@@ -11,7 +11,13 @@ using UnityEngine.InputSystem;
 namespace AirCity.Dev
 {
     /// <summary>The sandbox's airfield tools (DevToolbar has a button for each).</summary>
-    public enum DevTool { Select, Runway, Taxiway, Road, Apron, Terminal, Depot, Stand, DeIcing, Bridge, Delete }
+    /// <summary>The sandbox's tools.</summary>
+    public enum DevTool { Select, Runway, Taxiway, Road, Apron, Terminal, Depot, Stand, DeIcing, Bridge, Lights, Delete, Baggage, Containers }
+
+    /// <summary>What the lights tool puts on the taxiway sections or runways it's clicked or dragged over: blue taxiway
+    /// edge lights, a runway's basic lighting (night) or precision lighting (night, fog and low cloud), or nothing
+    /// (their lights taken out).</summary>
+    public enum LightKind { TaxiwayEdge, RunwayBasic, RunwayPrecision, Remove }
 
     /// <summary>
     /// Sandbox airfield building (development only, not game UI). DevToolbar has buttons for all of it; the keys:
@@ -113,7 +119,24 @@ namespace AirCity.Dev
         int runwayWidth = 2, taxiwayWidth = 2;
         Pick selection = Pick.None, hover = Pick.None;
         bool hoverRun;
+        /// <summary>The runway being laid (built as the cursor moves), from its first threshold (dragStart); whether
+        /// the button is still down from that click (released after a drag, it's done), and why it can't end here.</summary>
         Runway dragging;
+        bool runwayPress;
+        string runwayProblem;
+        /// <summary>Where the runway tool's next threshold goes (the marker).</summary>
+        Vector2 runwayCursor;
+        bool runwayCursorShown;
+        /// <summary>Where the right button went down: let go there, it's a click (ends a line, drops a runway); moved,
+        /// it was the camera turning.</summary>
+        Vector2 rightPress;
+        /// <summary>The taxiway or road the line tools would lay next, built as it will look.</summary>
+        readonly TaxiwayPreview linePreview = new TaxiwayPreview();
+        /// <summary>Lights tool: what it puts down; whether the button is held from a press on the ground (everything it
+        /// passes over gets them); what a click would do here, or why it can't.</summary>
+        LightKind lightKind;
+        bool lightPainting;
+        string lightNote, lightProblem;
         MaintenanceDepot fleetDepot;
         Vector3 dragStart, lastGround;
         bool placingDepot;
@@ -165,6 +188,14 @@ namespace AirCity.Dev
         Vector2? dragRootFrom;
         Stand bridgeStand;
         JetBridge bridgePreview;
+        JetBridge bridgeDesign;
+        JetBridge placementCandidate;
+        BridgeLayout placementLayout;
+        BridgePose placementPose;
+        AircraftType placementType;
+        BridgeRig placementRig;
+        readonly GateAircraftPreview bridgeAircraftPreview = new GateAircraftPreview();
+        int previewVersion = -1, previewAssetVersion = -1;
         string bridgeProblem;
         Vector2 bridgeCursor;
         /// <summary>Bridge tool: the last placement check's stand, point and answer ("" if fine; null: not checked yet),
@@ -203,12 +234,19 @@ namespace AirCity.Dev
         public MaintenanceDepot SelectedDepot => selection.kind == Kind.Depot ? selection.depot : null;
         public bool ApronSelected => selection.kind == Kind.Apron;
         public Stand SelectedStand => selection.kind == Kind.Stand ? selection.stand : null;
+        public void SelectStand(Stand stand)
+        {
+            if (airport == null || stand == null || !airport.Taxiways.stands.Contains(stand)) return;
+            SetTool(DevTool.Select);
+            Select(new Pick { kind = Kind.Stand, stand = stand, apron = -1 });
+        }
         public ApronArea SelectedApron => selection.kind == Kind.Apron ? airport.aprons[selection.apron] : null;
         public Terminal SelectedTerminal => selection.kind == Kind.Terminal ? selection.terminal : null;
         /// <summary>Floors of the selected terminal, else of new ones.</summary>
         public int TerminalFloors => SelectedTerminal != null ? SelectedTerminal.floors : terminalFloors;
         /// <summary>Why the last bridge change didn't take, or what it did, or null.</summary>
         public string BridgeNote => bridgeNote;
+        public string StandPlacementProblem => tool == DevTool.Stand ? ghostProblem : null;
 
         /// <summary>The selected stand's bridge picked by clicking its rotunda, or null.</summary>
         public JetBridge SelectedBridge =>
@@ -234,6 +272,34 @@ namespace AirCity.Dev
         public string ApronProblemText => apronProblem;
         /// <summary>Why the road or taxiway can't go to the cursor (it would cross a stand), or null.</summary>
         public string RoadProblem => tool == DevTool.Road || tool == DevTool.Taxiway ? roadProblem : null;
+        /// <summary>What the lights tool puts down.</summary>
+        public LightKind LightKind => lightKind;
+        public void SetLightKind(LightKind k) => lightKind = k;
+        /// <summary>What a click with the lights tool would do where the cursor is, or null; why it can't, or null.</summary>
+        public string LightNote => tool == DevTool.Lights ? lightNote : null;
+        public string LightProblem => tool == DevTool.Lights ? lightProblem : null;
+
+        /// <summary>Metres of taxiway lit, of all that can be (paved, not roads).</summary>
+        public (float lit, float all) TaxiwayLighting
+        {
+            get
+            {
+                float lit = 0f, all = 0f;
+                var net = airport.Taxiways;
+                foreach (var e in net.edges)
+                {
+                    if (!TaxiwayNetwork.Lightable(e)) continue;
+                    float l = net.EdgeLength(e);
+                    all += l;
+                    if (e.lit) lit += l;
+                }
+                return (lit, all);
+            }
+        }
+
+        /// <summary>The runway being laid, or null; and why it can't end where the cursor is, or null.</summary>
+        public Runway PlacingRunway => tool == DevTool.Runway ? dragging : null;
+        public string RunwayProblem => tool == DevTool.Runway && dragging != null ? runwayProblem : null;
         /// <summary>Corners of the apron being drawn so far.</summary>
         public int ApronCornerCount => apronCorners.Count;
 
@@ -244,7 +310,7 @@ namespace AirCity.Dev
         /// 25 degrees (StandLayout.MinSin, rounded up) either side of the line.</summary>
         public const float MinStandAngle = 25f, MaxStandAngle = 155f;
         /// <summary>The size code, angle and exit new stands get (or the selected stand has).</summary>
-        public SizeCode StandCode => SelectedStand != null ? SelectedStand.code : standCode;
+        public SizeCode StandCode => StandFixed ? SelectedStand.code : standCode;
 
         /// <summary>The selected parking stand's angle to its front line, else new stands' (degrees, 25..155: over 90
         /// it leans the other way).</summary>
@@ -270,7 +336,7 @@ namespace AirCity.Dev
         /// <summary>What the next point of the taxiway, road or apron tool would join, in words, or null.</summary>
         public string SnapText => tool == DevTool.Apron || tool == DevTool.Terminal ? apronSnap
             : (tool == DevTool.Taxiway || tool == DevTool.Road) && lineSnapShown ? lineSnap.what : null;
-        public StandExit StandExit => SelectedStand != null ? SelectedStand.exit : standExit;
+        public StandExit StandExit => StandFixed ? SelectedStand.exit : standExit;
         /// <summary>New parking stands, or the selected one, turn small aircraft away.</summary>
         public bool StandNoSmall => SelectedStand != null ? SelectedStand.noSmallAircraft : standNoSmall;
         /// <summary>Why the stand or bay under the cursor can't be built, or null.</summary>
@@ -305,7 +371,9 @@ namespace AirCity.Dev
 
         public void SetTool(DevTool t)
         {
-            FinishDrag();
+            ClearBridgePreviews();
+            DropRunway();
+            linePreview.Hide();
             if (t != tool) selection = Pick.None;
             tool = t;
             chainNode = -1;
@@ -359,7 +427,7 @@ namespace AirCity.Dev
             if (tool == DevTool.Road) return;   // roads come in one width
             if (tool == DevTool.Stand || tool == DevTool.DeIcing || SelectedStand != null)
             {
-                SetStandCode((SizeCode)Mathf.Clamp((int)StandCode + step, 0, SizeCodes.Count - 1));
+                SetStandCode((SizeCode)Mathf.Clamp((int)StandCode + step, 0, SizeCodes.Count - 1));   // new stands only
                 return;
             }
             if (tool == DevTool.Taxiway)
@@ -375,12 +443,29 @@ namespace AirCity.Dev
             airport.RunwaysChanged();
         }
 
-        /// <summary>The size code for new stands and bays, and the selected one's.</summary>
+        /// <summary>One of RunwayRules' widths for new taxiways (taxiway tool) or runways, and the selected runway.</summary>
+        public void SetWidth(float width)
+        {
+            if (tool == DevTool.Taxiway)
+            {
+                taxiwayWidth = Nearest(RunwayRules.TaxiwayWidths, width);
+                return;
+            }
+            var r = SelectedRunway;
+            StepWidth(Nearest(RunwayRules.RunwayWidths, width) - (r != null ? Nearest(RunwayRules.RunwayWidths, r.width) : runwayWidth));
+        }
+
+        /// <summary>The size code for new stands and bays. A placed stand keeps the size it was built with
+        /// (StandFixed): this does nothing while one is selected.</summary>
         public void SetStandCode(SizeCode code)
         {
+            if (StandFixed) return;
             standCode = code;
-            if (SelectedStand != null) EditStand(x => x.code = code);
         }
+
+        /// <summary>A placed stand or bay is selected outside the Stand / De-icing tools: its size and exit are fixed
+        /// and shown. In those tools the size and exit are always the next stand's, even with the last one selected.</summary>
+        public bool StandFixed => SelectedStand != null && tool != DevTool.Stand && tool != DevTool.DeIcing;
 
         /// <summary>The angle new stands meet their front line at (MinStandAngle to MaxStandAngle degrees), and the
         /// selected stand's.</summary>
@@ -441,11 +526,12 @@ namespace AirCity.Dev
             EditStand(x => x.Turn(degrees, about));
         }
 
-        /// <summary>Push-back or taxi-out, for new stands and the selected one.</summary>
+        /// <summary>Push-back or taxi-out, for new stands. A placed stand keeps the exit it was built with
+        /// (StandFixed): this does nothing while one is selected.</summary>
         public void SetStandExit(StandExit exit)
         {
+            if (StandFixed) return;
             standExit = exit;
-            if (SelectedStand != null && !SelectedStand.DeIcing) EditStand(x => x.exit = exit);
         }
 
         /// <summary>Turn small aircraft away from new stands and the selected one, or take them again.</summary>
@@ -489,18 +575,107 @@ namespace AirCity.Dev
 
         static float Bearing(Vector2 d) => Mathf.Atan2(d.x, d.y) * Mathf.Rad2Deg;
 
-        /// <summary>L: with the taxiway tool all taxiway lights on / off; else the selected runway's lighting goes
-        /// round none / basic / precision.</summary>
+        /// <summary>L: the selected runway's lighting goes round none / basic / precision.</summary>
         public void ToggleLighting()
         {
-            if (tool == DevTool.Taxiway) ToggleTaxiwayLights();
-            else if (SelectedRunway != null) SelectedRunway.SetLighting((RunwayLighting)(((int)SelectedRunway.lighting + 1) % 3));
+            if (SelectedRunway != null) SelectedRunway.SetLighting((RunwayLighting)(((int)SelectedRunway.lighting + 1) % 3));
         }
 
-        public void ToggleTaxiwayLights()
+        /// <summary>Every taxiway's edge lights on, or all of them out.</summary>
+        public void SetAllTaxiwayLights(bool on) => airport.Taxiways.SetLit(on);
+
+        // ------------------------------------------------------------------ lights tool
+
+        /// <summary>
+        /// Lights tool: lights go on what the cursor is over: taxiway edge lights on a taxiway section (Shift: its
+        /// whole run), a runway's basic or precision (fog) lighting on a runway, and Remove takes either's out. Hold the
+        /// button and drag to do every section passed over. Only paved taxiways and runways can be lit.
+        /// </summary>
+        void LightsTool(Mouse mouse, Keyboard keys, bool click, bool free, Vector3 point)
         {
+            lightNote = lightProblem = null;
+            hover = Pick.None;
+            hoverRun = false;
+            if (!mouse.leftButton.isPressed) lightPainting = false;
+            if (!free) return;
+            var local = airport.transform.InverseTransformPoint(point);
+            bool runwayLights = lightKind == LightKind.RunwayBasic || lightKind == LightKind.RunwayPrecision;
+            float slack = Mathf.Max(2f, MetresPerPixel(point) * 6f);
+            // over a runway its own lights, else the taxiway section (a taxiway's ends lie on runways' centrelines)
+            if (lightKind != LightKind.TaxiwayEdge && airport.TryPickRunway(local, out var r))
+                hover = new Pick { kind = Kind.Runway, runway = r, apron = -1 };
+            else if (!runwayLights && airport.Taxiways.TryPickEdge(local, out var e, slack))
+                hover = new Pick { kind = Kind.Edge, edge = e, apron = -1 };
+            if (hover.kind == Kind.None) return;
+            hoverRun = hover.kind == Kind.Edge && keys.shiftKey.isPressed;
+            DescribeLights(hover, hoverRun);
+            if (click) lightPainting = true;
+            if (lightPainting && lightProblem == null) PlaceLights(hover, hoverRun);
+        }
+
+        static bool NotRoad(TaxiwayEdge e) => !e.IsRoad;
+
+        /// <summary>The sections a click takes: the one under the cursor, or its whole run (not onto roads).</summary>
+        IEnumerable<TaxiwayEdge> LightSections(TaxiwayEdge e, bool wholeRun) =>
+            wholeRun ? airport.Taxiways.Run(e, NotRoad).Select(x => x.edge) : new[] { e };
+
+        static RunwayLighting RunwayLevel(LightKind k) => k switch
+        {
+            LightKind.RunwayBasic => RunwayLighting.Basic,
+            LightKind.RunwayPrecision => RunwayLighting.Precision,
+            _ => RunwayLighting.None,
+        };
+
+        /// <summary>What a click would do to it (lightNote), or why it can't be done (lightProblem).</summary>
+        void DescribeLights(in Pick p, bool wholeRun)
+        {
+            bool remove = lightKind == LightKind.Remove;
+            if (p.kind == Kind.Runway)
+            {
+                var rw = p.runway;
+                var level = RunwayLevel(lightKind);
+                string name = "Runway " + rw.Designation;
+                string Level(RunwayLighting l) => l == RunwayLighting.None ? "unlit"
+                    : l == RunwayLighting.Precision ? "precision (fog)" : "basic";
+                if (!rw.Paved && !remove) lightProblem = $"{name} is {rw.surface.ToString().ToLowerInvariant()}: only paved runways can be lit";
+                else if (rw.lighting == level) lightNote = $"{name}: {Level(level)} already";
+                else lightNote = $"{name}: {Level(rw.lighting)} → {Level(level)}";
+                return;
+            }
+            var e = p.edge;
+            if (e.IsRoad)
+            {
+                lightProblem = "service roads aren't lit";
+                return;
+            }
+            if (!remove && !e.surface.IsPaved())
+            {
+                lightProblem = $"a {e.surface.ToString().ToLowerInvariant()} taxiway: only paved ones can be lit";
+                return;
+            }
             var net = airport.Taxiways;
-            net.SetLit(!net.edges.Any(e => e.lit));
+            float metres = 0f, changes = 0f;
+            foreach (var s in LightSections(e, wholeRun))
+            {
+                float l = net.EdgeLength(s);
+                metres += l;
+                if (s.lit != (!remove && TaxiwayNetwork.Lightable(s))) changes += l;
+            }
+            string what = $"{(wholeRun ? "the run" : "taxiway section")}, {metres:N0} m";
+            lightNote = changes < 0.5f ? $"{what}: {(remove ? "unlit" : "lit")} already"
+                : remove ? $"take the lights out of {what}" : $"light {what}";
+        }
+
+        /// <summary>Put the lights tool's lights on (or out of) a runway or taxiway section, or its whole run.</summary>
+        void PlaceLights(in Pick p, bool wholeRun)
+        {
+            if (p.kind == Kind.Runway)
+            {
+                var level = RunwayLevel(lightKind);
+                if (p.runway.lighting != level) p.runway.SetLighting(level);
+            }
+            else if (p.kind == Kind.Edge)
+                airport.Taxiways.SetLit(LightSections(p.edge, wholeRun).ToList(), lightKind == LightKind.TaxiwayEdge);
         }
 
         public void SetWeather(SurfaceCondition c) => airport.Condition = c;
@@ -598,9 +773,46 @@ namespace AirCity.Dev
             bridgeNote = problem == BridgeProblem.None ? null : (type != null ? type.displayName + ": " : "") + BridgeLayout.Describe(problem);
         }
 
+        public void SetBridgeDefinition(JetBridgeDefinition definition)
+        {
+            var b = SelectedBridge;
+            if (b == null) return;
+            b.definition = definition;
+            airport.Taxiways.Rebuild();
+            var problem = airport.Bridges.FirstProblem(SelectedStand, b, out var type);
+            bridgeNote = problem == BridgeProblem.None ? null : (type != null ? type.displayName + ": " : "") + BridgeLayout.Describe(problem);
+        }
+
+        public void SetBridgeFloor(float floor)
+        {
+            var b = SelectedBridge;
+            if (b == null) return;
+            b.rotundaFloor = Mathf.Max(1f, floor);
+            airport.Taxiways.Rebuild();
+        }
+
+        public void ConfigureAircraft(AircraftType type, bool allowed, float stopOffset)
+        {
+            var st = SelectedStand;
+            if (st == null || type == null) return;
+            var c = st.ServiceFor(type);
+            if (c == null) st.serviceConfigurations.Add(c = new StandServiceConfiguration { aircraft = type });
+            float was = c.stopOffset;
+            c.stopOffset = stopOffset; c.allowed = allowed;
+            if (!airport.Taxiways.Layout(st).ParkingFits(type))
+            { c.stopOffset = was; bridgeNote = "that stop would put the aircraft outside the stand"; }
+            else bridgeNote = null;
+            airport.Taxiways.Rebuild();
+        }
+
         /// <summary>Bridge tool: has the link's start been clicked; why the bridge can't go where the cursor is (or
         /// null); and the stand and door it would serve.</summary>
         public bool BridgeStarted => bridgeStart != null;
+        public void SetBridgeDesign(JetBridge design)
+        {
+            bridgeDesign = design?.Clone();
+            previewWhy = null;
+        }
         /// <summary>Bridge tool: placing a bridge head (else a bridge), and has its near end been clicked.</summary>
         public bool PlacingHead => headMode;
         public bool HeadStarted => headNear != null;
@@ -701,22 +913,35 @@ namespace AirCity.Dev
 
         void OnDisable()
         {
+            ClearBridgePreviews();
             Active = Deleting = TakesScroll = false;
             outlines.Begin();
             outlines.End();
         }
 
-        void OnDestroy() => outlines.Destroy();
+        void OnDestroy()
+        {
+            outlines.Destroy();
+            linePreview.Destroy();
+        }
 
         void Update()
         {
             var keys = Keyboard.current;
             var mouse = Mouse.current;
             if (airport == null || cam == null || keys == null || mouse == null) return;
+            var gateDesigner = GetComponent<DevToolbar>()?.GateDesigner;
+            if (gateDesigner != null && gateDesigner.HandleWorldInput(this, cam, mouse, keys))
+            {
+                ClearBridgePreviews();
+                linePreview.Hide();
+                Active = true; TakesScroll = false; hover = Pick.None;
+                outlines.Begin(); outlines.End(); return;
+            }
             if (!Valid(selection)) selection = Pick.None;
             if (chainNode >= 0 && airport.Taxiways.Node(chainNode) == null) chainNode = -1;
-            HandleKeys(keys, mouse);
-            StandScroll(keys, mouse);
+            if (!DevGui.KeyboardCaptured) { HandleKeys(keys, mouse); StandScroll(keys, mouse); }
+            else TakesScroll = false;
             Active = tool != DevTool.Select;
             Deleting = tool == DevTool.Delete;
 
@@ -726,12 +951,12 @@ namespace AirCity.Dev
             else point = lastGround;
             bool free = onGround && !DevGui.PointerOverHud;
             bool click = free && mouse.leftButton.wasPressedThisFrame;
-            bool overAircraft = free && Aircraft.Aircraft.TryPick(cam.ScreenPointToRay(screen), out _);
+            bool overAircraft = free && !DevGui.GateDesignerOpen && Aircraft.Aircraft.TryPick(cam.ScreenPointToRay(screen), out _);
             hover = (tool == DevTool.Select || tool == DevTool.Delete) && free && !overAircraft ? PickAt(point) : Pick.None;
             hoverRun = tool == DevTool.Delete && hover.kind == Kind.Edge && keys.shiftKey.isPressed;
             switch (tool)
             {
-                case DevTool.Runway: RunwayTool(mouse, keys, click, point); break;
+                case DevTool.Runway: RunwayTool(mouse, keys, click, free, point); break;
                 case DevTool.Taxiway: TaxiwayTool(click, free, point, false); break;
                 case DevTool.Road: TaxiwayTool(click, free, point, true); break;
                 case DevTool.Apron: ApronTool(mouse, keys, click, free, point); break;
@@ -740,10 +965,23 @@ namespace AirCity.Dev
                 case DevTool.Stand:
                 case DevTool.DeIcing: StandTool(mouse, keys, click, free, point); break;
                 case DevTool.Bridge: BridgeTool(click, free, point); break;
+                case DevTool.Lights: LightsTool(mouse, keys, click, free, point); break;
+                case DevTool.Baggage:
+                    if (click) GetComponent<DevBaggageControls>()?.Place(point);
+                    break;
+                case DevTool.Containers:
+                    if (click) GetComponent<DevContainerControls>()?.Place(point);
+                    break;
                 case DevTool.Delete:
-                    if (click && hover.kind != Kind.None) Remove(hover, hoverRun);
+                    if (click && !overAircraft && TrySelectBridge(cam.ScreenPointToRay(screen)))
+                    {
+                        var toolbar = GetComponent<DevToolbar>();
+                        if (toolbar != null) toolbar.GateDesigner.DeleteCurrent(); else DeleteSelectedBridge();
+                    }
+                    else if (click && hover.kind != Kind.None) Remove(hover, hoverRun);
                     break;
                 default:
+                    if (click && TrySelectBridge(cam.ScreenPointToRay(screen))) break;
                     // a rotunda of the selected stand's bridges is dragged; a click on an aircraft selects it instead
                     // (DevSandboxControls)
                     if (RootDrag(mouse, click, point)) break;
@@ -754,12 +992,32 @@ namespace AirCity.Dev
                         // a click off the rotundas drops the picked bridge (Delete then takes the stand)
                         Select(hover);
                         selectedBridge = null;
+                        if (hover.kind == Kind.Stand && !hover.stand.DeIcing)
+                            GetComponent<DevToolbar>()?.EditParking(hover.stand);
                     }
                     break;
             }
             if (SelectedTerminal != null && free)
                 terminalEdge = NearestEdge(SelectedTerminal, Geo.XZ(airport.transform.InverseTransformPoint(point)));
+            RefreshBridgePreviews(free);
+            LinePreview();
             DrawOutlines(free, point);
+        }
+
+        /// <summary>The taxiway or road the line tools would lay next, as it will look: from the line's last point to
+        /// where the next goes (kept while the pointer is over the HUD, so a width or surface picked there shows).</summary>
+        void LinePreview()
+        {
+            bool road = tool == DevTool.Road;
+            if ((tool != DevTool.Taxiway && !road) || chainNode < 0)
+            {
+                linePreview.Hide();
+                return;
+            }
+            var net = airport.Taxiways;
+            linePreview.Show(airport, net.At(chainNode), lineSnap.p, NewWidth,
+                road && surface == PavementSurface.Grass ? PavementSurface.Asphalt : surface,
+                false, road ? RoadClass.Service : RoadClass.None);
         }
 
         void HandleKeys(Keyboard keys, Mouse mouse)
@@ -767,17 +1025,21 @@ namespace AirCity.Dev
             if (keys.bKey.wasPressedThisFrame) SetTool(tool >= DevTool.Bridge ? DevTool.Select : tool + 1);
             if (keys.digit0Key.wasPressedThisFrame && SelectedStand != null) SetBridgeCount(0);
             if (keys.xKey.wasPressedThisFrame) SetTool(tool == DevTool.Delete ? DevTool.Select : DevTool.Delete);
-            if (keys.escapeKey.wasPressedThisFrame)
+            if (keys.escapeKey.wasPressedThisFrame && !DevGui.GateDesignerOpen)
             {
                 if (bridgeStart != null) bridgeStart = headNear = null;
+                else if (dragging != null) DropRunway();
                 else if (chainNode >= 0) chainNode = -1;
                 else if (apronCorners.Count > 0 || apronDrag) SetTool(tool);
                 else if (tool != DevTool.Select) SetTool(DevTool.Select);
                 else selection = Pick.None;
             }
-            if (mouse.rightButton.wasPressedThisFrame)
+            // a right-click (not a right-drag, which turns the camera) ends the line, drops the runway being laid
+            if (mouse.rightButton.wasPressedThisFrame) rightPress = mouse.position.ReadValue();
+            if (mouse.rightButton.wasReleasedThisFrame && Vector2.Distance(rightPress, mouse.position.ReadValue()) < 6f)
             {
                 chainNode = -1;
+                DropRunway();
                 bridgeStart = headNear = null;
             }
             if (keys.vKey.wasPressedThisFrame) SetSurface((PavementSurface)(((int)surface + 1) % Surfaces.Count));
@@ -855,17 +1117,29 @@ namespace AirCity.Dev
 
         // ------------------------------------------------------------------ tools
 
-        void RunwayTool(Mouse mouse, Keyboard keys, bool click, Vector3 point)
+        /// <summary>
+        /// Runway tool, like the line tools: a marker shows where the threshold goes; click it, then the other
+        /// threshold (or drag from one to the other). The runway is built as the cursor moves, so it shows as it will
+        /// be, and its surface and width can still be changed. Shift: 10 degrees from north and 50 m steps. It must
+        /// be MinRunwayLength long; right-click or Esc drops it.
+        /// </summary>
+        void RunwayTool(Mouse mouse, Keyboard keys, bool click, bool free, Vector3 point)
         {
             var local = airport.transform.InverseTransformPoint(point);
-            if (click)
+            runwayCursorShown = free;
+            if (dragging == null)
             {
-                dragStart = local;
-                dragging = airport.AddRunway(local, local + Vector3.forward * 50f, surface,
+                runwayCursor = Geo.XZ(local);
+                if (!click) return;
+                dragStart = new Vector3(local.x, 0f, local.z);
+                pressScreen = mouse.position.ReadValue();
+                runwayPress = true;
+                runwayProblem = null;
+                dragging = airport.AddRunway(dragStart, dragStart + Vector3.forward * MinRunwayLength, surface,
                     RunwayRules.RunwayWidths[runwayWidth]);
                 Select(new Pick { kind = Kind.Runway, runway = dragging, apron = -1 });
+                return;
             }
-            if (dragging == null) return;
             var d = local - dragStart;
             d.y = 0f;
             float length = d.magnitude;
@@ -875,6 +1149,8 @@ namespace AirCity.Dev
                 length = Mathf.Max(Mathf.Round(length / 50f) * 50f, 50f);
                 d = new Vector3(Mathf.Sin(bearing), 0f, Mathf.Cos(bearing)) * length;
             }
+            runwayCursor = Geo.XZ(dragStart + d);
+            runwayProblem = length < MinRunwayLength ? $"too short: a runway is at least {MinRunwayLength:0} m" : null;
             if (length > 1f && (dragging.end - (dragStart + d)).sqrMagnitude > 0.01f)
             {
                 dragging.start = dragStart;
@@ -882,20 +1158,38 @@ namespace AirCity.Dev
                 dragging.gameObject.name = "Runway " + dragging.Designation;
                 dragging.Rebuild();
             }
-            if (mouse.leftButton.wasReleasedThisFrame) FinishDrag();
+            if (runwayPress)
+            {
+                // let go after dragging it out: done; let go where it was pressed: wait for the second click
+                if (!mouse.leftButton.wasReleasedThisFrame) return;
+                runwayPress = false;
+                if (Vector2.Distance(pressScreen, mouse.position.ReadValue()) > 8f && runwayProblem == null) FinishRunway();
+            }
+            else if (click && runwayProblem == null) FinishRunway();
         }
 
-        /// <summary>The runway being dragged out is done (one shorter than 100 m is dropped).</summary>
-        void FinishDrag()
+        /// <summary>Runways shorter than this can't be laid (metres).</summary>
+        const float MinRunwayLength = 100f;
+
+        /// <summary>The runway being laid is done.</summary>
+        void FinishRunway()
         {
             if (dragging == null) return;
-            if (dragging.Length < 100f)
-            {
-                airport.RemoveRunway(dragging);
-                selection = Pick.None;
-            }
-            else airport.RunwaysChanged();
+            airport.RunwaysChanged();
             dragging = null;
+            runwayPress = false;
+            runwayProblem = null;
+        }
+
+        /// <summary>The runway being laid is taken away again.</summary>
+        void DropRunway()
+        {
+            if (dragging == null) return;
+            if (selection.runway == dragging) selection = Pick.None;
+            airport.RemoveRunway(dragging);
+            dragging = null;
+            runwayPress = false;
+            runwayProblem = null;
         }
 
         void TaxiwayTool(bool click, bool free, Vector3 point, bool road)
@@ -920,8 +1214,7 @@ namespace AirCity.Dev
                     net.Connect(chainNode, node, RunwayRules.RoadWidth, surface == PavementSurface.Grass ? PavementSurface.Asphalt : surface,
                         false, RoadClass.Service);
                 else
-                    net.Connect(chainNode, node, RunwayRules.TaxiwayWidths[taxiwayWidth], surface,
-                        net.edges.Any(e => e.lit) && surface.IsPaved());
+                    net.Connect(chainNode, node, RunwayRules.TaxiwayWidths[taxiwayWidth], surface, false);   // lit later, by hand
                 net.Rebuild();
             }
             chainNode = node;
@@ -1101,6 +1394,7 @@ namespace AirCity.Dev
             var startHead = HeadAt(root, 0.5f, out _);
             var st = startHead != null ? startHead.stand.stand : airport.Bridges.StandFor(p);
             bridgeStand = st;
+            GetComponent<DevToolbar>()?.GateDesigner.FollowPlacementStand(st);
             if (st == null)
             {
                 bridgeProblem = "put the rotunda beside a stand";
@@ -1122,20 +1416,23 @@ namespace AirCity.Dev
                 bridgeProblem = $"link longer than {JetBridgeRules.MaxLink:0} m";
                 return;
             }
-            bridgePreview = airport.Bridges.NearestDoor(st, p);
-            // where it stands, checked again only once the cursor has moved a little (a door's own problems wait for
-            // the click)
-            if (st != previewStand || Vector2.Distance(p, previewAt) > 0.5f || previewRoot != root || previewWhy == null)
+            // Preview the exact decision that AddBridge makes, at this cursor position and layout version.
+            if (st != previewStand || p != previewAt || previewRoot != root || previewWhy == null ||
+                previewVersion != airport.LayoutVersion || previewAssetVersion != BridgeAssetRevision.Version)
             {
                 previewStand = st;
                 previewAt = p;
                 previewRoot = root;
-                var why = airport.Bridges.WhereProblem(st, p, root, bridgePreview);
-                previewWhy = why == BridgeProblem.None ? "" : BridgeLayout.Describe(why);
+                previewVersion = airport.LayoutVersion; previewAssetVersion = BridgeAssetRevision.Version;
+                placementCandidate = airport.Bridges.PreviewBridge(st, p, root, out var why, out var previewType, bridgeDesign);
+                previewWhy = placementCandidate != null ? "" :
+                    (previewType != null ? previewType.displayName + ": " : "") + BridgeLayout.Describe(why);
+                PrepareBridgePreview(st, p, root);
             }
+            bridgePreview = placementCandidate ?? placementLayout?.bridge;
             if (previewWhy.Length > 0) bridgeProblem = previewWhy;
             if (!click) return;
-            var made = airport.Bridges.AddBridge(st, p, root, out var problem, out var type);
+            var made = airport.Bridges.AddBridge(st, p, root, out var problem, out var type, bridgeDesign);
             if (made == null)
             {
                 bridgeProblem = previewWhy = problem == BridgeProblem.None
@@ -1151,6 +1448,79 @@ namespace AirCity.Dev
                            (after == BridgeProblem.None ? "" : $": {(at != null ? at.displayName + " " : "")}{BridgeLayout.Describe(after)}");
             bridgeStart = null;
             previewWhy = null;
+            GetComponent<DevToolbar>()?.EditBridge(st, made);
+        }
+
+        void PrepareBridgePreview(Stand stand, Vector2 at, Vector2 root)
+        {
+            var sl = airport.Taxiways.Layout(stand);
+            var site = airport.Bridges.Site(stand);
+            var candidate = placementCandidate;
+            if (candidate == null)
+            {
+                var door = airport.Bridges.NearestDoor(stand, at);
+                candidate = bridgeDesign?.Clone() ?? new JetBridge { tunnel = TunnelSize.Long };
+                if (door != null) { candidate.door = door.door; candidate.side = door.side; candidate.upper = door.upper; }
+                candidate.rotunda = BridgeLayout.ToStand(sl, at);
+                candidate.root = BridgeLayout.ToStand(sl, root);
+            }
+            placementLayout = BridgeLayout.Of(candidate, sl, airport.terminals, site.head);
+            placementLayout.Columns(site.pavement);
+            var list = stand.bridges.Select(b => BridgeLayout.Of(b, sl, airport.terminals, site.head)).ToList();
+            list.Add(placementLayout);
+            placementPose = BridgeLayout.ParkAll(list, site.types, site.HeadShapes, out _)[list.Count - 1];
+            var designer = GetComponent<DevToolbar>()?.GateDesigner;
+            placementType = designer != null && designer.IsOpen && designer.Stand == stand ? designer.Aircraft : null;
+            if (placementType == null)
+            {
+                // Prefer an aircraft this candidate can serve, then the largest compatible type for scale.
+                var working = BridgeLayout.Check(placementLayout, list.Take(list.Count - 1).ToList(), site)
+                    .Where(x => x.type != null && x.problem == BridgeProblem.None).Select(x => x.type);
+                placementType = working.OrderByDescending(t => t.Wingspan).FirstOrDefault() ??
+                    site.types.Where(t => !t.Light).OrderByDescending(t => t.Wingspan).FirstOrDefault();
+            }
+            if (placementCandidate != null && placementType != null)
+            {
+                var entry = BridgeServicePlan.Build(list, site, placementType)[candidate];
+                if (entry.Operates) { placementLayout = entry.layout; placementPose = entry.docked; }
+            }
+        }
+
+        void RefreshBridgePreviews(bool free)
+        {
+            if (placementRig == null && airport != null) placementRig = airport.GetComponent<BridgeRig>();
+            bool placing = tool == DevTool.Bridge && !headMode && bridgeStart != null && free && bridgePreview != null && placementLayout != null;
+            if (placementRig != null)
+            {
+                if (placing) placementRig.ShowPlacement(placementLayout, placementPose, placementCandidate != null);
+                else placementRig.ClearPlacement();
+            }
+            var designer = GetComponent<DevToolbar>()?.GateDesigner;
+            if (tool != DevTool.Bridge || (designer != null && designer.IsOpen)) { bridgeAircraftPreview.Dispose(); return; }
+            var stand = bridgeStand ?? SelectedStand;
+            var type = placing ? placementType : stand != null ? airport.Bridges.TypesFor(stand)
+                .Where(t => !t.Light).OrderByDescending(t => t.Wingspan).FirstOrDefault() : null;
+            var template = GetComponent<DevTrafficControls>()?.TemplateFor(type);
+            if (template == null && type != null)
+                template = Aircraft.Aircraft.All.FirstOrDefault(a => a != null && a.type == type)?.gameObject;
+            if (stand != null && type != null && template != null) bridgeAircraftPreview.Show(airport, stand, type, template, 1f);
+            else bridgeAircraftPreview.Dispose();
+        }
+
+        void ClearBridgePreviews()
+        {
+            if (placementRig != null) placementRig.ClearPlacement();
+            bridgeAircraftPreview.Dispose();
+            placementCandidate = null; placementLayout = null; placementType = null; previewWhy = null;
+        }
+
+        public bool TrySelectBridge(Ray ray)
+        {
+            var rig = airport != null ? airport.GetComponent<BridgeRig>() : null;
+            if (rig == null || !rig.TryPickBridge(ray, out var stand, out var bridge)) return false;
+            SelectStand(stand); selectedBridge = bridge;
+            GetComponent<DevToolbar>()?.EditBridge(stand, bridge);
+            return true;
         }
 
         /// <summary>
@@ -1192,11 +1562,12 @@ namespace AirCity.Dev
                 bridgeProblem = "put the head beside a stand";
                 return;
             }
-            if (st != previewStand || Vector2.Distance(far, previewAt) > 0.5f || previewRoot != root || previewWhy == null)
+            if (st != previewStand || far != previewAt || previewRoot != root || previewWhy == null || previewVersion != airport.LayoutVersion)
             {
                 previewStand = st;
                 previewAt = far;
                 previewRoot = root;
+                previewVersion = airport.LayoutVersion;
                 var why = airport.Bridges.HeadProblem(st, root, a, far);
                 previewWhy = why == BridgeProblem.None ? "" : BridgeLayout.Describe(why);
             }
@@ -1615,7 +1986,11 @@ namespace AirCity.Dev
             if (net.TryPickStand(p, out var existing))
             {
                 hover = new Pick { kind = Kind.Stand, stand = existing, apron = -1 };
-                if (click) Select(hover);
+                if (click)
+                {
+                    Select(hover);
+                    if (!existing.DeIcing) GetComponent<DevToolbar>()?.EditParking(existing);
+                }
                 return;
             }
             ghost = Ghost(p, out ghostProblem);
@@ -1636,7 +2011,11 @@ namespace AirCity.Dev
             var net = airport.Taxiways;
             var made = net.Add(ghost.stand);
             net.Rebuild();
-            if (made != null) Select(new Pick { kind = Kind.Stand, stand = made, apron = -1 });
+            if (made != null)
+            {
+                Select(new Pick { kind = Kind.Stand, stand = made, apron = -1 });
+                if (!made.DeIcing) GetComponent<DevToolbar>()?.EditParking(made);
+            }
             ghost = null;
         }
 
@@ -2057,6 +2436,14 @@ namespace AirCity.Dev
             hover = Pick.None;
         }
 
+        /// <summary>The lights tool's highlight: blue for taxiway lights, warm white for a runway's.</summary>
+        public static Color LightColour(LightKind k) => k switch
+        {
+            LightKind.TaxiwayEdge => new Color(0.35f, 0.6f, 1f),
+            LightKind.Remove => DevGui.Danger,
+            _ => new Color(1f, 0.95f, 0.8f),
+        };
+
         public static string RoadName(RoadClass c) => c switch
         {
             RoadClass.Street => "Street",
@@ -2077,13 +2464,15 @@ namespace AirCity.Dev
             if (selection.kind != Kind.None && Corners(selection)) outlines.Loop(cam, loop, DevGui.Accent, 3f);
             if (hover.kind != Kind.None && !hover.Same(selection))
             {
-                var colour = tool == DevTool.Delete ? DevGui.Danger : new Color(0.92f, 0.94f, 0.97f);
+                var colour = tool == DevTool.Delete || (tool == DevTool.Lights && (lightProblem != null || lightKind == LightKind.Remove))
+                    ? DevGui.Danger
+                    : tool == DevTool.Lights ? LightColour(lightKind) : new Color(0.92f, 0.94f, 0.97f);
                 if (hoverRun)
                 {
-                    foreach (var (e, _) in airport.Taxiways.Run(hover.edge, _ => true))
+                    foreach (var (e, _) in airport.Taxiways.Run(hover.edge, tool == DevTool.Lights ? (System.Func<TaxiwayEdge, bool>)NotRoad : _ => true))
                         if (Corners(new Pick { kind = Kind.Edge, edge = e, apron = -1 })) outlines.Loop(cam, loop, colour, 3f);
                 }
-                else if (Corners(hover)) outlines.Loop(cam, loop, colour, tool == DevTool.Delete ? 3f : 2f);
+                else if (Corners(hover)) outlines.Loop(cam, loop, colour, tool == DevTool.Select ? 2f : 3f);
             }
             if (ghost != null && pointing)
             {
@@ -2132,28 +2521,25 @@ namespace AirCity.Dev
                 foreach (var v in pts) loop.Add(airport.transform.TransformPoint(Geo.X0Z(v, term.Height)));
                 outlines.Line(cam, loop, new Color(0.3f, 0.9f, 1f), 4f);
             }
-            BridgeRings();
+            if (!DevGui.GateDesignerOpen) BridgeRings();
             if (tool == DevTool.Bridge && pointing) BridgeGhost();
             if ((tool == DevTool.Taxiway || tool == DevTool.Road) && pointing && lineSnapShown)
             {
-                var colour = RoadProblem != null ? DevGui.Danger : new Color(1f, 0.8f, 0.1f);
+                // the new pavement (LinePreview) shows as it will look; its outline, faint (red where it can't go)
                 if (chainNode >= 0)
                 {
-                    // the new pavement's outline, so it shows where its edges will run
                     var from = airport.Taxiways.At(chainNode);
                     if (Vector2.Distance(from, lineSnap.p) > 0.5f)
                     {
                         loop.Clear();
                         foreach (var v in Strip(from, lineSnap.p, NewWidth * 0.5f)) loop.Add(airport.transform.TransformPoint(Geo.X0Z(v)));
-                        outlines.Loop(cam, loop, colour, 2f);
-                        loop.Clear();
-                        loop.Add(airport.transform.TransformPoint(Geo.X0Z(from)));
-                        loop.Add(airport.transform.TransformPoint(Geo.X0Z(lineSnap.p)));
-                        outlines.Line(cam, loop, colour, 3f);
+                        outlines.Loop(cam, loop, RoadProblem != null ? DevGui.Danger : new Color(1f, 0.8f, 0.1f, 0.5f), RoadProblem != null ? 3f : 1.5f);
                     }
                 }
                 Marker(lineSnap.p, lineSnap.what != null, RoadProblem != null, point);
             }
+            if (tool == DevTool.Runway && pointing && runwayCursorShown)
+                Marker(runwayCursor, false, RunwayProblem != null, point);
             outlines.End();
         }
 
@@ -2206,12 +2592,15 @@ namespace AirCity.Dev
                     loop.Add(airport.transform.TransformPoint(Geo.X0Z(l.root)));
                     outlines.Line(cam, loop, new Color(1f, 0.8f, 0.1f), 2f);
                 }
-                else if (l.head == null && l.LinkLength > 0.05f) RootSquare(l.root, JetBridgeRules.RotundaFloor, colour, b == draggingRoot);
+                else if (l.head == null && l.LinkLength > 0.05f) RootSquare(l.root, l.LinkStartFloor, colour, b == draggingRoot);
                 foreach (var t in types)
                 {
-                    if (t.Light || !BridgeLayout.TryDoor(t, b, out _)) continue;
-                    var pose = l.Dock(t, out var p);
-                    var end = l.rotunda + pose.heading * (JetBridgeRules.TunnelStart + pose.Run);
+                    if (t.Light) continue;
+                    var entry = airport.Bridges.ServicePlan(st, t)[b];
+                    if (!entry.Operates) continue;
+                    var pose = entry.docked;
+                    var p = entry.problem;
+                    var end = l.rotunda + pose.heading * (b.Spec.tunnelStart + pose.Run);
                     loop.Clear();
                     loop.Add(airport.transform.TransformPoint(Geo.X0Z(l.rotunda, pose.cabFloor)));
                     loop.Add(airport.transform.TransformPoint(Geo.X0Z(end, pose.cabFloor)));
@@ -2247,6 +2636,19 @@ namespace AirCity.Dev
             }
             var root = bridgeStart.Value;
             RootSquare(root, JetBridgeRules.RotundaFloor, new Color(0.3f, 0.9f, 1f), true);
+            if (placementRig != null && placementRig.PlacementPreviewObject != null)
+            {
+                // The model supplies the corridor, rotunda and moving tunnel; keep only a small validity ring.
+                loop.Clear();
+                for (int i = 0; i < 24; i++)
+                {
+                    float angle = i / 24f * Mathf.PI * 2f;
+                    loop.Add(airport.transform.TransformPoint(Geo.X0Z(bridgeCursor +
+                        new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * JetBridgeRules.RotundaRadius)));
+                }
+                outlines.Loop(cam, loop, colour, 2f);
+                return;
+            }
             var p = bridgeCursor;
             var d = p - root;
             if (d.magnitude > JetBridgeRules.RotundaRadius)
@@ -2388,7 +2790,8 @@ namespace AirCity.Dev
         /// <summary>The airfield's state (top left): weather, snow, the depots and their teams, and the selection.</summary>
         void OnGUI()
         {
-            if (airport == null || !DevGui.Visible) return;
+            if (airport == null || !DevGui.Visible || DevGui.GateDesignerOpen) return;
+            bridgeAircraftPreview.DrawLabel(cam);
             DevGui.Begin();
             if (Event.current.type == EventType.Layout) panel = new GUIContent(PanelText());
             var size = DevGui.Label.CalcSize(panel);
@@ -2406,6 +2809,8 @@ namespace AirCity.Dev
             StandProblem.TaxiwayTooSmall => "taxiway too narrow",
             StandProblem.NotConnected => "no taxiway yet",
             StandProblem.NoSmallAircraft => "no small aircraft",
+            StandProblem.ServiceExcluded => "excluded by aircraft service configuration",
+            StandProblem.StopOutsideStand => "aircraft stop is outside the stand",
             _ => "OK",
         };
 
@@ -2509,7 +2914,7 @@ namespace AirCity.Dev
                 foreach (var b in st.bridges)
                 {
                     var bl = BridgeLayout.Of(b, sl, airport.terminals, head);
-                    sb.Append($"\n<b>Bridge to {b.DoorName}</b>  " + (bl.head != null ? "on the head" : $"link {bl.LinkLength:0} m") +
+                    sb.Append($"\n<b>Bridge {st.bridges.IndexOf(b) + 1}</b>  " + (bl.head != null ? "on the head" : $"link {bl.LinkLength:0} m") +
                               (bl.Connected ? "" : $"   {Bad}not connected</color>: no terminal within reach") +
                               $"   {Dim}{airport.Bridges.StateOf(b).ToString().ToLowerInvariant()}</color>");
                     foreach (var (t, p) in airport.Bridges.Check(st, b))
@@ -2519,8 +2924,8 @@ namespace AirCity.Dev
                             sb.Append($"\n  {Bad}{BridgeLayout.Describe(p)}</color>");
                             continue;
                         }
-                        string verdict = p == BridgeProblem.None ? $"{Good}docks</color>"
-                            : p == BridgeProblem.SmallAircraft || p == BridgeProblem.NoSuchDoor ? $"{Dim}{BridgeLayout.Describe(p)}</color>"
+                        string verdict = p == BridgeProblem.None ? $"{Good}docks at {airport.Bridges.ServicePlan(st, t)[b].DoorName}</color>"
+                            : p == BridgeProblem.SmallAircraft || p == BridgeProblem.NoSuchDoor || p == BridgeProblem.NotInService ? $"{Dim}{BridgeLayout.Describe(p)}</color>"
                             : $"{Bad}{BridgeLayout.Describe(p)}</color>";
                         sb.Append($"\n  {t.displayName}: {verdict}");
                     }

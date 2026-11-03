@@ -21,7 +21,12 @@ namespace AirCity.EditorTools.Vehicles
 
         static bool InVehicles(string path) => path.Replace('\\', '/').StartsWith(Root);
 
-        public override uint GetVersion() => 2;
+        public override uint GetVersion() => 8;
+
+        [System.Serializable] class LodProfile { public string[] lodAlways, lodMovers; }
+
+        /// <summary>The one part whose mesh the game reads at run time (Airfield.CorridorMesh).</summary>
+        const string BendablePart = "Link";
 
         void OnPreprocessTexture()
         {
@@ -56,6 +61,8 @@ namespace AirCity.EditorTools.Vehicles
         {
             if (!InVehicles(assetPath)) return;
             string model = Path.GetFileNameWithoutExtension(assetPath);
+            var profile = ReadLodProfile(model);
+            RestoreMovingPivots(root, profile);
             var mat = CreateMaterial(model);
             foreach (var r in root.GetComponentsInChildren<MeshRenderer>(true))
             {
@@ -64,19 +71,50 @@ namespace AirCity.EditorTools.Vehicles
                 r.sharedMaterials = new[] { mat };
             }
             AircraftAssetPostprocessor.BuildLodGroup(root);
-            AddDoorsToEveryLod(root);
+            AddMovingPartsToEveryLod(root, profile);
+            // The jet bridge's Link stays readable: BridgeRig bends a copy of it along each corridor segment.
             foreach (var mf in root.GetComponentsInChildren<MeshFilter>(true))
-                if (mf.sharedMesh != null) mf.sharedMesh.UploadMeshData(true);
+                if (mf.sharedMesh != null && mf.name != BendablePart) mf.sharedMesh.UploadMeshData(true);
         }
 
         /// <summary>Doors are separate at every distance (the generator doesn't merge them into the far LODs).</summary>
-        static void AddDoorsToEveryLod(GameObject root)
+        LodProfile ReadLodProfile(string model)
+        {
+            string path = Path.GetDirectoryName(Path.GetDirectoryName(assetPath)).Replace('\\', '/') + $"/{model}.vehicle";
+            if (!File.Exists(path)) return null;
+            var profile = JsonUtility.FromJson<LodProfile>(File.ReadAllText(path));
+            // Legacy models have no moving-LOD metadata. Keep their existing import dependency graph intact.
+            if (profile?.lodAlways == null && profile?.lodMovers == null) return null;
+            context.DependsOnSourceAsset(path);
+            return profile;
+        }
+
+        static void RestoreMovingPivots(GameObject root, LodProfile profile)
+        {
+            if (profile?.lodMovers == null) return;
+            var parts = new Dictionary<string, Transform>();
+            foreach (var t in root.GetComponentsInChildren<Transform>(true)) parts[t.name] = t;
+            foreach (string name in profile.lodMovers)
+            {
+                if (!parts.TryGetValue(name + "_LOD0", out var reference)) continue;
+                var pivot = new GameObject(name).transform;
+                pivot.SetParent(reference.parent, false);
+                pivot.SetPositionAndRotation(reference.position, reference.rotation);
+                pivot.localScale = reference.localScale;
+                for (int level = 0; level < 3; level++)
+                    if (parts.TryGetValue(name + $"_LOD{level}", out var child)) child.SetParent(pivot, true);
+            }
+        }
+
+        void AddMovingPartsToEveryLod(GameObject root, LodProfile profile)
         {
             var group = root.GetComponent<LODGroup>();
             if (group == null) return;
             var doors = new List<Renderer>();
+            var always = new HashSet<string>();
+            if (profile?.lodAlways != null) foreach (var part in profile.lodAlways) always.Add(part);
             foreach (var r in root.GetComponentsInChildren<Renderer>(true))
-                if (r.name.StartsWith("Door_")) doors.Add(r);
+                if (r.name.StartsWith("Door_") || always.Contains(r.name)) doors.Add(r);
             if (doors.Count == 0) return;
             var lods = group.GetLODs();
             for (int i = 1; i < lods.Length; i++)

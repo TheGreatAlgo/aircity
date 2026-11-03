@@ -75,7 +75,7 @@ All numbers come from `Assets/AirCity/Aircraft/Narrowbody/Narrowbody.aircraft`,
 |---|---|
 | `Door_L1`, `Door_R1` | s 5.6 (`DOOR_1_S`), sill z 2.62, 0.81 × 1.85 m |
 | `Door_L2`, `Door_R2` | s 30.95, sill z 2.72 |
-| `Cargo_Fwd`, `Cargo_Aft` | Starboard (+X), s 11.3 / 23.2, 1.8 × 1.24 m |
+| `Cargo_Fwd`, `Cargo_Aft` | Starboard (+X), s 8.55 / 23.2, sill 2.45 m, 1.8 × 1.24 m |
 | `Fuel` | Starboard wing underside at 8 m span |
 | `GPU` (GroundPower) | Starboard under the nose, s 3.9 |
 | `Water` | Port (−X), aft belly, s 26.5 |
@@ -157,3 +157,10 @@ If mover names, pivots or hinges changed, the existing prefab's cached parts are
 
 - The L1 sill is at 2.62 m. `ServicePoints_AreOnTheCorrectSide` accepts 2.5–3.6 m, but its comment says jet bridges
   need ~3.4 m. Check this before building jet bridges against it.
+
+The forward cargo hatch was moved ahead of the engine for a square belt-loader approach, following the
+737-style forward location requested by the user. The position reference is the 8.53 m nose-to-forward-cargo
+dimension in [Boeing airport planning, section 2.7.1](https://www.boeing.com/content/dam/boeing/v2/airports/acaps/737MAX_RevK.pdf); this remains the generic AirCity narrowbody.
+`CARGO_STATIONS`, `CARGO_SILL` and `CARGO_HOLDS` drive the painted seams, physical openings, hinges,
+service points and lined compartments together. Both holds have flat floors, floor-panel strips, ceilings,
+end bulkheads and side liners. The forward room spans stations 7.3–12.8 m, the aft room 21.8–26.2 m.

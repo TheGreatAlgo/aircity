@@ -11,7 +11,7 @@ ArtSource/README.md. When you change a system, update its doc in `Docs/` in the 
 - Art is generated, not hand-edited: aircraft come from `ArtSource/Aircraft` (one shared pipeline in `Common/`,
   a `model.py` + `parts.py` per type), vehicles, the depot and the control towers from `ArtSource/Vehicles`. Everything under
   `Assets/AirCity/Aircraft/<Model>/Models|Textures`, `Assets/AirCity/Vehicles/<Model>/Models|Textures`,
-  `*.aircraft`, `*.vehicle`, `*.regfont` and the airline logos in `Liveries/Logos` (those named in `airlines.LOGOS`) is
+  `*.aircraft`, `*.vehicle`, `*.regfont`, the HUD icons in `Assets/AirCity/UI/Resources/AirCityIcons` (`ArtSource/UI/icons.py`) and the airline logos in `Liveries/Logos` (those named in `airlines.LOGOS`) is
   overwritten on regeneration.
 - Gameplay reads aircraft data from `AircraftType` (dimensions, wheels, service points, lights, performance), never
   from mesh positions or hard-coded per-model numbers. Runway / taxiway rules live in `RunwayRules`. Aircraft local space: origin on the ground under the main gear,
@@ -34,8 +34,8 @@ ArtSource/README.md. When you change a system, update its doc in `Docs/` in the 
 - Stands keep their own front line (`Stand.position` / `front` / `lane`) and are connected by whichever taxiway runs
   along it (`TaxiwayNetwork.Connection`); `StandLayout.edge` is null for an unconnected stand, so check it.
 - Terminals (`Airport.terminals`) and jet bridges (`Stand.bridges`, saved in the stand's frame) never move each other:
-  a bridge is connected when its link root touches a terminal wall (`BridgeLayout.Connected`). Bridge numbers live in
-  `JetBridgeRules` and in the JetBridge model's `BRIDGE` (ArtSource/Vehicles/JetBridge): change both together
+  a bridge is connected when its link root touches a terminal wall (`BridgeLayout.Connected`). Custom families use
+  `JetBridgeDefinition` / `BridgeSpecification`; legacy defaults live in `JetBridgeRules` and the model's `BRIDGE`: change both together
   (`TerminalBridgeTests.Model_MatchesBridgeRules`). Departures wait for `Airport.Bridges.Clear` before the tug.
   A stand's bridges park in list order, each clear of those before (`BridgeLayout.ParkAll`): a re-placed bridge goes last.
   Two or three bridges share a head (`Stand.head`, `HeadLayout`): a bridge stands on it when its link root touches the
@@ -45,6 +45,25 @@ ArtSource/README.md. When you change a system, update its doc in `Docs/` in the 
   (dev Bridge tool, dragging rotundas, link roots and heads) goes through `AirportBridges` (`AddBridge`, `MoveBridge`,
   `MoveRoot`, `PlaceHead`, `MoveHead`, `RemoveBridge`, `RemoveHead`), which refuse a place and leave things as they
   were. A head may stand with no bridges on it.
+  See `Docs/systems/gates.md`: fixed corridors may bend, terminals/rotundas have independent connection heights,
+  and stands may have branch heads. `BridgeServicePlan` chooses doors jointly per aircraft and runs full clearance
+  checks before runtime docking. Stand/Bridge tools share the runtime gate workspace; bridge picking resolves its stand directly. The build draft carries the selected family/finish through preview and placement. Mock aircraft are blue and labelled; never tint source materials. The player places equipment and aircraft stops; never add saved bridge parking
+  poses or operating sequences. `StandServiceConfiguration` is shared by traffic, parking, painting and bridges.
+  Heads default to grounded concourse buildings (`HeadFoundation.Building`), rendered by `TerminalBuilder`; only
+  unstyled elevated heads use the imported Head meshes. Elevated heads retain their paired support columns. Terminals and heads share `BuildingExterior`
+  facade profiles. Player-facing appearance is four `FacadeStyles` recipes plus optional glass tint; do not reintroduce
+  per-face finish controls, frame/roof colour pickers or glazing sliders. Styles preserve authored wall lean and `BuildingRoof` shape. Separate Facade angle / Roof shape pages expose
+  geometry (±30° lean, Flat/Wave/Scalloped roof, rise, direction, canopy extension and architectural column gap) without adding more finish controls.
+  Use local normal-based `Terminal.WallOffsets` for dense curved roof samples; intersecting nearly parallel lines
+  in airport coordinates produces spikes. Canopies have closed soffits, cover separated columns and participate in
+  projected footprint checks. Bridge connections query glass walls, never canopy edges.
+  `Terminal.Height` includes roof rise; `RoofHeight` remains the base ceiling above the flat storeys.
+  Use actual storey elevations and `WallOutline(height)` for slanted wall connections, never
+  assume a 5 m floor or connect to a ground footprint when a wall leans. Corridors from a terminal always meet a floor:
+  resolve their height through `Terminal.BoardingLevel(requested)`, never `boardingHeight` directly. Facade floor bands
+  end `Terminal.BandBelowFloor` (= -`JetBridgeRules.LinkBottom`) under the floor line, so a corridor sits on the band
+  and the storey above's glass starts level with it: change both together. Corridors are
+  drawn by bending the readable `Link` mesh (`CorridorMesh`), mitred at corners and buried in the wall they leave. Face overrides follow original edge indices.
 - Hot per-pixel or per-entity work goes in Burst jobs (see `AircraftLiveryCompositor`). Runtime-made textures go
   through `Bc1TextureBuilder`, not `Texture2D.Compress` (which is slow and main-thread only).
 

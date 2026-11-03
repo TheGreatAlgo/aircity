@@ -1,0 +1,45 @@
+{
+  "name": "ContainerLD3",
+  "displayName": "AKE / LD3 container",
+  "kind": "ContainerULD",
+  "bounds": {
+    "min": [
+      -0.825,
+      0.0,
+      -0.778
+    ],
+    "max": [
+      1.2406,
+      1.641,
+      0.778
+    ]
+  },
+  "wheelbase": 0.0,
+  "wheels": [],
+  "spinners": [],
+  "lights": [],
+  "work": {},
+  "parking": [
+    0.0,
+    0.0,
+    0.0
+  ],
+  "container": {
+    "code": "AKE",
+    "baseWidth": 1.562,
+    "baseLength": 1.534,
+    "height": 1.626,
+    "tare": 95.0,
+    "maxGross": 1588.0,
+    "transfer": [
+      0.0,
+      0.0,
+      0.0
+    ]
+  },
+  "lodMovers": [
+    "Curtain",
+    "CurtainRoll",
+    "BagLoad"
+  ]
+}

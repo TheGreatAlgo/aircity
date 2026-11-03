@@ -143,15 +143,16 @@ def _bake_material(kind, img, pos_lo=(0, 0, 0), pos_span=1.0):
     return m
 
 
-def _cycles(samples):
+def _cycles(samples, device="GPU"):
     sc = bpy.context.scene
     sc.render.engine = "CYCLES"
-    prefs = bpy.context.preferences.addons["cycles"].preferences
-    prefs.compute_device_type = "METAL"
-    prefs.get_devices()
-    for d in prefs.devices:
-        d.use = True
-    sc.cycles.device = "GPU"
+    if device != "CPU":
+        prefs = bpy.context.preferences.addons["cycles"].preferences
+        prefs.compute_device_type = "METAL"
+        prefs.get_devices()
+        for d in prefs.devices:
+            d.use = True
+    sc.cycles.device = device
     sc.cycles.samples = samples
     sc.cycles.use_denoising = False
 
@@ -176,7 +177,7 @@ def _read(img):
     return a.reshape(TEX, TEX, 4)
 
 
-def bake_maps(objs, ao_samples=192, ao_distance=0.9):
+def bake_maps(objs, ao_samples=192, ao_distance=0.9, device="GPU"):
     """Returns dict of numpy maps (H, W, ...) in the Body atlas."""
     corners = np.array([ob.matrix_world @ Vector(c) for ob in objs for c in ob.bound_box])
     pos_lo = corners.min(axis=0) - 1.0
@@ -192,7 +193,7 @@ def bake_maps(objs, ao_samples=192, ao_distance=0.9):
         img = _new_image("BAKE_" + kind)
         mat = _bake_material(kind, img, pos_lo, pos_span)
         saved = _swap_materials(objs, mat, dummy)
-        _cycles(samples)
+        _cycles(samples, device)
         sc.render.bake.margin = margin
         bpy.ops.object.bake(type="EMIT", margin=margin, margin_type="ADJACENT_FACES", use_clear=True)
         _restore(saved)
@@ -206,7 +207,7 @@ def bake_maps(objs, ao_samples=192, ao_distance=0.9):
     img = _new_image("BAKE_ao")
     mat = _bake_material("white", img)
     saved = _swap_materials(objs, mat, dummy)
-    _cycles(ao_samples)
+    _cycles(ao_samples, device)
     bpy.ops.object.bake(type="AO", margin=10, margin_type="ADJACENT_FACES", use_clear=True)
     _restore(saved)
     maps["ao"] = _read(img)

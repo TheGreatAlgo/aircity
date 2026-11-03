@@ -14,7 +14,7 @@ namespace AirCity.Tests.Airfield
 {
     /// <summary>Terminal buildings (curved walls, what they may not stand on) and jet bridges: the model built to the
     /// rules, placing bridges that reach the doors, docking with parked aircraft and pulling back for push-back.</summary>
-    public class TerminalBridgeTests
+    public partial class TerminalBridgeTests
     {
         readonly List<Object> spawned = new List<Object>();
         float glow;
@@ -175,8 +175,8 @@ namespace AirCity.Tests.Airfield
             changed.floors = 3;
             changed.SetBulge(0, 8f);    // landside, away from the stands
             Assert.IsTrue(airport.ChangeTerminal(t, changed), airport.TerminalProblem(changed, t));
-            Assert.That(airport.TerminalMesh.bounds.max.y, Is.InRange(3 * Terminal.FloorHeight + Terminal.Parapet - 0.05f,
-                3 * Terminal.FloorHeight + 2.45f));
+            Assert.That(airport.TerminalMesh.bounds.max.y, Is.InRange(Terminal.GroundStorey + 2 * Terminal.FloorHeight + Terminal.Parapet - 0.05f,
+                Terminal.GroundStorey + 2 * Terminal.FloorHeight + 2.45f));
             // bowed onto the stands: refused, unchanged
             var onStands = t.Clone();
             onStands.SetBulge(2, 15f);
@@ -215,7 +215,7 @@ namespace AirCity.Tests.Airfield
             Assert.AreEqual(JetBridgeRules.HeadUpperWider, d.headUpperWider, 1e-3f);
             var prefab = VehicleSetup.Prefab("JetBridge");
             Assert.IsNotNull(prefab, "JetBridge prefab (VehicleSetup.CreateMissing)");
-            foreach (var part in new[] { "Rotunda", "RotundaHigh", "Tunnel_A", "Tunnel_B", "Tunnel_C", "ShortTunnel_A", "ShortTunnel_B",
+            foreach (var part in new[] { "Rotunda", "RotundaHigh", "RotundaColumn", "RotundaHighColumn", "Tunnel_A", "Tunnel_B", "Tunnel_C", "ShortTunnel_A", "ShortTunnel_B",
                          "ShortTunnel_C", "Drive", "DriveLegs", "Cab", "Link",
                          "LinkColumnFoot", "LinkColumn", "LinkColumnHead", "Head", "HeadUpper", "HeadEnd", "HeadUpperEnd" })
                 Assert.IsNotNull(prefab.transform.Find(part), part);
@@ -666,7 +666,7 @@ namespace AirCity.Tests.Airfield
             var stand = new StandLayout { stand = new Stand { id = 4 }, entry = Vector2.zero, axis = Vector2.up, nose = Vector2.up };
             // a 30 m head along +y from y = 20, its main link 20 m from a terminal wall at y = 0, with a 7 m road across
             // the head where an evenly spaced pair of columns would stand (y = 35)
-            var head = HeadLayout.Of(new BridgeHead { from = new Vector2(0f, 20f), to = new Vector2(0f, 50f), root = Vector2.zero },
+            var head = HeadLayout.Of(new BridgeHead { foundation = HeadFoundation.Columns, from = new Vector2(0f, 20f), to = new Vector2(0f, 50f), root = Vector2.zero },
                 stand, null, false);
             Assert.AreEqual(30f, head.Length, 1e-3f);
             Assert.AreEqual(20f, head.LinkLength, 1e-3f);

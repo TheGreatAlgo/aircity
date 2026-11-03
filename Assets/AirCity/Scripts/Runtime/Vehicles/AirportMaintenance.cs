@@ -221,6 +221,8 @@ namespace AirCity.Vehicles
                 problem = "no aircraft";
                 return null;
             }
+            problem = airport.Baggage.DepartureBlocker(aircraft);
+            if (problem != null) return null;
             if (TowOf(aircraft) != null)
             {
                 problem = "it's being pushed back already";
@@ -488,6 +490,7 @@ namespace AirCity.Vehicles
         public Func<Vector2, Vector2, bool> RouteBlocked(VehicleType type, float extra = 0f)
         {
             var boxes = AircraftBoxes(true);
+            boxes.AddRange(airport.Baggage.VehicleBoxes());
             // where the aircraft being pushed back will stand
             foreach (var j in tows)
                 if (j.Valid && j.State < TowState.Done)
@@ -558,6 +561,7 @@ namespace AirCity.Vehicles
         void Avoid(List<MaintenanceDepot> depots, float dt)
         {
             var obstacles = AircraftBoxes(false);
+            obstacles.AddRange(airport.Baggage.VehicleBoxes());
             var tracks = airport.Traffic.Tracks();
             var claimed = new List<(Vector2, Vector2)>();
             var teams = new List<VehicleTeam>();

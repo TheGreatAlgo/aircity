@@ -1,0 +1,1117 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!29 &1
+OcclusionCullingSettings:
+  m_ObjectHideFlags: 0
+  serializedVersion: 2
+  m_OcclusionBakeSettings:
+    smallestOccluder: 5
+    smallestHole: 0.25
+    backfaceThreshold: 100
+  m_SceneGUID: 00000000000000000000000000000000
+  m_OcclusionCullingData: {fileID: 0}
+--- !u!104 &2
+RenderSettings:
+  m_ObjectHideFlags: 0
+  serializedVersion: 10
+  m_Fog: 0
+  m_FogColor: {r: 0.5, g: 0.5, b: 0.5, a: 1}
+  m_FogMode: 3
+  m_FogDensity: 0.01
+  m_LinearFogStart: 0
+  m_LinearFogEnd: 300
+  m_AmbientSkyColor: {r: 0.66, g: 0.73, b: 0.83, a: 1}
+  m_AmbientEquatorColor: {r: 0.49, g: 0.54, b: 0.6, a: 1}
+  m_AmbientGroundColor: {r: 0.27, g: 0.29, b: 0.31, a: 1}
+  m_AmbientIntensity: 1
+  m_AmbientMode: 1
+  m_SubtractiveShadowColor: {r: 0.42, g: 0.478, b: 0.627, a: 1}
+  m_SkyboxMaterial: {fileID: 10304, guid: 0000000000000000f000000000000000, type: 0}
+  m_HaloStrength: 0.5
+  m_FlareStrength: 1
+  m_FlareFadeSpeed: 3
+  m_HaloTexture: {fileID: 0}
+  m_SpotCookie: {fileID: 10001, guid: 0000000000000000e000000000000000, type: 0}
+  m_DefaultReflectionMode: 0
+  m_DefaultReflectionResolution: 128
+  m_ReflectionBounces: 1
+  m_ReflectionIntensity: 1
+  m_CustomReflection: {fileID: 0}
+  m_Sun: {fileID: 151306360}
+  m_UseRadianceAmbientProbe: 0
+--- !u!157 &3
+LightmapSettings:
+  m_ObjectHideFlags: 0
+  serializedVersion: 13
+  m_BakeOnSceneLoad: 0
+  m_GISettings:
+    serializedVersion: 2
+    m_BounceScale: 1
+    m_IndirectOutputScale: 1
+    m_AlbedoBoost: 1
+    m_EnvironmentLightingMode: 0
+    m_EnableBakedLightmaps: 1
+    m_EnableRealtimeLightmaps: 0
+  m_LightmapEditorSettings:
+    serializedVersion: 12
+    m_Resolution: 2
+    m_BakeResolution: 40
+    m_AtlasSize: 1024
+    m_AO: 0
+    m_AOMaxDistance: 1
+    m_CompAOExponent: 1
+    m_CompAOExponentDirect: 0
+    m_ExtractAmbientOcclusion: 0
+    m_Padding: 2
+    m_LightmapParameters: {fileID: 0}
+    m_LightmapsBakeMode: 1
+    m_TextureCompression: 1
+    m_ReflectionCompression: 2
+    m_MixedBakeMode: 2
+    m_BakeBackend: 2
+    m_PVRSampling: 1
+    m_PVRDirectSampleCount: 32
+    m_PVRSampleCount: 512
+    m_PVRBounces: 2
+    m_PVREnvironmentSampleCount: 256
+    m_PVREnvironmentReferencePointCount: 2048
+    m_PVRFilteringMode: 1
+    m_PVRDenoiserTypeDirect: 2
+    m_PVRDenoiserTypeIndirect: 2
+    m_PVRDenoiserTypeAO: 2
+    m_PVRFilterTypeDirect: 0
+    m_PVRFilterTypeIndirect: 0
+    m_PVRFilterTypeAO: 0
+    m_PVREnvironmentMIS: 1
+    m_PVRCulling: 1
+    m_PVRFilteringGaussRadiusDirect: 1
+    m_PVRFilteringGaussRadiusIndirect: 1
+    m_PVRFilteringGaussRadiusAO: 1
+    m_PVRFilteringAtrousPositionSigmaDirect: 0.5
+    m_PVRFilteringAtrousPositionSigmaIndirect: 2
+    m_PVRFilteringAtrousPositionSigmaAO: 1
+    m_ExportTrainingData: 0
+    m_TrainingDataDestination: TrainingData
+    m_LightProbeSampleCountMultiplier: 4
+  m_LightingDataAsset: {fileID: 20201, guid: 0000000000000000f000000000000000, type: 0}
+  m_LightingSettings: {fileID: 0}
+--- !u!196 &4
+NavMeshSettings:
+  serializedVersion: 2
+  m_ObjectHideFlags: 0
+  m_BuildSettings:
+    serializedVersion: 3
+    agentTypeID: 0
+    agentRadius: 0.5
+    agentHeight: 2
+    agentSlope: 45
+    agentClimb: 0.4
+    ledgeDropHeight: 0
+    maxJumpAcrossDistance: 0
+    minRegionArea: 2
+    manualCellSize: 0
+    cellSize: 0.16666667
+    manualTileSize: 0
+    tileSize: 256
+    buildHeightMesh: 0
+    maxJobWorkers: 0
+    preserveTilesOutsideBounds: 0
+    debug:
+      m_Flags: 0
+  m_NavMeshData: {fileID: 0}
+--- !u!1 &131829120
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 131829123}
+  - component: {fileID: 131829122}
+  - component: {fileID: 131829121}
+  m_Layer: 0
+  m_Name: Container review camera
+  m_TagString: MainCamera
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &131829121
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 131829120}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 0f237e3b96aa442008b30433062af7cc, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: AirCity.Runtime::AirCity.Dev.DevOrbitCamera
+  pivot: {x: 40, y: 0, z: -405.44}
+  distance: 230
+  pitch: 55
+  yaw: 215
+  distanceLimits: {x: 4, y: 600}
+  orbitSpeed: 0.25
+  panSpeed: 1
+  keyRotateSpeed: 90
+  zoomStep: 0.25
+  zoomSharpness: 18
+  zoomToCursor: 1
+--- !u!20 &131829122
+Camera:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 131829120}
+  m_Enabled: 1
+  serializedVersion: 2
+  m_ClearFlags: 1
+  m_BackGroundColor: {r: 0.19215687, g: 0.3019608, b: 0.4745098, a: 0}
+  m_projectionMatrixMode: 1
+  m_GateFitMode: 2
+  m_FOVAxisMode: 0
+  m_Iso: 200
+  m_ShutterSpeed: 0.005
+  m_Aperture: 16
+  m_FocusDistance: 10
+  m_FocalLength: 50
+  m_BladeCount: 5
+  m_Curvature: {x: 2, y: 11}
+  m_BarrelClipping: 0.25
+  m_Anamorphism: 0
+  m_SensorSize: {x: 36, y: 24}
+  m_LensShift: {x: 0, y: 0}
+  m_NormalizedViewPortRect:
+    serializedVersion: 2
+    x: 0
+    y: 0
+    width: 1
+    height: 1
+  near clip plane: 0.1
+  far clip plane: 25000
+  field of view: 45
+  orthographic: 0
+  orthographic size: 5
+  m_Depth: 0
+  m_CullingMask:
+    serializedVersion: 2
+    m_Bits: 4294967295
+  m_RenderingPath: -1
+  m_TargetTexture: {fileID: 0}
+  m_TargetDisplay: 0
+  m_TargetEye: 3
+  m_HDR: 1
+  m_AllowMSAA: 1
+  m_AllowDynamicResolution: 0
+  m_ForceIntoRT: 0
+  m_OcclusionCulling: 1
+  m_StereoConvergence: 10
+  m_StereoSeparation: 0.022
+--- !u!4 &131829123
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 131829120}
+  serializedVersion: 2
+  m_LocalRotation: {x: -0.13885048, y: 0.8459572, z: -0.44037747, w: -0.2667293}
+  m_LocalPosition: {x: 115.66768, y: 188.40495, z: -297.37537}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &151306359
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 151306361}
+  - component: {fileID: 151306360}
+  m_Layer: 0
+  m_Name: Daylight
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!108 &151306360
+Light:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 151306359}
+  m_Enabled: 1
+  serializedVersion: 13
+  m_Type: 1
+  m_Color: {r: 1, g: 1, b: 1, a: 1}
+  m_Intensity: 2
+  m_Range: 10
+  m_SpotAngle: 30
+  m_InnerSpotAngle: 21.802082
+  m_CookieSize2D: {x: 0.5, y: 0.5}
+  m_Shadows:
+    m_Type: 2
+    m_Resolution: -1
+    m_CustomResolution: -1
+    m_Strength: 1
+    m_Bias: 0.05
+    m_NormalBias: 0.4
+    m_NearPlane: 0.2
+    m_CullingMatrixOverride:
+      e00: 1
+      e01: 0
+      e02: 0
+      e03: 0
+      e10: 0
+      e11: 1
+      e12: 0
+      e13: 0
+      e20: 0
+      e21: 0
+      e22: 1
+      e23: 0
+      e30: 0
+      e31: 0
+      e32: 0
+      e33: 1
+    m_UseCullingMatrixOverride: 0
+  m_Cookie: {fileID: 0}
+  m_DrawHalo: 0
+  m_Flare: {fileID: 0}
+  m_RenderMode: 0
+  m_CullingMask:
+    serializedVersion: 2
+    m_Bits: 4294967295
+  m_RenderingLayerMask: 1
+  m_Lightmapping: 4
+  m_LightShadowCasterMode: 0
+  m_AreaSize: {x: 1, y: 1}
+  m_BounceIntensity: 1
+  m_ColorTemperature: 6570
+  m_UseColorTemperature: 0
+  m_BoundingSphereOverride: {x: 0, y: 0, z: 0, w: 0}
+  m_UseBoundingSphereOverride: 0
+  m_UseViewFrustumForShadowCasterCull: 1
+  m_ForceVisible: 0
+  m_ShapeRadius: 0.025
+  m_ShadowAngle: 0
+  m_LightUnit: 1
+  m_LuxAtDistance: 1
+  m_EnableSpotReflector: 1
+--- !u!4 &151306361
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 151306359}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0.3649717, y: -0.2778159, z: 0.115075134, w: 0.88111955}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &333071669
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 333071670}
+  - component: {fileID: 333071671}
+  m_Layer: 0
+  m_Name: Taxiways
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &333071670
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 333071669}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 1933757463}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &333071671
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 333071669}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 324f877a9d5d9450493917c4e0a6bf3c, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: AirCity.Runtime::AirCity.Airfield.TaxiwayNetwork
+  nodes:
+  - id: 1
+    position: {x: -1750, y: 0, z: -200}
+    runway: {fileID: 869237485}
+  - id: 2
+    position: {x: 1750, y: 0, z: -200}
+    runway: {fileID: 869237485}
+  - id: 3
+    position: {x: -1750, y: 0, z: -500}
+    runway: {fileID: 0}
+  - id: 4
+    position: {x: 1750, y: 0, z: -500}
+    runway: {fileID: 0}
+  - id: 9
+    position: {x: 79.8749, y: 0, z: -445.44}
+    runway: {fileID: 0}
+  - id: 10
+    position: {x: 79.8749, y: 0, z: -340.44}
+    runway: {fileID: 0}
+  - id: 11
+    position: {x: 54.8749, y: 0, z: -340.44}
+    runway: {fileID: 0}
+  - id: 12
+    position: {x: 54.8749, y: 0, z: -475.44}
+    runway: {fileID: 0}
+  - id: 13
+    position: {x: 66.8749, y: 0, z: -475.44}
+    runway: {fileID: 0}
+  - id: 14
+    position: {x: 79.8749, y: 0, z: -475.44}
+    runway: {fileID: 0}
+  - id: 21
+    position: {x: 54.874878, y: 0, z: -500}
+    runway: {fileID: 0}
+  - id: 25
+    position: {x: 104.8749, y: 0, z: -405.44}
+    runway: {fileID: 0}
+  - id: 26
+    position: {x: 104.8749, y: 0, z: -340.44}
+    runway: {fileID: 0}
+  - id: 27
+    position: {x: 91.8749, y: 0, z: -475.44}
+    runway: {fileID: 0}
+  - id: 28
+    position: {x: 104.8749, y: 0, z: -475.44}
+    runway: {fileID: 0}
+  edges:
+  - id: 5
+    a: 1
+    b: 3
+    width: 25
+    surface: 2
+    lit: 0
+    wear: 0
+    snow: 0
+    grass: 5
+    road: 0
+    vergeGrass: 5
+  - id: 7
+    a: 4
+    b: 2
+    width: 25
+    surface: 2
+    lit: 0
+    wear: 0
+    snow: 0
+    grass: 5
+    road: 0
+    vergeGrass: 5
+  - id: 15
+    a: 9
+    b: 10
+    width: 14
+    surface: 2
+    lit: 0
+    wear: 0
+    snow: 0
+    grass: 5
+    road: 1
+    vergeGrass: 5
+  - id: 16
+    a: 10
+    b: 11
+    width: 14
+    surface: 2
+    lit: 0
+    wear: 0
+    snow: 0
+    grass: 5
+    road: 1
+    vergeGrass: 5
+  - id: 17
+    a: 11
+    b: 12
+    width: 14
+    surface: 2
+    lit: 0
+    wear: 0
+    snow: 0
+    grass: 5
+    road: 1
+    vergeGrass: 5
+  - id: 18
+    a: 12
+    b: 13
+    width: 14
+    surface: 2
+    lit: 0
+    wear: 0
+    snow: 0
+    grass: 5
+    road: 1
+    vergeGrass: 5
+  - id: 19
+    a: 13
+    b: 14
+    width: 14
+    surface: 2
+    lit: 0
+    wear: 0
+    snow: 0
+    grass: 5
+    road: 1
+    vergeGrass: 5
+  - id: 20
+    a: 14
+    b: 9
+    width: 14
+    surface: 2
+    lit: 0
+    wear: 0
+    snow: 0
+    grass: 5
+    road: 1
+    vergeGrass: 5
+  - id: 22
+    a: 3
+    b: 21
+    width: 25
+    surface: 2
+    lit: 0
+    wear: 0
+    snow: 0
+    grass: 5
+    road: 0
+    vergeGrass: 5
+  - id: 23
+    a: 21
+    b: 4
+    width: 25
+    surface: 2
+    lit: 0
+    wear: 0
+    snow: 0
+    grass: 5
+    road: 0
+    vergeGrass: 5
+  - id: 24
+    a: 12
+    b: 21
+    width: 14
+    surface: 2
+    lit: 0
+    wear: 0
+    snow: 0
+    grass: 5
+    road: 1
+    vergeGrass: 5
+  - id: 29
+    a: 25
+    b: 26
+    width: 14
+    surface: 2
+    lit: 0
+    wear: 0
+    snow: 0
+    grass: 5
+    road: 1
+    vergeGrass: 5
+  - id: 30
+    a: 26
+    b: 10
+    width: 14
+    surface: 2
+    lit: 0
+    wear: 0
+    snow: 0
+    grass: 5
+    road: 1
+    vergeGrass: 5
+  - id: 31
+    a: 14
+    b: 27
+    width: 14
+    surface: 2
+    lit: 0
+    wear: 0
+    snow: 0
+    grass: 5
+    road: 1
+    vergeGrass: 5
+  - id: 32
+    a: 27
+    b: 28
+    width: 14
+    surface: 2
+    lit: 0
+    wear: 0
+    snow: 0
+    grass: 5
+    road: 1
+    vergeGrass: 5
+  - id: 33
+    a: 28
+    b: 25
+    width: 14
+    surface: 2
+    lit: 0
+    wear: 0
+    snow: 0
+    grass: 5
+    road: 1
+    vergeGrass: 5
+  stands:
+  - id: 8
+    number: 1
+    kind: 0
+    code: 4
+    surface: 2
+    exit: 0
+    noSmallAircraft: 0
+    position: {x: 0, y: 0, z: -500}
+    heading: 0
+    front: 90
+    lane: 25
+    bridges: []
+    head:
+      id: 317ad80b213b4d019b9e3f56219d26a0
+      appearance: {fileID: 0}
+      foundation: 0
+      exterior:
+        facade:
+          lean: 0
+          cladding: {r: 0.8, g: 0.81, b: 0.8, a: 1}
+          glassTint: {r: 1, g: 1, b: 1, a: 1}
+          frames: {r: 0.42, g: 0.44, b: 0.46, a: 1}
+          glazing: 1
+          mullionSpacing: 3
+          spandrel: 1.1
+        faces: []
+        roof: {r: 0.58, g: 0.58, b: 0.56, a: 1}
+        parapet: 0.3
+        roofShape:
+          form: 0
+          rise: 3
+          overhang: 0
+          across: 0
+        columnGap: 0
+        usesStyle: 0
+        style: 0
+      from: {x: 0, y: 0}
+      to: {x: 0, y: 0}
+      root: {x: 0, y: 0}
+      floor: 0
+      upperFloor: 0
+      width: 0
+      connectionFloor: 0
+      linkBends: []
+      supportColumns: []
+      linkSupportColumns: []
+    additionalHeads: []
+    serviceConfigurations: []
+    baggageEntryNode: 10
+    baggageExitNode: 12
+    framed: 1
+  nextId: 34
+--- !u!1 &369985079
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 369985080}
+  - component: {fileID: 369985081}
+  m_Layer: 0
+  m_Name: Container hall
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &369985080
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 369985079}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 1933757463}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &369985081
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 369985079}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: bc2bb1ec3e4774d52893d46a3d4503d4, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: AirCity.Runtime::AirCity.Vehicles.ContainerStation
+  tractorType: {fileID: -3326733738379100494, guid: df909079fb16946b782e00e7e864b688, type: 3}
+  dollyType: {fileID: -3326733738379100494, guid: fe8cd0fd426cf47968b05c92b7dc5ea0, type: 3}
+  loaderType: {fileID: -3326733738379100494, guid: 5db93c2cccd3a4c4aa882984844d2721, type: 3}
+  unitType: {fileID: -3326733738379100494, guid: abb7cf18c1c344327a55ee740ac55873, type: 3}
+  tractorPrefab: {fileID: 3562454459076569721, guid: 46043b41b19ce408589d50124d3bd900, type: 3}
+  dollyPrefab: {fileID: 8345109975887365223, guid: 0371e32b8e05b4bc696ca31db6d89dab, type: 3}
+  loaderPrefab: {fileID: 176612000154852963, guid: 3139effa022604437a5654e9447f7a56, type: 3}
+  unitPrefab: {fileID: 3098817255175010108, guid: b8c7f77684f954ffa87683c37aefae4d, type: 3}
+  dispatchNode: 9
+  arrivalsNode: 13
+  dispatchBearing: 0
+  arrivalsBearing: 90
+  loaderParkingBearing: 0
+  loaderParking: {x: 109.8749, y: -380.44}
+  hallSlots: 16
+  arrivalsBagCapacity: 2000
+  hallGrossCapacity: 25408
+  arrivalsBagWeight: 30000
+  unpackSecondsPerBag: 0.15
+  accessBlocked: 0
+  automaticHandling: 0
+  automaticHold:
+    aircraft: {fileID: 0}
+    cargoPoint: Cargo_Fwd
+    acceptedCode: AKE
+    slots: 4
+    maxGross: 6352
+  standIds: 
+  incomingBags: 120
+  outgoingBags: 210
+  bagsPerContainer: 70
+  kilogramsPerBag: 15
+  outgoingScreened: 1
+  bulkStation: {fileID: 0}
+--- !u!1 &532148290
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 532148292}
+  - component: {fileID: 532148291}
+  m_Layer: 0
+  m_Name: Bulk baggage hall
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &532148291
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 532148290}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2fb496f16187f46be8bf61aabc5e340e, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: AirCity.Runtime::AirCity.Vehicles.BaggageStation
+  dispatchNode: 25
+  arrivalsNode: 27
+  dispatchBearing: 0
+  arrivalsBearing: 90
+  tractorType: {fileID: -3326733738379100494, guid: df909079fb16946b782e00e7e864b688, type: 3}
+  cartType: {fileID: -3326733738379100494, guid: 2c05422d21f984fecb2cb048852072ae, type: 3}
+  loaderType: {fileID: -3326733738379100494, guid: 54d58fcb312bc48c8a286cf4449622ee, type: 3}
+  tractorPrefab: {fileID: 3562454459076569721, guid: 46043b41b19ce408589d50124d3bd900, type: 3}
+  cartPrefab: {fileID: 6417324176066320714, guid: e00509808de844d40a1ad333b3f8d771, type: 3}
+  loaderPrefab: {fileID: 2000218504751579054, guid: 46502f3f5e0d14342b993532851943b4, type: 3}
+  bagPrefabs:
+  - {fileID: 8711824811110389129, guid: 3939571d326c746639b855e7005e1d2f, type: 3}
+  - {fileID: 2929987237262034617, guid: db2e721396c3142b498eff35a84869b5, type: 3}
+  - {fileID: 5544638259016835420, guid: e5776fc4f6cea41d0862506e14c587de, type: 3}
+  loaderParking: {x: 129.87491, y: -405.44}
+  loaderParkingBearing: 0
+  dispatchCapacity: 1000
+  arrivalsCapacity: 1000
+  dispatchWeight: 20000
+  arrivalsWeight: 20000
+  secondsPerBag: 0.8
+  accessBlocked: 0
+  automaticHandling: 0
+  automaticHold:
+    aircraft: {fileID: 0}
+    cargoPoint: Cargo_Fwd
+    bagCapacity: 100
+    weightCapacity: 1500
+  standIds: 
+  incomingBags: 120
+  outgoingBags: 180
+  kilogramsPerBag: 15
+--- !u!4 &532148292
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 532148290}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 1933757463}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &869237484
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 869237486}
+  - component: {fileID: 869237485}
+  m_Layer: 0
+  m_Name: Runway 09/27
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &869237485
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 869237484}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8af46f06517f3479481bc55ae86ba959, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: AirCity.Runtime::AirCity.Airfield.Runway
+  start: {x: -1800, y: 0, z: -200}
+  end: {x: 1800, y: 0, z: -200}
+  surface: 2
+  width: 60
+  lighting: 0
+  wear: 0
+  snow: 0
+  grass: 5
+  vergeGrass: 5
+  letter: 
+--- !u!4 &869237486
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 869237484}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 1933757463}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &1170740048
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1170740050}
+  - component: {fileID: 1170740049}
+  m_Layer: 0
+  m_Name: Container review
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &1170740049
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1170740048}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 337d8fa3a41c74a19a52b3912b925f21, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: AirCity.Runtime::AirCity.Dev.ContainerTurnaroundDemo
+  airport: {fileID: 1933757464}
+  station: {fileID: 369985081}
+  bulkStation: {fileID: 532148291}
+  aircraft: {fileID: 1284752097}
+  standId: 8
+  autoDeparture: 1
+--- !u!4 &1170740050
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1170740048}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1001 &1284752096
+PrefabInstance:
+  m_ObjectHideFlags: 0
+  serializedVersion: 2
+  m_Modification:
+    serializedVersion: 3
+    m_TransformParent: {fileID: 0}
+    m_Modifications:
+    - target: {fileID: 1306295451267340739, guid: caa5e2d1fd20e4fd984bd56dd96b2868, type: 3}
+      propertyPath: m_Name
+      value: Widebody container turnaround
+      objectReference: {fileID: 0}
+    - target: {fileID: 1831615286731588473, guid: caa5e2d1fd20e4fd984bd56dd96b2868, type: 3}
+      propertyPath: m_LocalPosition.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 1831615286731588473, guid: caa5e2d1fd20e4fd984bd56dd96b2868, type: 3}
+      propertyPath: m_LocalPosition.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 1831615286731588473, guid: caa5e2d1fd20e4fd984bd56dd96b2868, type: 3}
+      propertyPath: m_LocalPosition.z
+      value: -410.44
+      objectReference: {fileID: 0}
+    - target: {fileID: 1831615286731588473, guid: caa5e2d1fd20e4fd984bd56dd96b2868, type: 3}
+      propertyPath: m_LocalRotation.w
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 1831615286731588473, guid: caa5e2d1fd20e4fd984bd56dd96b2868, type: 3}
+      propertyPath: m_LocalRotation.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 1831615286731588473, guid: caa5e2d1fd20e4fd984bd56dd96b2868, type: 3}
+      propertyPath: m_LocalRotation.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 1831615286731588473, guid: caa5e2d1fd20e4fd984bd56dd96b2868, type: 3}
+      propertyPath: m_LocalRotation.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 1831615286731588473, guid: caa5e2d1fd20e4fd984bd56dd96b2868, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 1831615286731588473, guid: caa5e2d1fd20e4fd984bd56dd96b2868, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 1831615286731588473, guid: caa5e2d1fd20e4fd984bd56dd96b2868, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.z
+      value: 0
+      objectReference: {fileID: 0}
+    m_RemovedComponents: []
+    m_RemovedGameObjects: []
+    m_AddedGameObjects: []
+    m_AddedComponents: []
+  m_SourcePrefab: {fileID: 100100000, guid: caa5e2d1fd20e4fd984bd56dd96b2868, type: 3}
+--- !u!114 &1284752097 stripped
+MonoBehaviour:
+  m_CorrespondingSourceObject: {fileID: 2530968808389824859, guid: caa5e2d1fd20e4fd984bd56dd96b2868, type: 3}
+  m_PrefabInstance: {fileID: 1284752096}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 855921eb15449441e83cad3808766529, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: AirCity.Runtime::AirCity.Aircraft.Aircraft
+--- !u!1 &1298245014
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1298245015}
+  - component: {fileID: 1298245016}
+  m_Layer: 0
+  m_Name: Depot 1
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &1298245015
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1298245014}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 90, y: 0, z: -510.44}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 1933757463}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &1298245016
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1298245014}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ae1275a7d63b945f2ad724e6aa3ad8c5, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: AirCity.Runtime::AirCity.Vehicles.MaintenanceDepot
+  snowPloughs: 0
+  mowers: 0
+  maxPloughTeam: 4
+  maxMowerTeam: 3
+  smallTugs: 0
+  largeTugs: 1
+  autoDispatch: 0
+  ploughType: {fileID: -3326733738379100494, guid: d292e0dd214bc4acaa50dc8736d19172, type: 3}
+  mowerType: {fileID: -3326733738379100494, guid: a57d1a571ee3046349a0bd8c7b69b835, type: 3}
+  buildingType: {fileID: -3326733738379100494, guid: 1cc65487f98c7425fb60b6e7346e31d0, type: 3}
+  ploughPrefab: {fileID: 8369827378205381208, guid: 7e47dd6970c944762a9bf921ca57e665, type: 3}
+  mowerPrefab: {fileID: 4096119826812924891, guid: 56c2e4f8136ae412f8be850e3d91a69d, type: 3}
+  buildingPrefab: {fileID: 5713279876857761916, guid: 9b38647b73b9544a29eae5a933200e9c, type: 3}
+  smallTugType: {fileID: -3326733738379100494, guid: 4c0180cb1875f43a78da5b6c9c67d45c, type: 3}
+  largeTugType: {fileID: -3326733738379100494, guid: 878ebe6b8ab2644028f8f4f7afe348ce, type: 3}
+  smallTugPrefab: {fileID: 8397269596793230500, guid: 7e307828d0e93465191fcfd984b23d44, type: 3}
+  largeTugPrefab: {fileID: 2698230359660931699, guid: dfd753f48c044493fb0494e4d9d4dd1a, type: 3}
+--- !u!1 &1933757462
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1933757463}
+  - component: {fileID: 1933757464}
+  m_Layer: 0
+  m_Name: Container airport
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &1933757463
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1933757462}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children:
+  - {fileID: 869237486}
+  - {fileID: 333071670}
+  - {fileID: 369985080}
+  - {fileID: 532148292}
+  - {fileID: 1298245015}
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &1933757464
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1933757462}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 5858a49048f8142efa63e4e834e99197, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: AirCity.Runtime::AirCity.Airfield.Airport
+  concrete: {fileID: 2100000, guid: 36611cabd24414e1ab5fb1e248b7bfa0, type: 2}
+  asphalt: {fileID: 2100000, guid: 156aa09747e5d4a4296b17a3b3f98037, type: 2}
+  dirt: {fileID: 2100000, guid: 6a1792fa12cea461bb8bd32ffa5ed2fb, type: 2}
+  grassStrip: {fileID: 2100000, guid: d4d140cda39834759ace589589f1b78b, type: 2}
+  grass: {fileID: 2100000, guid: 5403d746561b845e39f23ea760265444, type: 2}
+  paint: {fileID: 2100000, guid: 68c689fc72f644d46b309e181c66f16f, type: 2}
+  lightGlow: {fileID: 2100000, guid: 90a6cff4b254d4cda9344f62233fb982, type: 2}
+  fixture: {fileID: 2100000, guid: eb35a53c772844d86a62337c3526011a, type: 2}
+  building: {fileID: 2100000, guid: 069f3a102792b4cb69193d8923adfb34, type: 2}
+  groundSize: 5000
+  aprons:
+  - outline:
+    - {x: -70, y: -540.44}
+    - {x: 210, y: -540.44}
+    - {x: 210, y: -280.44}
+    - {x: -70, y: -280.44}
+    surface: 2
+    centre: {x: 0, y: 0, z: 0}
+    size: {x: 0, y: 0}
+    rotation: 0
+  terminals: []
+  aircraftTypes:
+  - {fileID: -3326733738379100494, guid: f940e90c224414fddb9e6ebe23fdef9b, type: 3}
+  condition: 0
+  groundSnow: 0
+  timeScale: 12
+  windFrom: 270
+--- !u!1660057539 &9223372036854775807
+SceneRoots:
+  m_ObjectHideFlags: 0
+  m_Roots:
+  - {fileID: 151306361}
+  - {fileID: 1933757463}
+  - {fileID: 1284752096}
+  - {fileID: 1170740050}
+  - {fileID: 131829123}

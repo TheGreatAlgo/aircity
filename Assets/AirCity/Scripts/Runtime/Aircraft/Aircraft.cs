@@ -26,6 +26,14 @@ namespace AirCity.Aircraft
         public const string LayerName = "Aircraft";
 
         public AircraftType type;
+        public AircraftCargoDoors CargoDoors
+        {
+            get
+            {
+                var doors = GetComponent<AircraftCargoDoors>();
+                return doors != null ? doors : gameObject.AddComponent<AircraftCargoDoors>();
+            }
+        }
         [Tooltip("AirCity/AircraftOutline material.")]
         public Material outlineMaterial;
         public Color hoverColor = new Color(1f, 1f, 1f, 0.75f);

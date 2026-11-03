@@ -244,6 +244,28 @@ lifts the wheel and pushes the aircraft straight back and round onto the taxiway
 leads to a runway. Then it lowers the wheel and drives home. Light aircraft are pushed by hand (no tug); taxi-out
 stands don't need one. Details: Docs/systems/maintenance.md.
 
+### Baggage equipment art
+
+The first bulk-baggage asset set contains a compact tractor, covered cart, adjustable belt loader and four bag
+props. **AirCity > Vehicles > Create Baggage Equipment Showroom** creates a separate review scene with a
+coupled train, an open loaded cart and loaders in working/parked poses. The rig's Inspector controls steering,
+curtains, drawbar and conveyor heights. The sandbox includes automatic narrowbody baggage handling and repeated
+cart trips; expand **BAGGAGE > View station** in Play mode. All aircraft have animated cargo hatches and lined openings. Loaders dock at the sill, bags travel along the
+conveyor, and ULDs pass through the opening; equipment reverses clear before lowering and closing the hatch.
+
+See [the asset guide](Docs/assets/BaggageEquipment.md) for sources, regeneration, captures and checks, and
+[the baggage system guide](Docs/systems/baggage.md) for bulk/container operations and planned terminal expansion.
+
+The container stage adds an unbranded LD3, roller-bed dolly and dual-platform lower-deck loader. Open
+`Assets/AirCity/Scenes/ContainerTurnaround.unity` and enter Play to review incoming/departing containers,
+loose bags at the widebody's bulk hold and shared departure clearance. See the
+[container equipment guide](Docs/assets/ContainerEquipment.md) for references and generation.
+
+The main sandbox also has automatic widebody container handling: expand **CONTAINERS > View station** in
+Play mode. **CONTAINER STATION SETUP** configures aircraft/hold compatibility, demand, endpoints and stand
+assignments. Container handling finishes before the companion bulk fleet starts; departure waits for both.
+**AirCity > Vehicles > Enable Sandbox Containers** installs the example into an existing sandbox.
+
 ## Command line
 
 ```sh
@@ -276,3 +298,11 @@ Unity's YAML merge tool once per clone:
 git config merge.unityyamlmerge.name "Unity SmartMerge"
 git config merge.unityyamlmerge.driver "'/Applications/Unity/Hub/Editor/6000.6.7f1/Unity.app/Contents/Tools/UnityYAMLMerge' merge -p %O %B %A %A"
 ```
+
+For precise gate layouts, play the Sandbox and click **Gates**, **Stand** or **Bridge** in the toolbar (or click an existing stand/bridge):
+bridge families, fixed corridor bends and heights, aircraft-specific stops, automatic door assignment, facade styles and
+persistent mirrored presets. The Unity editor also has **AirCity > Airfield > Gate Designer** for scene authoring. See
+[the gate authoring guide](Docs/systems/gates.md).
+
+**Gates > Build** places parking stands, jetbridges, concourses and terminals. Choose bridge sections and glass finishes before placing, then click any bridge to edit or remove it in the same workspace. Blue preview aircraft are labelled **PREVIEW AIRCRAFT**; blue world handles shape corridors and adjust
+heights. **Appearance** offers four glass facade styles (Classic, Minimal, Framed, Colonnade) and four subtle glass tints. **Facade angle** changes all walls or one face; **Roof shape** adds waves or scallops with rise, direction and canopy extension. Column gap separates supports from the glass. A selected terminal also has a **Design building** button.

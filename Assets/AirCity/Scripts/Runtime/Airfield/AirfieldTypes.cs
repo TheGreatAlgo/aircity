@@ -40,13 +40,15 @@ namespace AirCity.Airfield
         Mow = 1,
     }
 
-    /// <summary>Runway lighting, bought as an upgrade. Without lighting a runway closes at night.</summary>
+    /// <summary>Runway lighting, an upgrade placed by hand. Without it a runway closes at night.</summary>
     public enum RunwayLighting
     {
         None = 0,
-        /// <summary>Edge, threshold / end lights and PAPI (approach slope lights).</summary>
+        /// <summary>Edge, threshold / end lights and PAPI (approach slope lights): enough for night.</summary>
         Basic = 1,
-        /// <summary>Basic plus centreline lights and an approach lighting system with sequenced flashers.</summary>
+        /// <summary>Basic plus centreline lights, an approach lighting system with sequenced flashers and stop bars:
+        /// for landings in fog and low cloud. Low-visibility weather isn't in yet, so for now it does what Basic
+        /// does.</summary>
         Precision = 2,
     }
 

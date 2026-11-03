@@ -64,7 +64,7 @@ stabiliser (y 3.4, s 59.4) aimed at the fin.
 | Point | Where |
 |---|---|
 | `Door_L1`–`Door_L4`, `Door_R1`–`Door_R4` | s 8.4 / 19.2 / 43.4 / 55.0, sill z 4.70 (cabin floor; jet bridges reach ~4.7 m for an A350), 1.07 × 1.93 m |
-| `Cargo_Fwd`, `Cargo_Aft` | Starboard (+X), s 14.6 / 46.0, 2.70 × 1.70 m |
+| `Cargo_Fwd`, `Cargo_Aft` | Starboard (+X), s 10.8 / 46.0, 2.70 × 1.70 m |
 | `Cargo_Bulk` | Starboard, s 50.2, 0.95 × 0.95 m |
 | `Fuel` | Starboard wing underside at 13.5 m span |
 | `GPU` | under the nose, s 4.6 |
@@ -113,3 +113,7 @@ culled. Views (`VIEWS`): `front34`, `rear34`, `side`, `top`, `front`, `nose_clos
   42.
 - **Sandbox.** `CreateSandboxScene` parks one row of three widebodies (every other livery) so they fit on the apron.
   The sandbox airport's one code E stand (x 343) can take a widebody.
+
+The forward cargo hatch uses station 10.8 m (`CARGO_FORWARD_STATION`), with its painted seam and service
+point generated together. It leaves room for square-on container loading and the side-feeding dolly train
+ahead of the engine; the aft and bulk hatches retain their existing positions.

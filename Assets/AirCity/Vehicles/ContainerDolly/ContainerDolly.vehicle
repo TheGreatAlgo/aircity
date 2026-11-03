@@ -1,0 +1,125 @@
+{
+  "name": "ContainerDolly",
+  "displayName": "LD3 container dolly",
+  "kind": "ContainerDolly",
+  "bounds": {
+    "min": [
+      -0.9,
+      0.0,
+      -0.55
+    ],
+    "max": [
+      1.25,
+      2.134,
+      2.95
+    ]
+  },
+  "wheelbase": 1.8,
+  "wheels": [
+    {
+      "name": "Wheel_FL",
+      "centre": [
+        -0.72,
+        0.2,
+        1.8
+      ],
+      "radius": 0.2,
+      "steerable": false
+    },
+    {
+      "name": "Wheel_FR",
+      "centre": [
+        0.72,
+        0.2,
+        1.8
+      ],
+      "radius": 0.2,
+      "steerable": false
+    },
+    {
+      "name": "Wheel_RL",
+      "centre": [
+        -0.72,
+        0.2,
+        0.0
+      ],
+      "radius": 0.2,
+      "steerable": false
+    },
+    {
+      "name": "Wheel_RR",
+      "centre": [
+        0.72,
+        0.2,
+        0.0
+      ],
+      "radius": 0.2,
+      "steerable": false
+    }
+  ],
+  "spinners": [],
+  "lights": [],
+  "work": {
+    "laneWidth": 1.77,
+    "workSpeed": 0.8,
+    "transitSpeed": 4.5,
+    "turnRadius": 3.0
+  },
+  "parking": [
+    0.0,
+    0.0,
+    0.0
+  ],
+  "baggage": {
+    "frontHitch": [
+      0.0,
+      0.38,
+      2.95
+    ],
+    "rearHitch": [
+      0.0,
+      0.38,
+      -0.55
+    ],
+    "steeringPivot": [
+      0.0,
+      0.3,
+      1.8
+    ],
+    "payload": 1600.0,
+    "loadMin": [
+      -0.781,
+      0.508,
+      0.13
+    ],
+    "loadMax": [
+      0.781,
+      0.508,
+      1.664
+    ]
+  },
+  "container": {
+    "code": "AKE",
+    "transfer": [
+      0.0,
+      0.508,
+      0.897
+    ],
+    "maxGross": 1600.0,
+    "deckWidth": 1.77,
+    "deckLength": 1.915
+  },
+  "lodMovers": [
+    "Wheel_FL",
+    "Wheel_FR",
+    "Wheel_RL",
+    "Wheel_RR",
+    "FrontAxle",
+    "Drawbar",
+    "Deck",
+    "Stop_L",
+    "Stop_R",
+    "EndStop_F",
+    "EndStop_R"
+  ]
+}

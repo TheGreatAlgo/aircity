@@ -41,6 +41,7 @@ namespace AirCity.EditorTools.Aircraft
                 }
                 string prefabPath = PrefabPath(type);
                 if (!File.Exists(prefabPath)) CreatePrefab(type, $"{TypeFolder(type)}/Models/{type.model}.fbx", prefabPath, first);
+                else InstallCargoDoors(prefabPath);
             }
             AssetDatabase.SaveAssets();
         }
@@ -49,6 +50,19 @@ namespace AirCity.EditorTools.Aircraft
             AssetDatabase.FindAssets("t:AircraftType")
                 .Select(g => AssetDatabase.LoadAssetAtPath<AircraftType>(AssetDatabase.GUIDToAssetPath(g)))
                 .Where(t => t != null).OrderBy(t => t.Wingspan).ToArray();
+
+        // Upgrade existing variants without replacing any hand-authored prefab settings.
+        static void InstallCargoDoors(string path)
+        {
+            if (AssetDatabase.LoadAssetAtPath<GameObject>(path).GetComponent<AircraftCargoDoors>() != null) return;
+            var root = PrefabUtility.LoadPrefabContents(path);
+            try
+            {
+                root.AddComponent<AircraftCargoDoors>();
+                PrefabUtility.SaveAsPrefabAsset(root, path);
+            }
+            finally { PrefabUtility.UnloadPrefabContents(root); }
+        }
 
         public static AircraftLiveryAsset[] AllLiveries() =>
             AssetDatabase.FindAssets("t:AircraftLiveryAsset", new[] { LiveriesFolder })
@@ -106,6 +120,7 @@ namespace AirCity.EditorTools.Aircraft
                 applier.registrationMaterial = mats.FirstOrDefault(m => m.name == "Registration");
 
                 inst.AddComponent<AircraftControlSurfaces>().FindParts();
+                inst.AddComponent<AircraftCargoDoors>();
                 inst.AddComponent<AircraftGroundMotion>().FindParts(type);
                 foreach (var t in inst.GetComponentsInChildren<Transform>(true))
                     if ((t.name == "Propeller" || t.name.StartsWith("Fan_")) && t.GetComponent<PropellerSpinner>() == null)
@@ -198,7 +213,7 @@ namespace AirCity.EditorTools.Aircraft
             EditorBuildSettings.scenes = new[] { new EditorBuildSettingsScene(SandboxScene, true) };
         }
 
-        static Light SetUpDaylight()
+        internal static Light SetUpDaylight()
         {
             RenderSettings.skybox = AssetDatabase.GetBuiltinExtraResource<Material>("Default-Skybox.mat");
             RenderSettings.ambientMode = AmbientMode.Trilight;

@@ -558,8 +558,9 @@ namespace AirCity.Traffic
             {
                 b.Limit(slow, 0.5f);
                 float room = Mathf.Abs(goal.uGoal - last.uFrom) * 0.9f;
-                b.Via(l.entry, l.axis, RunwayRules.StandTurnRadius(l.Code), room, 0.7f * Vector2.Distance(l.entry, l.stop));
-                b.LineTo(l.stop);
+                var stop = l.StopFor(type);
+                b.Via(l.entry, l.axis, RunwayRules.StandTurnRadius(l.Code), room, 0.7f * Vector2.Distance(l.entry, stop));
+                b.LineTo(stop);
             }
             // the last section ends at the stand
             var tr = route.traversals[route.traversals.Count - 1];

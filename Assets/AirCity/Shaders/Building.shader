@@ -32,6 +32,7 @@ Shader "AirCity/Building"
             float3 normalOS : NORMAL;
             half4 color : COLOR;
             float4 uv0 : TEXCOORD0;
+            float4 uv1 : TEXCOORD1;
         };
 
         struct Varyings
@@ -42,6 +43,7 @@ Shader "AirCity/Building"
             half4 color : COLOR;
             float4 uv0 : TEXCOORD2;
             half fogFactor : TEXCOORD3;
+            float2 facade : TEXCOORD4;
         };
 
         Varyings vert(Attributes v)
@@ -52,6 +54,7 @@ Shader "AirCity/Building"
             o.normalWS = TransformObjectToWorldNormal(v.normalOS);
             o.color = v.color;
             o.uv0 = v.uv0;
+            o.facade = v.uv1.xy;
             o.fogFactor = ComputeFogFactor(o.positionCS.z);
             return o;
         }
@@ -82,11 +85,11 @@ Shader "AirCity/Building"
             {
                 half glass = i.uv0.x;
                 half3 n = normalize(i.normalWS);
-                half3 albedo = lerp(i.color.rgb, _GlassTint.rgb, glass);
+                half3 albedo = lerp(i.color.rgb, i.color.rgb * _GlassTint.rgb, glass);
                 half smooth = lerp(i.uv0.y, 0.92, glass);
                 half4 c = AirfieldShade(i.positionWS, i.positionCS, n, albedo, smooth, 1.0, 1.0, i.fogFactor);
                 // the lit hall behind the glass at night: each bay a little different, a few dark
-                float2 bay = float2(floor(i.uv0.z / _BayWidth), floor(i.uv0.w / 5.0));
+                float2 bay = float2(floor(i.uv0.z / max(i.facade.y, 0.5)), i.facade.x);
                 half h = Hash(bay);
                 half lit = h > 0.12 ? lerp(0.55, 1.0, h) : 0.08;
                 c.rgb += glass * _NightGlow.rgb * lit * _NightStrength * saturate(_AirCityLightGlow);

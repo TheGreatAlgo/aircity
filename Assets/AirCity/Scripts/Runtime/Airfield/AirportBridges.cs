@@ -53,14 +53,17 @@ namespace AirCity.Airfield
         readonly Dictionary<Stand, StandWatch> watch = new Dictionary<Stand, StandWatch>();
         readonly Dictionary<JetBridge, (int version, BridgePose pose)> parkedPoses = new Dictionary<JetBridge, (int, BridgePose)>();
         int seenVersion = -1;
+        int seenAssetVersion = -1;
         List<(StandLayout stand, List<BridgeLayout> bridges)> layouts = new List<(StandLayout, List<BridgeLayout>)>();
         /// <summary>Each stand's head, for the layout version (only stands that have one).</summary>
         readonly Dictionary<Stand, HeadLayout> heads = new Dictionary<Stand, HeadLayout>();
+        readonly List<HeadLayout> additionalHeads = new List<HeadLayout>();
         /// <summary>The roads' and taxiways' pavement, and the taxiways' alone, for the layout version they were made for.</summary>
         int groundVersion = -1;
         List<Vector2[]> pavement = new List<Vector2[]>(), taxiways = new List<Vector2[]>();
         /// <summary>Each bridge's shapes, parked and docked to each type its stand takes, for the layout version.</summary>
         readonly Dictionary<JetBridge, (int version, List<BridgeShape> shapes)> shapes = new Dictionary<JetBridge, (int, List<BridgeShape>)>();
+        readonly Dictionary<(Stand, AircraftType), BridgeServicePlan> servicePlans = new Dictionary<(Stand, AircraftType), BridgeServicePlan>();
 
         public AirportBridges(Airport airport) => this.airport = airport;
 
@@ -80,7 +83,9 @@ namespace AirCity.Airfield
             get
             {
                 Refresh();
-                return heads.Values;
+                var list = new List<HeadLayout>(heads.Values);
+                list.AddRange(additionalHeads);
+                return list;
             }
         }
 
@@ -105,12 +110,64 @@ namespace AirCity.Airfield
         /// <summary>The aircraft a bridge is docked to (or docking to, or pulling back from), or null.</summary>
         public Aircraft.Aircraft DockedTo(JetBridge b) => bridges.TryGetValue(b, out var s) ? s.docked : null;
 
+        public BridgeServicePlan ServicePlan(Stand stand, AircraftType type)
+        {
+            Refresh();
+            var key = (stand, type);
+            if (servicePlans.TryGetValue(key, out var plan)) return plan;
+            var list = new List<BridgeLayout>();
+            foreach (var (sl, bs) in layouts)
+                if (sl.stand == stand) { list = bs; break; }
+            return servicePlans[key] = BridgeServicePlan.Build(list, Site(stand), type);
+        }
+
         /// <summary>Is every bridge on the aircraft's stand parked (so it can be pushed back)?</summary>
         public bool Clear(Aircraft.Aircraft aircraft)
         {
             foreach (var s in bridges.Values)
                 if (s.docked == aircraft && s.state != BridgeState.Parked) return false;
             return true;
+        }
+
+        /// <summary>Conservative part envelopes over the assigned docking and retracting motions.</summary>
+        public List<Rect> BaggageExclusions()
+        {
+            var result = new List<Rect>();
+            foreach (var (stand, list) in Layouts)
+                foreach (var l in list)
+                {
+                    var envelopes = new List<Rect>();
+                    void Include(BridgePose pose)
+                    {
+                        var parts = l.Shape(pose).parts;
+                        for (int i = 0; i < parts.Count; i++)
+                        {
+                            var b = parts[i].bounds;
+                            if (i == envelopes.Count) envelopes.Add(b);
+                            else
+                            {
+                                var a = envelopes[i];
+                                envelopes[i] = Rect.MinMaxRect(Mathf.Min(a.xMin, b.xMin), Mathf.Min(a.yMin, b.yMin),
+                                    Mathf.Max(a.xMax, b.xMax), Mathf.Max(a.yMax, b.yMax));
+                            }
+                        }
+                    }
+                    void Sweep(BridgePose from, BridgePose to)
+                    {
+                        for (int i = 0; i <= 64; i++) Include(BridgePose.Move(from, to, i / 64f));
+                    }
+                    var current = PoseOf(l); var parked = Parked(l);
+                    Sweep(current, parked);
+                    foreach (var type in TypesFor(stand.stand))
+                    {
+                        if (!ServicePlan(stand.stand, type).TryGet(l.bridge, out var entry) || !entry.Operates) continue;
+                        Sweep(entry.parked, entry.docked); Sweep(entry.docked, entry.parked);
+                    }
+                    // Sampling error is covered by the planner's additional 0.5 m bridge clearance.
+                    result.AddRange(envelopes);
+                }
+            foreach (var head in Heads) result.Add(head.Shape.bounds);
+            return result;
         }
 
         /// <summary>The aircraft types a stand takes (Airport.aircraftTypes): by size code and length, no light aircraft
@@ -121,7 +178,7 @@ namespace AirCity.Airfield
             if (types == null) return list;
             foreach (var t in types)
                 if (t != null && t.SizeCode <= stand.Code && t.Length <= RunwayRules.StandLength(stand.Code) + 0.01f &&
-                    !(stand.noSmallAircraft && t.Light))
+                    !(stand.noSmallAircraft && t.Light) && stand.ServiceFor(t)?.allowed != false)
                     list.Add(t);
             return list;
         }
@@ -152,13 +209,17 @@ namespace AirCity.Airfield
             Ground();
             site.pavement = pavement;
             site.taxiways = taxiways;
-            site.head = HeadLayout.Of(net.Layout(stand), airport.terminals);
-            site.head?.Columns(pavement);
+            foreach (var h in HeadLayout.All(net.Layout(stand), airport.terminals))
+            {
+                h.Columns(pavement);
+                if (h.head == stand.head) site.head = h;
+                else site.additionalHeads.Add(h);
+            }
             foreach (var (sl, list) in Layouts)
                 if (sl.stand != stand)
                     foreach (var l in list)
                         site.neighbours.AddRange(Shapes(l));
-            foreach (var h in heads.Values)
+            foreach (var h in Heads)
                 if (h.stand.stand != stand) site.neighbours.Add(h.Shape);
             return site;
         }
@@ -171,9 +232,15 @@ namespace AirCity.Airfield
             var list = new List<BridgeShape> { l.Shape(Parked(l)) };
             foreach (var t in TypesFor(l.stand.stand))
             {
-                if (t.Light || !BridgeLayout.TryDoor(t, l.bridge, out _)) continue;
-                var pose = l.Dock(t, out var problem);
-                if (problem == BridgeProblem.None) list.Add(l.Shape(pose));
+                if (t.Light) continue;
+                foreach (var side in new[] { DoorSide.Left, DoorSide.Right })
+                    foreach (bool upper in new[] { false, true })
+                        for (int n = 1; n <= 6; n++)
+                        {
+                            var candidate = l.ForService(new BridgeDoor(side, upper, n), false, Parked(l));
+                            var pose = candidate.Dock(t, out var problem);
+                            if (problem == BridgeProblem.None) list.Add(l.Shape(pose));
+                        }
             }
             shapes[l.bridge] = (v, list);
             return list;
@@ -217,7 +284,14 @@ namespace AirCity.Airfield
                 others.Add(l);
                 if (b == bridge) mine = l;
             }
-            return mine == null ? new List<(AircraftType, BridgeProblem)>() : BridgeLayout.Check(mine, others, site);
+            if (mine == null) return new List<(AircraftType, BridgeProblem)>();
+            // Placement feedback must include fixed obstacles even when every aircraft's plan leaves this bridge idle.
+            var placement = mine.Placement(site);
+            if (placement != BridgeProblem.None) return new List<(AircraftType, BridgeProblem)> { (null, placement) };
+            var checks = new List<(AircraftType, BridgeProblem)>();
+            foreach (var t in site.types)
+                checks.Add((t, BridgeServicePlan.Build(others, site, t)[bridge].problem));
+            return checks;
         }
 
         /// <summary>What's wrong with a bridge: where it stands (type null), else, if it can dock none of the types the
@@ -232,7 +306,7 @@ namespace AirCity.Airfield
             {
                 if (t == null) return p;
                 if (p == BridgeProblem.None) return BridgeProblem.None;
-                if (first == BridgeProblem.None && p != BridgeProblem.SmallAircraft && p != BridgeProblem.NoSuchDoor)
+                if (first == BridgeProblem.None && p != BridgeProblem.SmallAircraft && p != BridgeProblem.NoSuchDoor && p != BridgeProblem.NotInService)
                 {
                     first = p;
                     firstType = t;
@@ -282,6 +356,7 @@ namespace AirCity.Airfield
             var sl = net != null ? net.Layout(stand) : null;
             stand.bridges.Clear();
             stand.head = new BridgeHead();
+            stand.additionalHeads.Clear();
             if (sl != null && doors != null)
             {
                 var site = Site(stand);
@@ -320,7 +395,8 @@ namespace AirCity.Airfield
             if (sl == null || !stand.bridges.Contains(bridge)) return false;
             var site = Site(stand);
             var others = new List<BridgeLayout>();
-            var wanted = new JetBridge { door = door, side = side, upper = upper, tunnel = bridge.tunnel };
+            var wanted = bridge.Clone();
+            wanted.door = door; wanted.side = side; wanted.upper = upper;
             // on the stand's head if it has one (its upper storey there if this or another bridge on it needs one), else
             // with its own link
             JetBridge placed = null;
@@ -437,9 +513,14 @@ namespace AirCity.Airfield
                 nearest = d;
                 root = wall;
             }
-            var head = HeadLayout.Of(sl, airport.terminals);
-            if (head != null && head.ClosestOnWall(at, out var onHead) < nearest) root = onHead;
-            else if (keepRoot is Vector2 k && OnTerminalWall(k, JetBridgeRules.ConnectReach, out _, out _) &&
+            bool onAnyHead = false;
+            foreach (var head in HeadLayout.All(sl, airport.terminals))
+            {
+                float distance = head.ClosestOnWall(at, out var onHead);
+                if (distance >= nearest) continue;
+                nearest = distance; root = onHead; onAnyHead = true;
+            }
+            if (!onAnyHead && keepRoot is Vector2 k && OnTerminalWall(k, JetBridgeRules.ConnectReach, out _, out _) &&
                      Vector2.Distance(k, at) - JetBridgeRules.RotundaRadius <= JetBridgeRules.MaxLink &&
                      !BridgeLayout.ThroughTerminal(k, at, airport.terminals))
                 root = k;
@@ -579,18 +660,29 @@ namespace AirCity.Airfield
         /// it was put beside, even where another door would dock more types. It goes last (parks after the others).
         /// Null, nothing changed, if it can't stand there (`problem`) or docks no type at any door.
         /// </summary>
-        public JetBridge AddBridge(Stand stand, Vector2 rotunda, Vector2 root, out BridgeProblem problem, out AircraftType type)
+        public JetBridge AddBridge(Stand stand, Vector2 rotunda, Vector2 root, out BridgeProblem problem, out AircraftType type, JetBridge design = null)
+        {
+            var best = PreviewBridge(stand, rotunda, root, out problem, out type, design);
+            if (best == null) return null;
+            stand.bridges.Add(best);
+            Rebuild();
+            return best;
+        }
+
+        /// <summary>The exact AddBridge decision, including reach, parking and movement clearance, without changing
+        /// the airport. A successful candidate has the same tunnel size and door that a click will place.</summary>
+        public JetBridge PreviewBridge(Stand stand, Vector2 rotunda, Vector2 root, out BridgeProblem problem, out AircraftType type, JetBridge design = null)
         {
             problem = BridgeProblem.None;
             type = null;
             var sl = LayoutOf(stand);
-            if (sl == null || stand.DeIcing) return null;
+            if (sl == null || stand.DeIcing) { problem = BridgeProblem.TaxiOutStand; return null; }
             if (stand.exit == StandExit.TaxiOut)
             {
                 problem = BridgeProblem.TaxiOutStand;
                 return null;
             }
-            if (stand.bridges.Count >= JetBridgeRules.MaxPerStand) return null;
+            if (stand.bridges.Count >= JetBridgeRules.MaxPerStand) { problem = BridgeProblem.HitsBridge; return null; }
             var types = TypesFor(stand);
             var site = Site(stand);
             var others = new List<BridgeLayout>();
@@ -601,14 +693,14 @@ namespace AirCity.Airfield
             var firstProblem = BridgeProblem.None;
             AircraftType firstType = null;
             foreach (var door in Doors(stand, types))
-                foreach (var size in new[] { TunnelSize.Short, TunnelSize.Long })
+                foreach (var size in design != null ? new[] { design.tunnel } : new[] { TunnelSize.Short, TunnelSize.Long })
                 {
                     float near = DoorDistance(sl, types, door, rotunda);
-                    var b = new JetBridge
-                    {
-                        door = door.door, side = door.side, upper = door.upper, tunnel = size,
-                        rotunda = BridgeLayout.ToStand(sl, rotunda), root = BridgeLayout.ToStand(sl, root),
-                    };
+                    var b = design?.Clone() ?? new JetBridge();
+                    b.id = System.Guid.NewGuid().ToString("N");
+                    b.door = door.door; b.side = door.side; b.upper = door.upper; b.tunnel = size;
+                    b.rotunda = BridgeLayout.ToStand(sl, rotunda); b.root = BridgeLayout.ToStand(sl, root);
+                    b.linkBends.Clear(); b.supportColumns.Clear();
                     var l = BridgeLayout.Of(b, sl, airport.terminals, site.head);
                     int docks = 0;
                     var placement = BridgeProblem.None;
@@ -644,14 +736,12 @@ namespace AirCity.Airfield
                 // where it stands is wrong for every door, or it stands right but docks nothing
                 if (problem == BridgeProblem.None)
                 {
-                    problem = firstProblem;
+                    problem = firstProblem == BridgeProblem.None ? BridgeProblem.NoSuchDoor : firstProblem;
                     type = firstType;
                 }
                 return null;
             }
             problem = BridgeProblem.None;
-            stand.bridges.Add(best);
-            Rebuild();
             return best;
         }
 
@@ -805,7 +895,10 @@ namespace AirCity.Airfield
             var was = (stand.head ?? new BridgeHead()).Clone();
             var were = new List<(Vector2 rotunda, Vector2 root)>();
             foreach (var s in stations) were.Add((s.bridge.rotunda, s.bridge.root));
-            stand.head = new BridgeHead { from = BridgeLayout.ToStand(sl, near), to = BridgeLayout.ToStand(sl, far), root = BridgeLayout.ToStand(sl, root) };
+            stand.head = was.Clone();
+            stand.head.from = BridgeLayout.ToStand(sl, near);
+            stand.head.to = BridgeLayout.ToStand(sl, far);
+            stand.head.root = BridgeLayout.ToStand(sl, root);
             var moved = HeadLayout.Of(stand.head, sl, airport.terminals, false);
             float edge = JetBridgeRules.LinkWidth * 0.5f + 0.2f;
             foreach (var (b, fromNear, fromFar, side) in stations)
@@ -859,8 +952,9 @@ namespace AirCity.Airfield
                     var dock = default(BridgePose);
                     if (can)
                     {
-                        dock = l.Dock(a.type, out var problem);
-                        can = problem == BridgeProblem.None;
+                        var entry = ServicePlan(stand.stand, a.type)[l.bridge];
+                        dock = entry.docked;
+                        can = entry.Operates;
                     }
                     switch (s.state)
                     {
@@ -870,14 +964,16 @@ namespace AirCity.Airfield
                             if (can) Move(s, BridgeState.Docking, dock, a);
                             break;
                         case BridgeState.Docked:
-                            if (s.docked == null || s.docked != a || leaving) Move(s, BridgeState.Retracting, parked, s.docked);
+                            if (s.docked == null || s.docked != a || leaving || !can) Move(s, BridgeState.Retracting, parked, s.docked);
                             break;
                         case BridgeState.Docking:
                         case BridgeState.Retracting:
                             // an aircraft gone or leaving while docking: turn back from where it is
                             if (s.state == BridgeState.Docking && (s.docked != a || leaving))
                                 Move(s, BridgeState.Retracting, parked, s.docked);
-                            s.t = Mathf.Min(1f, s.t + dt / JetBridgeRules.DockTime);
+                            float duration = 1f;
+                            foreach (var other in list) duration = Mathf.Max(duration, other.bridge.Spec.dockTime);
+                            s.t = Mathf.Min(1f, s.t + dt / duration);
                             s.pose = BridgePose.Move(s.from, s.to, s.t);
                             if (s.t >= 1f)
                             {
@@ -945,12 +1041,15 @@ namespace AirCity.Airfield
         {
             var a = FindParked(l.stand);
             if (a == null || !l.Connected || airport.Traffic.FlightOf(a) != null) return;
-            var dock = l.Dock(a.type, out var problem);
-            if (problem != BridgeProblem.None) return;
+            var entry = ServicePlan(l.stand.stand, a.type)[l.bridge];
+            if (!entry.Operates) return;
+            var dock = entry.docked;
             s.state = BridgeState.Docked;
             s.pose = dock;
             s.docked = a;
-            if (!watch.ContainsKey(l.stand.stand)) watch[l.stand.stand] = new StandWatch { aircraft = a, still = SettleTime };
+            if (!watch.TryGetValue(l.stand.stand, out var w)) watch[l.stand.stand] = w = new StandWatch();
+            w.aircraft = a;
+            w.still = Mathf.Max(w.still, SettleTime);
         }
 
         /// <summary>Where a bridge parks: its stand's bridges park in turn, each clear of its head and of those before
@@ -966,8 +1065,9 @@ namespace AirCity.Airfield
                     list = bs;
                     break;
                 }
-            var head = HeadOf(l.stand.stand);
-            var poses = BridgeLayout.ParkAll(list, TypesFor(l.stand.stand), head != null ? new[] { head.Shape } : null, out _);
+            var fixedShapes = new List<BridgeShape>();
+            foreach (var h in Heads) if (h.stand.stand == l.stand.stand) fixedShapes.Add(h.Shape);
+            var poses = BridgeLayout.ParkAll(list, TypesFor(l.stand.stand), fixedShapes, out _);
             for (int i = 0; i < list.Count; i++) parkedPoses[list[i].bridge] = (v, poses[i]);
             return parkedPoses.TryGetValue(l.bridge, out c) ? c.pose : poses[0];
         }
@@ -978,10 +1078,17 @@ namespace AirCity.Airfield
         void Refresh()
         {
             int v = airport.LayoutVersion;
-            if (v == seenVersion) return;
+            if (v == seenVersion && seenAssetVersion == BridgeAssetRevision.Version) return;
+            if (seenAssetVersion != BridgeAssetRevision.Version)
+            {
+                parkedPoses.Clear(); shapes.Clear();
+                seenAssetVersion = BridgeAssetRevision.Version;
+            }
             seenVersion = v;
+            servicePlans.Clear();
             layouts = new List<(StandLayout, List<BridgeLayout>)>();
             heads.Clear();
+            additionalHeads.Clear();
             var net = airport.GetComponentInChildren<TaxiwayNetwork>();
             var live = new HashSet<JetBridge>();
             Ground();
@@ -989,16 +1096,17 @@ namespace AirCity.Airfield
                 foreach (var st in net.stands)
                 {
                     if (st == null) continue;
-                    bool hasHead = st.head != null && st.head.Exists;
+                    bool hasHead = (st.head != null && st.head.Exists) || st.additionalHeads.Exists(h => h != null && h.Exists);
                     if ((st.bridges == null || st.bridges.Count == 0) && !hasHead) continue;
                     var sl = net.Layout(st);
                     if (sl == null) continue;
                     // a head stands even with no bridges on it yet (placed by hand, its bridges to come)
-                    var head = HeadLayout.Of(sl, airport.terminals);
-                    if (head != null)
+                    HeadLayout head = null;
+                    foreach (var h in HeadLayout.All(sl, airport.terminals))
                     {
-                        head.Columns(pavement);
-                        heads[st] = head;
+                        h.Columns(pavement);
+                        if (h.head == st.head) { head = h; heads[st] = h; }
+                        else additionalHeads.Add(h);
                     }
                     if (st.bridges == null || st.bridges.Count == 0) continue;
                     var list = new List<BridgeLayout>();
@@ -1026,12 +1134,11 @@ namespace AirCity.Airfield
                 foreach (var l in list)
                 {
                     if (!bridges.TryGetValue(l.bridge, out var s)) continue;
-                    var problem = BridgeProblem.NoSuchDoor;
-                    var dock = s.state == BridgeState.Docked && s.docked != null && l.Connected
-                        ? l.Dock(s.docked.type, out problem) : default;
-                    if (problem == BridgeProblem.None)
+                    var entry = s.state == BridgeState.Docked && s.docked != null && l.Connected
+                        ? ServicePlan(l.stand.stand, s.docked.type)[l.bridge] : default;
+                    if (entry.layout != null && entry.Operates)
                     {
-                        s.pose = dock;
+                        s.pose = entry.docked;
                         continue;
                     }
                     s.state = BridgeState.Parked;

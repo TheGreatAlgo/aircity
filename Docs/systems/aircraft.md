@@ -5,11 +5,49 @@ type adds only a small definition: `model.py` holds the data and `parts.py` hold
 an FBX, textures and a `<Model>.aircraft` JSON file into `Assets/AirCity/Aircraft/<Model>/`. Unity imports the JSON
 as an `AircraftType` ScriptableObject. Gameplay reads dimensions, wheels, service points, lights and performance
 from that asset only, never from mesh positions or per-model constants. One prefab per type carries the runtime
-components (picking/outline, livery, lights, ground motion, control surfaces, spinners). The scale target is ~100
+components (picking/outline, livery, lights, ground motion, control surfaces, cargo doors, spinners). The scale target is ~100
 aircraft of mixed types, mostly zoomed out, so the far LOD is 2 draw calls, every material is shared, and light
 glows run on the GPU. Five types exist: `Cessna172` (see `Docs/assets/Cessna172.md`), `Narrowbody`
 (`Docs/assets/Narrowbody.md`), `Widebody` (`Docs/assets/Widebody.md`), `DoubleDeck` (`Docs/assets/DoubleDeck.md`) and `Quadjet` (`Docs/assets/Quadjet.md`). Liveries are documented in `Docs/systems/liveries.md`; this doc covers only how they
 hook in.
+
+## Cargo doors
+
+All 12 cargo service points across the five aircraft have generated openings, lined recesses and solid painted
+door panels. `Common/cargo_doors.py` cuts panels from the baked skin during stage 2, interpolating the existing
+UVs and normals so liveries continue across each closed hatch. `model.CARGO_HINGES` selects the hinge, angle and
+duration; the existing `POINTS` define the opening dimensions. Stage 1 still bakes the closed skin. Regenerate
+with `finish.py --model <Model>`; rerun stage 1 first only when its cache is absent or the base geometry changes.
+
+`cargoDoors.holdDepth` gives the recessed hold depth behind the sill. Liners have a flat back plane so
+loads can pass behind the curved skin above the sill. `serviceFootprints` supplies separate generated
+fuselage, wing, engine, tail and gear outlines for close service clearance. Wing and tail underside
+heights allow equipment below them only when its full working height clears by 0.25 m; engine and
+fuselage obstacles stay protected. Gameplay reads these imported
+shapes, never render mesh vertices. `finish.py --service-data --model <Model>` refreshes only those outlines
+from the existing stage-1 cache. See [baggage](baggage.md) for close docking and visible transfers.
+
+The profile's `cargoDoors` imports into `AircraftType.cargoDoors`. `AircraftCargoDoors` binds by transform name
+and rotates relative to the authored rest pose with smooth acceleration/deceleration. Bulk/container jobs drive
+one hatch at a time in fixed game seconds, forbid hold transfers until fully open, and wait for closure after
+equipment returns. Missing door rigs block service. Existing prefab variants gain the component through
+**Create Missing Prefabs and Example Liveries**, preserving other settings; older scene instances also acquire
+the component when cargo service first accesses it.
+
+Panels remain animated at LOD0/1 (skin and trim, plus registration where a close panel crosses its patch); LOD2 merges the closed panels
+and keeps the two-draw distant-aircraft budget. Medium-distance panels share their parent's pivot and use
+unpatched atlas UVs. `AircraftCargoDoorTests` checks every type's service-point coverage, pivots, painted panels,
+LOD1 children, motion, reversal and independent hatches. Baggage/container turnaround tests check open transfers
+and closed hatches after successful and cancelled jobs.
+
+Close-up closed/open/LOD1 captures for every hatch, without modifying a saved scene:
+
+```sh
+rtk proxy timeout 600 /Applications/Unity/Hub/Editor/6000.6.7f1/Unity.app/Contents/MacOS/Unity -batchmode -projectPath . -executeMethod AirCity.EditorTools.Aircraft.CargoDoorReview.FromCommandLine -logFile Logs/cargo-review.log
+```
+
+Output: `Captures/CargoDoors/<Model>-<Point>-{closed,open,open-lod1}.png`. Add `-cargoModel Widebody` to capture one type. In the sandbox, select a parked aircraft
+and use **Open cargo / Close cargo**. Active handling retains control of its configured hatch.
 
 ## Where it lives
 
@@ -44,7 +82,7 @@ hook in.
 | `Scripts/Runtime/Aircraft/AircraftControlSurfaces.cs` | Elevator / aileron / rudder / flap deflection, found by name prefix |
 | `Scripts/Runtime/Aircraft/PropellerSpinner.cs` | Spins `Propeller` / `Fan_*` about local Z (`rpm`, `spoolTime`) |
 | `Scripts/Runtime/Aircraft/Liveries/` | `AircraftLiveryApplier`, compositor, livery assets, `RegistrationFont` (see `liveries.md`) |
-| `Scripts/Editor/Aircraft/AircraftTypeImporter.cs` | `[ScriptedImporter(3, "aircraft")]`: JSON → `AircraftType` |
+| `Scripts/Editor/Aircraft/AircraftTypeImporter.cs` | `[ScriptedImporter(8, "aircraft")]`: JSON → `AircraftType` |
 | `Scripts/Editor/Aircraft/RegistrationFontImporter.cs` | `[ScriptedImporter(1, "regfont")]` |
 | `Scripts/Editor/Aircraft/AircraftAssetPostprocessor.cs` | Texture and model import rules, nesting restore, collider, Trim palette merge, LODGroup (`GetVersion() => 7`) |
 | `Scripts/Editor/Aircraft/AircraftSetup.cs` | `Bootstrap`, prefab + example-livery creation, sandbox scene, thumbnails |
@@ -164,6 +202,7 @@ LOD is visible in previews and the saved `.blend`), `--w/--h`.
 | `AircraftLiveryApplier` | `SetLivery`, `SetRegistration`, `SetDirt` | See `liveries.md`; dirt is quantized to `DirtSteps = 6` |
 | `AircraftLights` | bools `navigation` (default on), `beacon`, `strobes`, `landing`, `taxi`, `logo`; static `Glow` | `LateUpdate` → `SetShaderUserValue(StateBits)`; spot lights toggled |
 | `AircraftGroundMotion` | `Drive(speed m/s, steer −1..1)` | `LateUpdate`: wheels `rest * AngleAxis(spin, right)`, nose gear `rest * AngleAxis(steer·max, up)` |
+| `AircraftCargoDoors` | `Operate(point, open, gameSeconds, out reason)`; manual `SetOpen(bool)` | Independent eased rotations from `type.cargoDoors`; service controls its hatch until closed |
 | `AircraftControlSurfaces` (`[ExecuteAlways]`) | `elevator`, `aileron`, `rudder` (−1..1), `flaps` (0..1) | `rest * AngleAxis(deg, right)` (rudder: `up`); limits 28/23, 20/15, 17, 30° |
 | `PropellerSpinner` (on `Propeller`, `Fan_*`) | `rpm` | `MoveTowards` with `spoolTime`, rotate about local −Z (clockwise from behind) |
 
@@ -178,9 +217,9 @@ LOD is visible in previews and the saved `.blend`), `--w/--h`.
 
 `make_lods` builds:
 - LOD0 = `Body_LOD0` + the movers. It has the registration patch.
-- LOD1 = `Body_LOD1`: the movers that are not in `LOD1_KEEP`, joined in at rest, then the whole mesh decimated to
-  `LOD_RATIOS[1]`. Each `LOD1_KEEP` part also gets a `<Part>_LOD1` copy decimated to 0.3 and parented to the full
-  part, so the same spinner turns it.
+- LOD1 = `Body_LOD1`: movers other than `LOD1_KEEP` and cargo panels are joined in at rest and decimated to
+  `LOD_RATIOS[1]`. Each retained part gets a `<Part>_LOD1` copy decimated to 0.3 and parented to the full part,
+  so the same spinner or cargo-door controller moves it.
 - LOD2 = `Body_LOD2`: everything joined and decimated to `LOD_RATIOS[2]`.
 
 LOD1 and LOD2 put the registration faces back on `Body` with the atlas UVs. `Collider` is `Body_LOD2` decimated by
@@ -277,9 +316,9 @@ U=/Applications/Unity/Hub/Editor/6000.6.7f1/Unity.app/Contents/MacOS/Unity
 |---|---|---|
 | `parts.py` geometry, mover names / pivots / hinges / parents, `UV_*`, `DENSITY`, `AO_DISTANCE`, `S_REF` | stage 1 `--texture`, then stage 2 | refresh; prefab may need `FindParts` (see Invariants) |
 | `SCHEMES`, `REG_*`, `LOGO_BOX`, `panel_lines`, `detail_extra`, `dirt_extra` | stage 2 | refresh; tests |
-| `GEAR`, `POINTS`, `LIGHTS`, `PERFORMANCE`, `LOD_RATIOS`, `LOD1_KEEP`, `COLLIDER_RATIO`, `DISPLAY_NAME`, `CATEGORY` | stage 2 | refresh; tests |
+| `GEAR`, `POINTS`, `CARGO_HINGES`, `LIGHTS`, `PERFORMANCE`, `LOD_RATIOS`, `LOD1_KEEP`, `COLLIDER_RATIO`, `DISPLAY_NAME`, `CATEGORY` | stage 2 | refresh; tests |
 | `AircraftAssetPostprocessor` rules (`LodHeights`, `TryGetLook`, texture settings) | none | bump `GetVersion()` so the FBX / textures reimport |
-| `AircraftTypeImporter` parsing | none | bump `[ScriptedImporter(3, …)]` version |
+| `AircraftTypeImporter` parsing | none | bump `[ScriptedImporter(8, …)]` version |
 
 "Refresh" means focusing the editor, or running any batch command (Unity imports changed assets on startup). The
 editor must not be open on the project while batchmode runs. CLAUDE.md suggests wrapping `-executeMethod` runs in
@@ -407,7 +446,7 @@ and tie-downs. `_side(s, z, sign)` puts a point on the fuselage skin. Run stage 
 | `…Logo_IsPaintedOnTheFin` | Logo changes 0.1–5% of the atlas |
 | `…QualitySettings_DoNotCapLods`, `…Dirt_SharesMaterialsPerStep` | LOD cap; dirt material sharing |
 | `AircraftLiveryTests(<Model>).Profile_IsImportedCompletely` | 4 schemes, masks, detail, font, crops, dirt, logoUV, groundShadow, prefab |
-| `…Lods_CutTrianglesAndDrawCalls` | 3 LODs, falling triangle counts, draws ≤ {24, 4, 2}, no CPU mesh copies, no registration at LOD1/2, every renderer in exactly one LOD (except `GroundShadow` / `LightGlows`), CrossFade |
+| `…Lods_CutTrianglesAndDrawCalls` | 3 LODs, falling triangle counts, base draw budgets {24, 4, 2} plus ≤3/2 draws per cargo panel at LOD0/1, no CPU mesh copies, no registration at LOD1/2, every renderer in exactly one LOD (except `GroundShadow` / `LightGlows`), CrossFade |
 | `…BodyTexture_MatchesGeneratorReference` | C# compositor matches numpy `paint.compose` (mean diff < 2.5/255) |
 | `…Fleet_100Aircraft_10Liveries_StaysWithinBudget` | 10 shared bodies, 100 registration textures, all DXT1, < 80 MB |
 | `AirfieldTests` | Runway / taxiway rules against both types |

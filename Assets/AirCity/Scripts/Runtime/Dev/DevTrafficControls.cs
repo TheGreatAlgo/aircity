@@ -56,6 +56,7 @@ namespace AirCity.Dev
         public string PreviewProblem => previewProblem;
 
         public IEnumerable<AircraftType> Types => templates.Keys;
+        public GameObject TemplateFor(AircraftType type) => type != null && templates.TryGetValue(type, out var template) ? template : null;
 
         // ------------------------------------------------------------------ actions
 
@@ -144,7 +145,7 @@ namespace AirCity.Dev
         void Update()
         {
             var keys = Keyboard.current;
-            if (keys != null && keys.spaceKey.wasPressedThisFrame && SelectedFlight == null) Depart();
+            if (keys != null && !DevGui.KeyboardCaptured && keys.spaceKey.wasPressedThisFrame && SelectedFlight == null) Depart();
             if (sandbox.Selected != previewFor) Message = null;
             if (AutoTraffic) Auto();
         }

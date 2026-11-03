@@ -23,6 +23,7 @@ import numpy as np
 from mathutils import Matrix, Vector
 
 import airlines
+import cargo_doors
 import font as fontlib
 import paint
 import texturing
@@ -259,7 +260,7 @@ def stage1(model):
         tags = texturing.assign_global_tags(mesh_objs)
         texturing.pack_body_uvs(mesh_objs)
         print("packed in %.1fs" % (time.time() - t0))
-        maps = texturing.bake_maps(mesh_objs, ao_distance=model.AO_DISTANCE)
+        maps = texturing.bake_maps(mesh_objs, ao_distance=model.AO_DISTANCE, device=arg("--bake-device", "GPU"))
         print("baked in %.1fs" % (time.time() - t0))
         os.makedirs(paths.work, exist_ok=True)
         np.savez_compressed(os.path.join(paths.work, "bake_maps.npz"), tags=np.array(tags), **maps)
@@ -520,7 +521,7 @@ def make_lods(model, body, movers):
     LOD2 = Body_LOD2 (everything merged).
     Unity's importer (AircraftAssetPostprocessor) builds the LODGroup from the _LODn suffixes; unsuffixed = LOD0.
     """
-    keep = [m for m in movers if m.name in model.LOD1_KEEP]
+    keep = [m for m in movers if m.name in model.LOD1_KEEP or m.name.startswith("CargoDoor_")]
     out = []
     for level, parts in ((1, [m for m in movers if m not in keep]), (2, movers)):
         ob = copy_object(body, f"Body_LOD{level}")
@@ -528,6 +529,7 @@ def make_lods(model, body, movers):
         extras = []
         for p in parts:
             c = copy_object(p, f"{p.name}_merge{level}")
+            unpatch_registration(c)
             c.parent = None
             c.matrix_world = p.matrix_world.copy()
             extras.append(c)
@@ -537,6 +539,7 @@ def make_lods(model, body, movers):
         out.append(ob)
     for p in keep:
         pl = copy_object(p, f"{p.name}_LOD1")
+        unpatch_registration(pl)
         pl.parent = p
         pl.matrix_parent_inverse = Matrix.Identity(4)
         pl.matrix_basis = Matrix.Identity(4)
@@ -641,7 +644,7 @@ def ground_shadow(objs, model, paths, size=256):
 
 # ============================================================== unity glue
 
-def write_profile(model, paths, px_per_m, reg, font, bounds, wing):
+def write_profile(model, paths, px_per_m, reg, font, bounds, wing, service):
     """Write what Unity needs: <Model>.aircraft (painting + gameplay data, imported by AircraftTypeImporter)
     and the shared RegistrationFont.regfont. Positions are in Unity space, relative to the aircraft root."""
     def side(d, sign):
@@ -655,6 +658,7 @@ def write_profile(model, paths, px_per_m, reg, font, bounds, wing):
         "category": model.CATEGORY,
         "bounds": {"min": to_unity((hi[0], hi[1], lo[2])), "max": to_unity((lo[0], lo[1], hi[2]))},
         "wingOutline": wing,
+        "serviceFootprints": service,
         "atlasSize": texturing.TEX,
         "texelsPerMetre": px_per_m,
         "detail": f"Textures/{model.NAME}_Detail.png",
@@ -692,11 +696,16 @@ def write_profile(model, paths, px_per_m, reg, font, bounds, wing):
                         "climbSpeed": model.PERFORMANCE["climb_speed"]},
         "points": [{"name": n, "type": t, "position": to_unity(pos), "normal": to_unity(nrm), "size": list(size)}
                    for t, n, pos, nrm, size in model.POINTS],
+        "cargoDoors": [{"point": d["point"], "transform": d["transform"], "pivot": to_unity(d["pivot"]),
+                        "axis": to_unity(d["axis"]), "openAngle": d["openAngle"], "seconds": d["seconds"], "holdDepth": d["holdDepth"]}
+                       for d in cargo_doors.definitions(model)],
         "lights": [{"name": n, "type": t, "position": to_unity(pos), "direction": to_unity(d), "spread": spread,
                     "color": list(col)} for t, n, pos, d, spread, col in model.LIGHTS],
     }
     with open(os.path.join(paths.unity, f"{model.NAME}.aircraft"), "w") as fh:
         json.dump(profile, fh, indent=2, default=float)
+    if font is None:   # geometry-only export reuses the existing shared font
+        return
     chars = "".join(font["glyphs"].keys())
     regfont = {
         "atlas": "RegistrationFont.png", "atlasSize": font["size"], "cell": font["cell_w"],
@@ -810,7 +819,7 @@ def convex_hull(points):
     return lower[:-1] + upper[:-1]
 
 
-def _tagged_edges(ob, prefixes):
+def _tagged_edges(ob, prefixes, include_height=False):
     """The edges (Unity (x, z) end points, two (n, 2) arrays) of an object's faces whose tag starts with `prefixes`."""
     me = ob.data
     tags = list(me.get("part_tags", []))
@@ -836,6 +845,8 @@ def _tagged_edges(ob, prefixes):
     m = np.array(ob.matrix_world)
     world = co.reshape(-1, 3) @ m[:3, :3].T + m[:3, 3]
     uxz = np.stack([-world[:, 0], -world[:, 1]], 1)                    # Unity x, z (to_unity)
+    if include_height:
+        uxz = np.column_stack((uxz, world[:, 2]))
     return uxz[np.concatenate(a)], uxz[np.concatenate(b)]
 
 
@@ -876,11 +887,101 @@ def wing_outline(objs, tolerance=0.02):
     return [round(float(v), 3) for p in hull for v in p]
 
 
+def service_footprints(objs):
+    """Separate conservative convex footprints: equipment can reach doors ahead/behind swept wings.
+
+    Closed fuselage, wings/engines, tail and gear remain obstacles. No runtime mesh reads or type-specific sizes.
+    """
+    groups = [("Fuselage", ("fus", "cockpit", "radome")),
+              ("Tail", ("htail", "elevator", "vtail", "rudder", "dorsal"))]
+    result = []
+    for name, tags in groups:
+        points = []
+        bottom = float("inf")
+        for ob in objs:
+            edges = _tagged_edges(ob, tags, include_height=True)
+            if edges is not None:
+                points.extend(edges[0][:, :2].tolist())
+                bottom = min(bottom, float(edges[0][:, 2].min()))
+        if len(points) < 3:
+            continue
+        hull = convex_hull([tuple(p) for p in np.round(points, 3).tolist()])
+        if len(hull) >= 3:
+            result.append({"name": name, "bottom": round(bottom, 3), "outline": [round(float(v), 3) for p in hull for v in p]})
+    # A cart can pass below a wing but never through its low-hanging engine. Keep their height envelopes separate.
+    wing_tags = ("wing", "sharklet", "winglet", "fence")
+    engine_tags = tuple(tag for tag in WING_TAGS if tag not in wing_tags)
+    side = 0.0
+    for ob in objs:
+        edges = _tagged_edges(ob, ("fus_port", "fus_stbd"))
+        if edges is not None:
+            side = max(side, float(np.abs(edges[0][:, 0]).max()))
+    for label, tags in (("wing", wing_tags), ("engines", engine_tags)):
+        for sign, hand in ((-1, "Left"), (1, "Right")):
+            points = []
+            cut = side if label == "wing" else 0.0
+            for ob in objs:
+                edges = _tagged_edges(ob, tags, include_height=True)
+                if edges is None:
+                    continue
+                a, b = edges
+                points.append(a[sign * a[:, 0] >= cut])
+                cross = (sign * a[:, 0] - cut) * (sign * b[:, 0] - cut) < 0
+                t = (sign * cut - a[cross, 0]) / (b[cross, 0] - a[cross, 0])
+                points.append(a[cross] + (b[cross] - a[cross]) * t[:, None])
+            if not points or sum(len(p) for p in points) < 3:
+                continue
+            points = np.concatenate(points)
+            hull = convex_hull([tuple(p) for p in np.round(points[:, :2], 3).tolist()])
+            result.append({"name": hand + " " + label, "bottom": round(float(points[:, 2].min()), 3),
+                           "outline": [round(float(v), 3) for p in hull for v in p]})
+    # Gear must be separate clusters: a hull joining nose and main wheels blocks the empty space between them.
+    gear = []
+    for ob in objs:
+        edges = _tagged_edges(ob, ("gear", "nosegear", "wheel"))
+        if edges is not None:
+            gear.extend(edges[0].tolist())
+    clusters = []
+    for point in sorted(gear, key=lambda p: p[1]):
+        if not clusters or point[1] - clusters[-1][-1][1] > 1.0:
+            clusters.append([])
+        clusters[-1].append(point)
+    for cluster in clusters:
+        for sign in (-1, 1):
+            points = [p for p in cluster if p[0] * sign >= 0]
+            hull = convex_hull([tuple(p) for p in np.round(points, 3).tolist()])
+            if len(hull) >= 3:
+                result.append({"name": "Gear", "outline": [round(float(v), 3) for p in hull for v in p]})
+    return result
+
+
 def stage2(model):
     paths = Paths(model)
     bpy.ops.wm.open_mainfile(filepath=os.path.join(paths.work, "stage1.blend"))
     for d in (paths.tex, paths.models, SHARED, paths.previews, paths.liveries):
         os.makedirs(d, exist_ok=True)
+    if arg("--service-data"):
+        path = os.path.join(paths.unity, f"{model.NAME}.aircraft")
+        with open(path) as fh:
+            profile = json.load(fh)
+        objs = [ob for ob in bpy.data.objects if ob.type == "MESH" and ob.parent is not None]
+        profile["serviceFootprints"] = service_footprints(objs)
+        with open(path, "w") as fh:
+            json.dump(profile, fh, indent=2, default=float)
+        return
+    if arg("--reuse-paint"):
+        # Geometry-only iteration over the same stage-1 UV layout. Existing textures are untouched.
+        with open(os.path.join(paths.unity, f"{model.NAME}.aircraft")) as fh:
+            previous = json.load(fh)
+        body_mat = bpy.data.materials["Body"]
+        reg_mat = bpy.data.materials.get("Registration") or body_mat.copy()
+        reg_mat.name = "Registration"
+        reg = make_registration_patch(model, bpy.data.objects["Body"], reg_mat)
+        for mat, suffix in ((body_mat, "Body_Default"), (reg_mat, "Registration_Default")):
+            set_image(mat, texturing.load_image(os.path.join(paths.tex, f"{model.NAME}_{suffix}.png")))
+        objs = [ob for ob in bpy.data.objects if ob.type == "MESH" and ob.parent is not None]
+        finish_geometry(model, paths, objs, previous["texelsPerMetre"], reg)
+        return
     data = np.load(os.path.join(paths.work, "bake_maps.npz"))
     tags = [str(t) for t in data["tags"]]
     maps = {k: data[k] for k in ("pos", "nrm", "tag", "cov", "valid", "ao")}
@@ -962,6 +1063,24 @@ def stage2(model):
         if m.name.startswith("BAKE_"):
             bpy.data.materials.remove(m)
 
+    lods, movers = finish_geometry(model, paths, objs, px_per_m, reg, font)
+
+    if arg("--previews"):
+        setup_preview_scene(model, "BLENDER_EEVEE")
+        names = (arg("--liveries") or default).split(",")
+        views = (arg("--views") or "front34,rear34").split(",")
+        for livery in names:
+            body_mat.node_tree.nodes["LiveryTex"].image = texturing.load_image(produced[livery][0])
+            reg_mat.node_tree.nodes["LiveryTex"].image = texturing.load_image(produced[livery][1])
+            render_previews(model, paths, views, "livery_" + livery)
+
+
+def finish_geometry(model, paths, objs, px_per_m, reg, font=None):
+    name = model.NAME
+    service = service_footprints(objs)
+    # Cut after the closed-skin bake and registration mapping: doors retain their original paint UVs.
+    objs.extend(cargo_doors.build(model, bpy.data.objects["Body"]))
+
     # --- export
     wing = wing_outline(objs)
     for ob in objs:
@@ -972,7 +1091,7 @@ def stage2(model):
                 ob.data.attributes.remove(ob.data.attributes[a])
     movers = [ob for ob in objs if ob.name != "Body"]
     bounds = world_bounds(objs)
-    write_profile(model, paths, px_per_m, reg, font, bounds, wing)
+    write_profile(model, paths, px_per_m, reg, font, bounds, wing, service)
     shadow = ground_shadow(objs, model, paths)
     lods = make_lods(model, bpy.data.objects["Body"], movers)
     collider = make_collider(bpy.data.objects["Body_LOD2"], model.COLLIDER_RATIO)
@@ -1010,11 +1129,4 @@ def stage2(model):
     bpy.ops.wm.save_as_mainfile(filepath=os.path.join(paths.out, f"{name}.blend"))
     print("exported")
 
-    if arg("--previews"):
-        setup_preview_scene(model, "BLENDER_EEVEE")
-        names = (arg("--liveries") or default).split(",")
-        views = (arg("--views") or "front34,rear34").split(",")
-        for livery in names:
-            body_mat.node_tree.nodes["LiveryTex"].image = texturing.load_image(produced[livery][0])
-            reg_mat.node_tree.nodes["LiveryTex"].image = texturing.load_image(produced[livery][1])
-            render_previews(model, paths, views, "livery_" + livery)
+    return lods, movers

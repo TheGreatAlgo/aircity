@@ -193,6 +193,8 @@ namespace AirCity.EditorTools.Airfield
                 tool.smallTugPrefab = VehicleSetup.Prefab("TugSmall");
                 tool.largeTugPrefab = VehicleSetup.Prefab("TugLarge");
             }
+            AirCity.EditorTools.Vehicles.BaggageSandboxSetup.Install(airport);
+            AirCity.EditorTools.Vehicles.ContainerSandboxSetup.Install(airport);
             EditorSceneManager.SaveScene(scene);
             Debug.Log("AirfieldSetup: sandbox airport added");
         }

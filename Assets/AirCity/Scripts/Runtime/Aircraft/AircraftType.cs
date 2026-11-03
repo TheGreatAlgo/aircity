@@ -68,6 +68,23 @@ namespace AirCity.Aircraft
         }
 
         [Serializable]
+        public struct CargoDoor
+        {
+            public string point;
+            public string transform;
+            public Vector3 pivot, axis;
+            public float openAngle, seconds, holdDepth;
+        }
+
+        [Serializable]
+        public struct ServiceFootprint
+        {
+            public string name;
+            public float bottom;
+            public Vector2[] outline;
+        }
+
+        [Serializable]
         public struct LightPoint
         {
             public string name;
@@ -114,6 +131,7 @@ namespace AirCity.Aircraft
 
         [Header("Dimensions")]
         public Bounds bounds;
+        public ServiceFootprint[] serviceFootprints = Array.Empty<ServiceFootprint>();
         [Tooltip("The left wing and its engines from above, outboard of the fuselage: a convex outline (x, z), " +
                  "counter-clockwise; the right wing mirrors it. Empty: none known (the bounds' span stands in).")]
         public Vector2[] wingOutline = Array.Empty<Vector2>();
@@ -142,6 +160,7 @@ namespace AirCity.Aircraft
 
         [Header("Gameplay points")]
         public ServicePoint[] points = Array.Empty<ServicePoint>();
+        public CargoDoor[] cargoDoors = Array.Empty<CargoDoor>();
         public LightPoint[] lights = Array.Empty<LightPoint>();
 
         [Header("Paint")]

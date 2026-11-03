@@ -12,6 +12,11 @@ from parts import P, Y, Fuselage, S_REF  # noqa: F401  (Fuselage / S_REF are rea
 from pipeline import Mover
 
 NAME = "Narrowbody"
+CARGO_HINGES = {"Cargo_Fwd": ("Top", 145.0, 8.0), "Cargo_Aft": ("Top", 145.0, 8.0)}
+# Forward hatch clear of the engine, using the 737's approximately 8.53 m nose-to-door layout as a reference.
+CARGO_SILL = 2.45
+CARGO_STATIONS = (("Cargo_Fwd", 8.55), ("Cargo_Aft", 23.2))
+CARGO_HOLDS = {"Cargo_Fwd": (7.3, 12.8), "Cargo_Aft": (21.8, 26.2)}
 DISPLAY_NAME = "Narrowbody twinjet"
 CATEGORY = "Airliner"
 AO_DISTANCE = 2.5
@@ -164,8 +169,10 @@ def _doors(p):
     side = (np.abs(p.nx) > 0.35) & p.fus
     lines = []
     for s, z, hw, hh, r in ((DOOR_1_S, 3.55, 0.42, 0.95, 0.15), (13.95, 3.75, 0.25, 0.5, 0.10), (14.72, 3.75, 0.25, 0.5, 0.10),
-                            (30.95, 3.62, 0.40, 0.92, 0.15), (11.3, 2.55, 0.9, 0.62, 0.08), (23.2, 2.55, 0.9, 0.62, 0.08)):
+                            (30.95, 3.62, 0.40, 0.92, 0.15)):
         lines.append(p.line(round_rect_sdf(p.s, p.z, s, z, hw, hh, r), 0.012) * side)
+    for _, station in CARGO_STATIONS:
+        lines.append(p.line(round_rect_sdf(p.s, p.z, station, CARGO_SILL + 0.62, 0.9, 0.62, 0.08), 0.012) * side * (p.x < 0))
     return np.maximum.reduce(lines)
 
 
@@ -235,8 +242,7 @@ POINTS = [
     ("PassengerDoor", "Door_R1", _side(DOOR_1_S, 2.62, -1), (-1, 0, 0), (0.81, 1.85)),
     ("PassengerDoor", "Door_L2", _side(30.95, 2.72, 1), (1, 0, 0), (0.81, 1.85)),
     ("PassengerDoor", "Door_R2", _side(30.95, 2.72, -1), (-1, 0, 0), (0.81, 1.85)),
-    ("CargoDoor", "Cargo_Fwd", _side(11.3, 1.95, -1), (-1, 0, 0), (1.8, 1.24)),
-    ("CargoDoor", "Cargo_Aft", _side(23.2, 1.95, -1), (-1, 0, 0), (1.8, 1.24)),
+    *[("CargoDoor", name, _side(station, CARGO_SILL, -1), (-1, 0, 0), (1.8, 1.24)) for name, station in CARGO_STATIONS],
     ("Fuel", "Fuel", (-8.0, Y(parts.le_s(8.0) + 1.2), parts.wing_surface_z(8.0, parts.le_s(8.0) + 1.2)), DOWN, (0.3, 0.3)),
     ("GroundPower", "GPU", P(-0.55, 3.9, float(Fuselage.zb(3.9)) + 0.05), (-0.4, 0, -0.9), (0.2, 0.2)),
     ("Water", "Water", P(0.6, 26.5, float(Fuselage.zb(26.5)) + 0.05), (0.4, 0, -0.9), (0.15, 0.15)),

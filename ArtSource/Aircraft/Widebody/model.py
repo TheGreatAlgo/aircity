@@ -12,6 +12,9 @@ from parts import P, Y, Fuselage, S_REF  # noqa: F401  (Fuselage / S_REF are rea
 from pipeline import Mover
 
 NAME = "Widebody"
+CARGO_FORWARD_STATION = 10.8  # Keep the square loader and its side-feeding dolly train ahead of the engine.
+CARGO_HINGES = {"Cargo_Fwd": ("Top", 145.0, 10.0), "Cargo_Aft": ("Top", 145.0, 10.0),
+                "Cargo_Bulk": ("Top", -100.0, 3.5)}
 DISPLAY_NAME = "Widebody twinjet"
 CATEGORY = "Airliner"
 AO_DISTANCE = 4.0
@@ -170,7 +173,7 @@ def _doors(p):
     lines = []
     for s in DOORS:
         lines.append(p.line(round_rect_sdf(p.s, p.z, s, FLOOR_Z + DOOR_HH, DOOR_HW, DOOR_HH, 0.22), 0.016) * both)
-    for s, z, hw, hh, r in ((14.6, 3.60, 1.35, 0.85, 0.10), (46.0, 3.80, 1.35, 0.85, 0.10), (50.2, 4.02, 0.48, 0.48, 0.08)):
+    for s, z, hw, hh, r in ((CARGO_FORWARD_STATION, 3.60, 1.35, 0.85, 0.10), (46.0, 3.80, 1.35, 0.85, 0.10), (50.2, 4.02, 0.48, 0.48, 0.08)):
         lines.append(p.line(round_rect_sdf(p.s, p.z, s, z, hw, hh, r), 0.016) * stbd)
     return np.maximum.reduce(lines)
 
@@ -241,7 +244,7 @@ POINTS = [
     # doors: position = sill centre
     *[("PassengerDoor", f"Door_{side}{k + 1}", _side(s, FLOOR_Z, sign), (sign, 0, 0), (1.07, 1.93))
       for k, s in enumerate(DOORS) for side, sign in (("L", 1), ("R", -1))],
-    ("CargoDoor", "Cargo_Fwd", _side(14.6, 2.75, -1), (-1, 0, 0), (2.70, 1.70)),
+    ("CargoDoor", "Cargo_Fwd", _side(CARGO_FORWARD_STATION, 2.75, -1), (-1, 0, 0), (2.70, 1.70)),
     ("CargoDoor", "Cargo_Aft", _side(46.0, 2.95, -1), (-1, 0, 0), (2.70, 1.70)),
     ("CargoDoor", "Cargo_Bulk", _side(50.2, 3.54, -1), (-1, 0, 0), (0.95, 0.95)),
     ("Fuel", "Fuel", (-_fuel_y, Y(_fuel_s), parts.wing_surface_z(_fuel_y, _fuel_s)), DOWN, (0.4, 0.4)),

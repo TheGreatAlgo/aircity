@@ -13,7 +13,7 @@ namespace AirCity.EditorTools.Aircraft
     /// <see cref="AircraftType"/>. Paths in the file are relative to it, positions are already in Unity space.
     /// Re-imports automatically when the generator rewrites the file or any referenced texture.
     /// </summary>
-    [ScriptedImporter(5, "aircraft")]
+    [ScriptedImporter(8, "aircraft")]
     public class AircraftTypeImporter : ScriptedImporter
     {
 #pragma warning disable 0649   // assigned by JsonUtility
@@ -21,6 +21,7 @@ namespace AirCity.EditorTools.Aircraft
         [Serializable] class SideJson { public float[] crop; public float k, tu, tv, sign; }
         [Serializable] class RegistrationJson { public int textureWidth, halfHeight; public SideJson port, starboard; }
         [Serializable] class BoundsJson { public float[] min, max; }
+        [Serializable] class FootprintJson { public string name; public float bottom; public float[] outline; }
         [Serializable] class WheelJson { public string name; public float[] position; public float radius; public bool steerable; }
         [Serializable] class GearJson { public WheelJson[] wheels; public float[] steeringPivot; public float maxSteeringAngle; }
         [Serializable]
@@ -31,6 +32,7 @@ namespace AirCity.EditorTools.Aircraft
             public float taxiSpeed, rotateSpeed, approachSpeed, climbRate, climbSpeed;
         }
         [Serializable] class PointJson { public string name, type; public float[] position, normal, size; }
+        [Serializable] class CargoDoorJson { public string point, transform; public float[] pivot, axis; public float openAngle, seconds, holdDepth; }
         [Serializable] class LightJson { public string name, type; public float[] position, direction, color; public float spread; }
 
         [Serializable]
@@ -45,6 +47,7 @@ namespace AirCity.EditorTools.Aircraft
             public string model, displayName, category;
             public BoundsJson bounds;
             public float[] wingOutline;
+            public FootprintJson[] serviceFootprints;
             public int atlasSize;
             public float texelsPerMetre;
             public string detail, dirt, registrationDirt, logoUV, groundShadow, font, defaultBody, defaultRegistration, uvTemplate;
@@ -55,6 +58,7 @@ namespace AirCity.EditorTools.Aircraft
             public GearJson gear;
             public PerformanceJson performance;
             public PointJson[] points;
+            public CargoDoorJson[] cargoDoors;
             public LightJson[] lights;
         }
 #pragma warning restore 0649
@@ -77,6 +81,15 @@ namespace AirCity.EditorTools.Aircraft
             var wing = json.wingOutline ?? Array.Empty<float>();
             t.wingOutline = new Vector2[wing.Length / 2];
             for (int i = 0; i < t.wingOutline.Length; i++) t.wingOutline[i] = new Vector2(wing[2 * i], wing[2 * i + 1]);
+            var footprints = new List<AircraftType.ServiceFootprint>();
+            foreach (var footprint in json.serviceFootprints ?? Array.Empty<FootprintJson>())
+            {
+                var outline = footprint.outline ?? Array.Empty<float>();
+                var polygon = new Vector2[outline.Length / 2];
+                for (int i = 0; i < polygon.Length; i++) polygon[i] = new Vector2(outline[i * 2], outline[i * 2 + 1]);
+                footprints.Add(new AircraftType.ServiceFootprint { name = footprint.name, bottom = footprint.bottom, outline = polygon });
+            }
+            t.serviceFootprints = footprints.ToArray();
             if (json.gear != null)
             {
                 var wheels = new List<AircraftType.Wheel>();
@@ -107,6 +120,11 @@ namespace AirCity.EditorTools.Aircraft
                     size = p.size != null && p.size.Length == 2 ? new Vector2(p.size[0], p.size[1]) : Vector2.zero,
                 });
             t.points = points.ToArray();
+            var doors = new List<AircraftType.CargoDoor>();
+            foreach (var d in json.cargoDoors ?? Array.Empty<CargoDoorJson>())
+                doors.Add(new AircraftType.CargoDoor { point = d.point, transform = d.transform,
+                    pivot = V3(d.pivot), axis = V3(d.axis).normalized, openAngle = d.openAngle, seconds = d.seconds, holdDepth = d.holdDepth });
+            t.cargoDoors = doors.ToArray();
             var lights = new List<AircraftType.LightPoint>();
             foreach (var l in json.lights ?? Array.Empty<LightJson>())
                 lights.Add(new AircraftType.LightPoint
