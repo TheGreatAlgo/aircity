@@ -11,6 +11,27 @@ glows run on the GPU. Five types exist: `Cessna172` (see `Docs/assets/Cessna172.
 (`Docs/assets/Narrowbody.md`), `Widebody` (`Docs/assets/Widebody.md`), `DoubleDeck` (`Docs/assets/DoubleDeck.md`) and `Quadjet` (`Docs/assets/Quadjet.md`). Liveries are documented in `Docs/systems/liveries.md`; this doc covers only how they
 hook in.
 
+## Naming (what the player sees)
+
+Real manufacturers and type names (Cessna, Airbus, A320, 747...) are trademarks and the aircraft shapes carry trade
+dress claims, so none of them appear anywhere the player reads: not in names, tooltips, paint or liveries. Every
+aircraft in the game is built by one fictional manufacturer, **Starling**, and is named by its ICAO size code letter
+and its seat count, so the letter painted at a stand's entrance tells straight away which aircraft fit it:
+
+| Model (internal, `AircraftType.model`) | `Designator` | `TypeName` | `displayName` (its kind) |
+|---|---|---|---|
+| `Cessna172` | A4 | Starling A4 | Light single |
+| `Narrowbody` | C180 | Starling C180 | Narrowbody twinjet |
+| `Widebody` | E350 | Starling E350 | Widebody twinjet |
+| `Quadjet` | F450 | Starling F450 | Long-haul quadjet |
+| `DoubleDeck` | F550 | Starling F550 | Double-deck quadjet |
+
+The letter is `AircraftType.SizeCode` (computed from the wingspan, so a new model can never carry the wrong one) and
+the number is `SEATS` in the model's `model.py`, written into `.aircraft` as `seats`. `model` names folders, assets
+and textures only. Player-facing code uses `TypeName` (or `FullName`, "Starling C180 narrowbody twinjet"), stop bars
+paint `Designator` (`StandMarkings.StopMark.Label`), and the size-code tips in the build tray name Starling types
+instead of real ones. `AircraftTypeTests.Designator_IsSizeCodeAndSeats_AndNoRealTypeNameReachesThePlayer` guards it.
+
 ## Cargo doors
 
 All 12 cargo service points across the five aircraft have generated openings, lined recesses and solid painted
@@ -316,7 +337,7 @@ U=/Applications/Unity/Hub/Editor/6000.6.7f1/Unity.app/Contents/MacOS/Unity
 |---|---|---|
 | `parts.py` geometry, mover names / pivots / hinges / parents, `UV_*`, `DENSITY`, `AO_DISTANCE`, `S_REF` | stage 1 `--texture`, then stage 2 | refresh; prefab may need `FindParts` (see Invariants) |
 | `SCHEMES`, `REG_*`, `LOGO_BOX`, `panel_lines`, `detail_extra`, `dirt_extra` | stage 2 | refresh; tests |
-| `GEAR`, `POINTS`, `CARGO_HINGES`, `LIGHTS`, `PERFORMANCE`, `LOD_RATIOS`, `LOD1_KEEP`, `COLLIDER_RATIO`, `DISPLAY_NAME`, `CATEGORY` | stage 2 | refresh; tests |
+| `GEAR`, `POINTS`, `CARGO_HINGES`, `LIGHTS`, `PERFORMANCE`, `LOD_RATIOS`, `LOD1_KEEP`, `COLLIDER_RATIO`, `DISPLAY_NAME`, `SEATS`, `CATEGORY` | stage 2 | refresh; tests |
 | `AircraftAssetPostprocessor` rules (`LodHeights`, `TryGetLook`, texture settings) | none | bump `GetVersion()` so the FBX / textures reimport |
 | `AircraftTypeImporter` parsing | none | bump `[ScriptedImporter(8, …)]` version |
 

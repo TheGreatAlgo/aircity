@@ -7,6 +7,7 @@ An airport-building game for PC and Mac (Unity 6, URP).
 1. Install **Unity 6000.6.7f1** through Unity Hub (see `ProjectSettings/ProjectVersion.txt`), plus **Git LFS**.
 2. `git lfs install && git clone https://github.com/TheGreatAlgo/aircity.git`
 3. Open the folder in Unity Hub, then open `Assets/AirCity/Scenes/Sandbox.unity` and press Play.
+   - The Sandbox contains one working baggage turnaround with a Small depot. The Baggage sidebar manages hired staff, teams, trailers and depot size. Container handling remains available in its separate review scene.
    - **Toolbar:** the tools are along the bottom (Select, Runway, Taxiway, Road, Depot, Stand, De-ice, Delete), with a strip above
      them for the tool's settings or the selection's actions. The world, maintenance and aircraft toggles are on the
      right. Every button shows its key, and the keys below all still work. **H** hides the HUD.
@@ -261,7 +262,7 @@ The container stage adds an unbranded LD3, roller-bed dolly and dual-platform lo
 loose bags at the widebody's bulk hold and shared departure clearance. See the
 [container equipment guide](Docs/assets/ContainerEquipment.md) for references and generation.
 
-The main sandbox also has automatic widebody container handling: expand **CONTAINERS > View station** in
+Widebody container handling is an optional example. After enabling it, expand **CONTAINERS > View station** in
 Play mode. **CONTAINER STATION SETUP** configures aircraft/hold compatibility, demand, endpoints and stand
 assignments. Container handling finishes before the companion bulk fleet starts; departure waits for both.
 **AirCity > Vehicles > Enable Sandbox Containers** installs the example into an existing sandbox.

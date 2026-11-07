@@ -1,0 +1,18 @@
+{
+  "height": 1.78,
+  "hips": 0.94,
+  "minCrouch": 0.78,
+  "walkSpeed": 1.2,
+  "returnSpeed": 1.4,
+  "pickSeconds": 0.65,
+  "liftSeconds": 0.45,
+  "turnSeconds": 0.7,
+  "placeSeconds": 0.65,
+  "turnBackSeconds": 0.5,
+  "settleSeconds": 0.3,
+  "holdPickSeconds": 0.55,
+  "holdLiftSeconds": 0.4,
+  "holdStowSeconds": 0.75,
+  "holdResetSeconds": 0.55,
+  "boardingSpeed": 0.9
+}

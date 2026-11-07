@@ -82,6 +82,7 @@ namespace AirCity.EditorTools.Vehicles
                 Debug.Log($"VehicleSetup: created {path}");
             }
             CreateBaggagePropPrefabs();
+            Characters.RampCrewSetup.CreateAssets();
             AssetDatabase.SaveAssets();
         }
 

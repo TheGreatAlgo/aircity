@@ -38,6 +38,28 @@ namespace AirCity.Tests.Aircraft
         }
 
         [Test]
+        public void Designator_IsSizeCodeAndSeats_AndNoRealTypeNameReachesThePlayer()
+        {
+            var expected = new Dictionary<string, string>
+            {
+                { "Cessna172", "A4" }, { "Narrowbody", "C180" }, { "Widebody", "E350" }, { "Quadjet", "F450" }, { "DoubleDeck", "F550" },
+            };
+            foreach (var t in AircraftSetup.AllTypes())
+            {
+                Assert.Greater(t.seats, 0, t.model + " needs seats for its designator");
+                Assert.AreEqual(t.SizeCode.ToString() + t.seats, t.Designator, t.model);
+                Assert.AreEqual(AircraftType.Manufacturer + " " + t.Designator, t.TypeName);
+                if (expected.TryGetValue(t.model, out var d)) Assert.AreEqual(d, t.Designator, t.model);
+                // Real manufacturers and types are trademarks: nothing the player reads may carry one.
+                foreach (var word in new[] { "Cessna", "Airbus", "Boeing", "A320", "A380", "737", "747", "777" })
+                {
+                    StringAssert.DoesNotContain(word, t.displayName, t.model);
+                    StringAssert.DoesNotContain(word, t.FullName, t.model);
+                }
+            }
+        }
+
+        [Test]
         public void Dimensions_MatchTheRealAircraftClass()
         {
             var cessna = Type("Cessna172");

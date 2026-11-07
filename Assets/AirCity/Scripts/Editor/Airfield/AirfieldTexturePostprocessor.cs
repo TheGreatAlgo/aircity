@@ -13,7 +13,7 @@ namespace AirCity.EditorTools.Airfield
     {
         public const string Folder = "Assets/AirCity/Airfield/Textures/";
 
-        public override uint GetVersion() => 1;
+        public override uint GetVersion() => 2;
 
         void OnPreprocessTexture()
         {
@@ -28,6 +28,7 @@ namespace AirCity.EditorTools.Airfield
             ti.wrapMode = TextureWrapMode.Repeat;
             if (file == "RunwayGlyphs")
             {
+                ti.maxTextureSize = 2048;
                 ti.textureType = TextureImporterType.SingleChannel;
                 ti.sRGBTexture = false;
                 ti.textureCompression = TextureImporterCompression.Uncompressed;

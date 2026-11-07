@@ -54,7 +54,10 @@ namespace AirCity.Tests.Vehicles
             }
             Assert.That(VehicleSetup.Type("BaggageTractor").Length, Is.InRange(2.9f, 3.2f));
             Assert.That(VehicleSetup.Type("BaggageCart").Width, Is.InRange(1.6f, 1.7f));
-            Assert.That(VehicleSetup.Type("BeltLoader").Length, Is.InRange(7.8f, 8.2f));
+            var loader = VehicleSetup.Type("BeltLoader");
+            Assert.That(loader.Length, Is.InRange(8.4f, 8.8f),"Overall length includes the rear crew stairs.");
+            Assert.That(loader.baggage.beltLength,Is.EqualTo(7.8f));
+            Assert.That(loader.crew.accessSteps.Length,Is.EqualTo(4));
         }
 
         [Test]

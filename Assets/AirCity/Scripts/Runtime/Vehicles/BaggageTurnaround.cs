@@ -9,7 +9,7 @@ namespace AirCity.Vehicles
     {
         WaitingAircraft, WaitingEquipment, LoaderApproach, InboundDrive, UnloadingHold, ArrivalsDrive,
         UnloadingArrivals, DispatchDrive, CollectingDepartures, OutboundDrive, LoadingHold, Withdrawing, Complete, Cancelled,
-        ReloadDrive, Docking, Undocking
+        ReloadDrive, Docking, Undocking, ParkingTrain
     }
 
     public sealed class BaggageTurnaround
@@ -26,6 +26,7 @@ namespace AirCity.Vehicles
         public Stand Stand { get; }
         public BulkHoldConfiguration HoldConfiguration { get; }
         public BaggageStore Hold { get; }
+        public BaggageHoldPacking Packing { get; }
         internal bool VisitEnded { get; set; }
         public BaggageFleet Fleet { get; }
         public BaggageServicePlan Plan { get; internal set; }
@@ -46,7 +47,11 @@ namespace AirCity.Vehicles
         public BaggageStore TransferFrom { get; private set; }
         public BaggageStore TransferTo { get; private set; }
         public float TransferSeconds { get; private set; }
-        public float BagTravelSeconds => Plan == null ? 0f : BaggageLoadPath.Length(Fleet, Plan) / BaggageLoadPath.BeltSpeed;
+        public bool DepotTransfer => TransferBatch!=null && TransferFrom!=Hold && TransferTo!=Hold && Fleet.Station.depot!=null;
+        public float TransferInterval => Plan == null || Finished ? Fleet.Station.secondsPerBag : DepotTransfer ?
+            Mathf.Max(.65f,3.6f/Mathf.Max(1,Fleet.Crew.GroundWorkers)) : Fleet.Crew.Interval;
+        public float BagTravelSeconds => Plan == null || Finished ? 0f : DepotTransfer ? Fleet.Station.depot.ConveyorSeconds+3.6f :
+            Fleet.Crew.Travel(TransferTo == Hold || State == BaggageTurnaroundState.LoadingHold);
 
         /// <summary>Resume the same manifests after cancellation, preserving all completed handovers.</summary>
         public bool Retry(out string reason)
@@ -68,6 +73,7 @@ namespace AirCity.Vehicles
                 bagCapacity = configuration.bagCapacity, weightCapacity = configuration.weightCapacity };
             arrivalFlight = arrival; departureFlight = departure;
             Hold = coordinator.Ledger.Store(aircraft.name + " bulk hold", configuration.bagCapacity, configuration.weightCapacity, arrival);
+            Packing = new BaggageHoldPacking(this);
         }
 
         /// <summary>Explicit manifest closure prevents a departure from treating missing or late bags as zero demand.</summary>
@@ -94,6 +100,7 @@ namespace AirCity.Vehicles
                 return false;
             }
             sealedManifest = true;
+            Packing.Seed(inbound);
             return true;
         }
 
@@ -155,10 +162,11 @@ namespace AirCity.Vehicles
                     State = BaggageTurnaroundState.Docking;
                     break;
                 case BaggageTurnaroundState.Docking:
-                    if (!MoveLoader(Plan.loaderDock, dt)) break;
+                    if (!docked && !MoveLoader(Plan.loaderDock, dt)) break;
                     docked = true;
-                    loaderDistance = 0f;
                     if (cancelled) { BeginWithdrawal(true); break; }
+                    if (!Fleet.Crew.MoveHold(true, dt)) { Waiting = "loader operator entering the hold"; break; }
+                    loaderDistance = 0f;
                     State = BaggageTurnaroundState.InboundDrive;
                     break;
                 case BaggageTurnaroundState.InboundDrive:
@@ -167,7 +175,7 @@ namespace AirCity.Vehicles
                     break;
                 case BaggageTurnaroundState.UnloadingHold:
                     if (cancelled && TransferBatch == null || Handle(inbound, Hold, Fleet.Cart, dt, true, true))
-                    { if (Fleet.Cart.Count > 0) ArrivalTrips++; SetState(BaggageTurnaroundState.ArrivalsDrive, Plan.toArrivals); }
+                    { if (Fleet.CartCount > 0) ArrivalTrips++; SetState(BaggageTurnaroundState.ArrivalsDrive, Plan.toArrivals); }
                     break;
                 case BaggageTurnaroundState.ArrivalsDrive:
                     if (Drive(dt)) SetState(BaggageTurnaroundState.UnloadingArrivals);
@@ -185,7 +193,7 @@ namespace AirCity.Vehicles
                 case BaggageTurnaroundState.CollectingDepartures:
                     if (cancelled) { ReturnOutbound(); BeginWithdrawal(true); break; }
                     if (Handle(outbound, Fleet.Dispatch, Fleet.Cart, dt, true, true))
-                    { if (Fleet.Cart.Count > 0) DepartureTrips++; SetState(BaggageTurnaroundState.OutboundDrive, Plan.outbound); }
+                    { if (Fleet.CartCount > 0) DepartureTrips++; SetState(BaggageTurnaroundState.OutboundDrive, Plan.outbound); }
                     break;
                 case BaggageTurnaroundState.OutboundDrive:
                     if (Drive(dt))
@@ -213,6 +221,7 @@ namespace AirCity.Vehicles
                     if (!trainHome) trainHome = Drive(dt);
                     if (trainHome && docked)
                     {
+                        if (!Fleet.Crew.MoveHold(false, dt)) { Waiting = "hold handler returning to the loader"; break; }
                         State = BaggageTurnaroundState.Undocking; loaderDistance = 0f; break;
                     }
                     if (!loaderHome && trainHome && RaiseLoader(Fleet.Equipment.Loader.baggage.frontMinHeight, dt))
@@ -220,16 +229,28 @@ namespace AirCity.Vehicles
                     if (trainHome && loaderHome && ReturnOutbound())
                     {
                         if (!Door(false, dt)) break;
-                        Fleet.Equipment.Release(this); Fleet.Job = null;
-                        State = cancelled ? BaggageTurnaroundState.Cancelled : BaggageTurnaroundState.Complete;
-                        if (cancelled) Waiting = "turnaround cancelled; baggage retained at its recorded locations";
+                        if (Plan.dispatchPark != null && Vector2.Distance(Fleet.Train.Tractor.position,Plan.trainParking.Value.position)>.05f)
+                            SetState(BaggageTurnaroundState.ParkingTrain,Plan.dispatchPark);
+                        else Complete();
                     }
+                    break;
+                case BaggageTurnaroundState.ParkingTrain:
+                    if (Drive(dt)) Complete();
                     break;
                 case BaggageTurnaroundState.Undocking:
                     if (MoveLoader(Plan.loaderUndock, dt))
                     { docked = false; loaderDistance = 0f; State = BaggageTurnaroundState.Withdrawing; }
                     break;
             }
+        }
+
+        void Complete()
+        {
+            Fleet.TrainSpeed=Fleet.LoaderSpeed=0f;
+            Fleet.Equipment.Release(this); Fleet.Job=null;
+            Fleet.Station.depot?.ReleaseCrew(Fleet);
+            State=cancelled ? BaggageTurnaroundState.Cancelled : BaggageTurnaroundState.Complete;
+            if (cancelled) Waiting="turnaround cancelled; baggage retained at its recorded locations";
         }
 
         void AtDispatch()
@@ -249,9 +270,9 @@ namespace AirCity.Vehicles
         bool ReturnOutbound()
         {
             foreach (var batch in outbound)
-                if (batch.Location == Fleet.Cart && !coordinator.Ledger.Transfer(batch, Fleet.Cart, Fleet.Dispatch, out var reason))
+                if (Fleet.IsCart(batch.Location) && !coordinator.Ledger.Transfer(batch, batch.Location, Fleet.Dispatch, out var reason))
                 { Waiting = reason; return false; }
-            return Fleet.Cart.Count == 0;
+            return Fleet.CartCount == 0;
         }
 
         void SetState(BaggageTurnaroundState state, VehiclePath path = null)
@@ -266,17 +287,27 @@ namespace AirCity.Vehicles
             if (Fleet.Station.accessBlocked) { Waiting = "baggage transfer access is blocked"; return false; }
             if ((from == Hold || to == Hold) && Aircraft != null && !Aircraft.CargoDoors.IsOpen(HoldConfiguration.cargoPoint))
             { Waiting = "waiting for the cargo door to open"; return false; }
-            while (index < batches.Count && onlyPresent && batches[index].Location != from)
+            bool fromCart = Fleet.IsCart(from), toCart = Fleet.IsCart(to);
+            while (index < batches.Count && onlyPresent && !(fromCart ? Fleet.IsCart(batches[index].Location) : batches[index].Location == from))
             {
                 var location = batches[index].Location;
                 bool known = batches == inbound
-                    ? location == Hold || location == Fleet.Cart || location == Fleet.Arrivals || location == coordinator.Reclaim
-                    : location == Fleet.Dispatch || location == Fleet.Cart || location == Hold;
+                    ? location == Hold || Fleet.IsCart(location) || location == Fleet.Arrivals || location == coordinator.Reclaim
+                    : location == Fleet.Dispatch || Fleet.IsCart(location) || location == Hold;
                 if (!known) { Waiting = "manifest batch moved from its assigned source"; return false; }
                 index++;
             }
             if (index >= batches.Count) return true;
             var batch = batches[index];
+            if (fromCart)
+            { Fleet.SelectCart(Array.IndexOf(Fleet.Carts,batch.Location)); from = Fleet.Cart; }
+            if (toCart)
+            {
+                int selected = Array.FindIndex(Fleet.Carts,c => c.Refusal(batch) == null);
+                if (selected < 0)
+                { if (partialLoad && Fleet.CartCount > 0) return true; Waiting = "all baggage carts are full"; return false; }
+                Fleet.SelectCart(selected); to = Fleet.Cart;
+            }
             if (batch.Location != from) { Waiting = "manifest batch moved from its assigned source"; return false; }
             if (to == Hold && !batch.Screened) { Waiting = "departing baggage awaiting screening"; return false; }
             if (to == Fleet.Cart && State == BaggageTurnaroundState.CollectingDepartures && !batch.Screened)
@@ -287,12 +318,18 @@ namespace AirCity.Vehicles
             { Waiting = null; return true; }
             if (Waiting != null) return false;
             bool aircraftTransfer = from == Hold || to == Hold;
-            if (aircraftTransfer) { TransferBatch = batch; TransferFrom = from; TransferTo = to; }
+            bool depotTransfer=!aircraftTransfer && Fleet.Station.depot!=null;
+            if (handling<=0f) Fleet.Station.depot?.Rebalance(Fleet);
+            if (aircraftTransfer && !Fleet.Crew.MoveGround(true, dt, to == Hold))
+            { Waiting = "tractor driver walking to the baggage cart"; return false; }
+            if (aircraftTransfer || depotTransfer)
+            { if (to == Hold) Packing.Reserve(batch); TransferBatch = batch; TransferFrom = from; TransferTo = to; }
             handling += dt;
-            if (aircraftTransfer) TransferSeconds = handling;
-            float duration = aircraftTransfer ? (batch.Count - 1) * Fleet.Station.secondsPerBag + BagTravelSeconds : batch.Count * Fleet.Station.secondsPerBag;
+            if (aircraftTransfer || depotTransfer) TransferSeconds = handling;
+            float duration = aircraftTransfer || depotTransfer ? (batch.Count - 1) * TransferInterval + BagTravelSeconds : batch.Count * Fleet.Station.secondsPerBag;
             if (handling + 0.00001f < duration) return false;
             if (!coordinator.Ledger.Transfer(batch, from, to, out var reason)) { Waiting = reason; return false; }
+            if (from == Hold) Packing.Release(batch);
             handling = 0f; index++;
             TransferBatch = null; TransferFrom = TransferTo = null; TransferSeconds = 0f;
             return cancelled && aircraftTransfer;
@@ -300,6 +337,7 @@ namespace AirCity.Vehicles
 
         bool Drive(float dt)
         {
+            if (!Fleet.Crew.MoveGround(false, dt)) { Waiting = "baggage handler returning to the tractor"; return false; }
             var train = Fleet.Train;
             train.Path.Sample(train.Distance, out _, out _, out float limit);
             float before = train.Distance;
@@ -312,6 +350,7 @@ namespace AirCity.Vehicles
 
         bool Door(bool open, float dt)
         {
+            if (!open && !Fleet.Crew.HoldSeated) { Waiting = "hold handler returning to the loader"; return false; }
             if (Aircraft == null) return !open;
             bool ready = Aircraft.CargoDoors.Operate(HoldConfiguration.cargoPoint, open, dt, out var reason);
             if (!ready) Waiting = reason;
@@ -326,6 +365,7 @@ namespace AirCity.Vehicles
 
         bool MoveLoader(VehiclePath path, float dt)
         {
+            if (!Fleet.Crew.HoldSeated) { Waiting = "waiting for the loader operator"; return false; }
             path.Sample(loaderDistance, out _, out _, out float limit);
             float before = loaderDistance;
             float target = Mathf.Min(path.Length, loaderDistance + Mathf.Min(limit, Fleet.Equipment.Loader.transitSpeed) * dt);

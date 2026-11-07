@@ -53,11 +53,12 @@ namespace AirCity.Tests.Airfield
             var type = Type("Narrowbody");
             var sl = airport.Taxiways.Layout(st);
             var was = sl.ParkPosition(type);
+            float initialOffset = sl.StopOffsetFor(type);
             var c = new StandServiceConfiguration { aircraft = type, stopOffset = -2f };
             st.serviceConfigurations.Add(c);
             airport.Taxiways.Rebuild();
             sl = airport.Taxiways.Layout(st);
-            Assert.Less(Vector2.Distance(was - sl.axis * 2f, sl.ParkPosition(type)), 0.001f);
+            Assert.Less(Vector2.Distance(was + sl.axis * (c.stopOffset-initialOffset), sl.ParkPosition(type)), 0.001f);
             Assert.AreEqual(StandProblem.None, airport.Taxiways.CheckStand(st, type));
             c.allowed = false;
             Assert.AreEqual(StandProblem.ServiceExcluded, airport.Taxiways.CheckStand(st, type));

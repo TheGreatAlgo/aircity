@@ -770,7 +770,7 @@ namespace AirCity.Dev
             b.tunnel = size;
             airport.Taxiways.Rebuild();
             var problem = airport.Bridges.FirstProblem(SelectedStand, b, out var type);
-            bridgeNote = problem == BridgeProblem.None ? null : (type != null ? type.displayName + ": " : "") + BridgeLayout.Describe(problem);
+            bridgeNote = problem == BridgeProblem.None ? null : (type != null ? type.TypeName + ": " : "") + BridgeLayout.Describe(problem);
         }
 
         public void SetBridgeDefinition(JetBridgeDefinition definition)
@@ -780,7 +780,7 @@ namespace AirCity.Dev
             b.definition = definition;
             airport.Taxiways.Rebuild();
             var problem = airport.Bridges.FirstProblem(SelectedStand, b, out var type);
-            bridgeNote = problem == BridgeProblem.None ? null : (type != null ? type.displayName + ": " : "") + BridgeLayout.Describe(problem);
+            bridgeNote = problem == BridgeProblem.None ? null : (type != null ? type.TypeName + ": " : "") + BridgeLayout.Describe(problem);
         }
 
         public void SetBridgeFloor(float floor)
@@ -1426,7 +1426,7 @@ namespace AirCity.Dev
                 previewVersion = airport.LayoutVersion; previewAssetVersion = BridgeAssetRevision.Version;
                 placementCandidate = airport.Bridges.PreviewBridge(st, p, root, out var why, out var previewType, bridgeDesign);
                 previewWhy = placementCandidate != null ? "" :
-                    (previewType != null ? previewType.displayName + ": " : "") + BridgeLayout.Describe(why);
+                    (previewType != null ? previewType.TypeName + ": " : "") + BridgeLayout.Describe(why);
                 PrepareBridgePreview(st, p, root);
             }
             bridgePreview = placementCandidate ?? placementLayout?.bridge;
@@ -1437,7 +1437,7 @@ namespace AirCity.Dev
             {
                 bridgeProblem = previewWhy = problem == BridgeProblem.None
                     ? "no door of the aircraft here is in reach from there"
-                    : (type != null ? type.displayName + ": " : "") + BridgeLayout.Describe(problem);
+                    : (type != null ? type.TypeName + ": " : "") + BridgeLayout.Describe(problem);
                 return;
             }
             // placed: its stand selected (its rings show), the tool kept for the next one
@@ -1445,7 +1445,7 @@ namespace AirCity.Dev
             selectedBridge = made;
             var after = airport.Bridges.FirstProblem(st, made, out var at);
             bridgePlaced = $"placed {made.DoorName} ({made.tunnel.ToString().ToLowerInvariant()} tunnel) on {st.Name}" +
-                           (after == BridgeProblem.None ? "" : $": {(at != null ? at.displayName + " " : "")}{BridgeLayout.Describe(after)}");
+                           (after == BridgeProblem.None ? "" : $": {(at != null ? at.TypeName + " " : "")}{BridgeLayout.Describe(after)}");
             bridgeStart = null;
             previewWhy = null;
             GetComponent<DevToolbar>()?.EditBridge(st, made);
@@ -1575,7 +1575,7 @@ namespace AirCity.Dev
             if (!click) return;
             if (!airport.Bridges.PlaceHead(st, root, a, far, out var problem, out var type))
             {
-                bridgeProblem = previewWhy = (type != null ? type.displayName + ": " : "") + BridgeLayout.Describe(problem);
+                bridgeProblem = previewWhy = (type != null ? type.TypeName + ": " : "") + BridgeLayout.Describe(problem);
                 return;
             }
             Select(new Pick { kind = Kind.Stand, stand = st, apron = -1 });
@@ -1646,7 +1646,7 @@ namespace AirCity.Dev
             if (!airport.Bridges.OnTerminalWall(p, Mathf.Max(6f, MetresPerPixel(point) * 20f), out var wall, out _)) return true;
             airport.Bridges.MoveRoot(st, draggingRootHead ? null : draggingRoot, wall, out var problem, out var type);
             bridgeNote = problem == BridgeProblem.None ? null
-                : (type != null ? type.displayName + ": " : "") + BridgeLayout.Describe(problem);
+                : (type != null ? type.TypeName + ": " : "") + BridgeLayout.Describe(problem);
             return true;
         }
 
@@ -1692,7 +1692,7 @@ namespace AirCity.Dev
             }
             airport.Bridges.MoveBridge(st, draggingBridge, p, dragRootFrom, out var problem, out var type);
             bridgeNote = problem == BridgeProblem.None ? null
-                : (type != null ? type.displayName + ": " : "") + BridgeLayout.Describe(problem);
+                : (type != null ? type.TypeName + ": " : "") + BridgeLayout.Describe(problem);
             return true;
         }
 
@@ -1745,7 +1745,7 @@ namespace AirCity.Dev
             if (headGrip != HeadGrip.Far) a += move;
             if (headGrip != HeadGrip.Near) b += move;
             airport.Bridges.MoveHead(st, a, b, headBridges, headGrip == HeadGrip.Near, headRoot, out var problem, out var type);
-            bridgeNote = problem == BridgeProblem.None ? null : (type != null ? type.displayName + ": " : "") + BridgeLayout.Describe(problem);
+            bridgeNote = problem == BridgeProblem.None ? null : (type != null ? type.TypeName + ": " : "") + BridgeLayout.Describe(problem);
             return true;
         }
 
@@ -2845,7 +2845,7 @@ namespace AirCity.Dev
                 {
                     var check = r.Check(t);
                     string verdict = check.Ok ? $"{Good}OK</color>" : $"{Bad}{check}</color>";
-                    sb.Append($"\n  {t.displayName}: {verdict}");
+                    sb.Append($"\n  {t.TypeName}: {verdict}");
                 }
             }
             var e = SelectedEdge;
@@ -2901,7 +2901,7 @@ namespace AirCity.Dev
                 {
                     var problem = net.CheckStand(st, t);
                     string verdict = problem == StandProblem.None ? $"{Good}OK</color>" : $"{Bad}{StandProblemText(problem)}</color>";
-                    sb.Append($"\n  {t.displayName}: {verdict}");
+                    sb.Append($"\n  {t.TypeName}: {verdict}");
                 }
                 var head = airport.Bridges.HeadOf(st);
                 if (head != null)
@@ -2927,7 +2927,7 @@ namespace AirCity.Dev
                         string verdict = p == BridgeProblem.None ? $"{Good}docks at {airport.Bridges.ServicePlan(st, t)[b].DoorName}</color>"
                             : p == BridgeProblem.SmallAircraft || p == BridgeProblem.NoSuchDoor || p == BridgeProblem.NotInService ? $"{Dim}{BridgeLayout.Describe(p)}</color>"
                             : $"{Bad}{BridgeLayout.Describe(p)}</color>";
-                        sb.Append($"\n  {t.displayName}: {verdict}");
+                        sb.Append($"\n  {t.TypeName}: {verdict}");
                     }
                 }
             }

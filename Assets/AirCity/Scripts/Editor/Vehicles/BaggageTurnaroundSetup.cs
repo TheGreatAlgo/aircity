@@ -60,6 +60,10 @@ namespace AirCity.EditorTools.Vehicles
             var station = new GameObject("Baggage hall").AddComponent<BaggageStation>(); station.transform.SetParent(root.transform, false);
             station.tractorType = VehicleSetup.Type("BaggageTractor"); station.cartType = VehicleSetup.Type("BaggageCart"); station.loaderType = VehicleSetup.Type("BeltLoader");
             station.bagPrefabs = VehicleSetup.BagPrefabs();
+            station.cartCount = 2;
+            station.automaticHold.aircraft=aircraftType;
+            station.standIds.Add(stand.id);
+            Characters.RampCrewSetup.Assign(station);
             station.tractorPrefab = VehicleSetup.Prefab("BaggageTractor"); station.cartPrefab = VehicleSetup.Prefab("BaggageCart"); station.loaderPrefab = VehicleSetup.Prefab("BeltLoader");
             float x = park.x + aircraftType.bounds.max.x + 7f + 7.8f + 3.5f;
             int home = net.AddNode(new Vector3(x + 20f, 0f, park.y - 15f));

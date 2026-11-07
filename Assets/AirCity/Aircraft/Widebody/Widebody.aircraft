@@ -1,6 +1,7 @@
 {
   "model": "Widebody",
   "displayName": "Widebody twinjet",
+  "seats": 350,
   "category": "Airliner",
   "bounds": {
     "min": [
@@ -1418,7 +1419,11 @@
       ],
       "openAngle": 145.0,
       "seconds": 10.0,
-      "holdDepth": 2.2216292092151204
+      "holdDepth": 2.2216292092151204,
+      "holdSideMin": -1.35,
+      "holdSideMax": 1.35,
+      "holdHeight": 1.7,
+      "holdFloorStart": 0.05
     },
     {
       "point": "Cargo_Aft",
@@ -1435,7 +1440,11 @@
       ],
       "openAngle": 145.0,
       "seconds": 10.0,
-      "holdDepth": 2.4914968728821236
+      "holdDepth": 2.4914968728821236,
+      "holdSideMin": -1.35,
+      "holdSideMax": 1.35,
+      "holdHeight": 1.7,
+      "holdFloorStart": 0.05
     },
     {
       "point": "Cargo_Bulk",
@@ -1452,7 +1461,11 @@
       ],
       "openAngle": -100.0,
       "seconds": 3.5,
-      "holdDepth": 2.5
+      "holdDepth": 3.088015818057614,
+      "holdSideMin": -2.0,
+      "holdSideMax": 2.0,
+      "holdHeight": 0.95,
+      "holdFloorStart": 0.5481662597698973
     }
   ],
   "lights": [

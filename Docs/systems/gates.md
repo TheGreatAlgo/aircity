@@ -115,7 +115,11 @@ synchronizes its bridges to the longest family movement duration, matching the c
 wait for all attached bridges to retract before requesting a tug.
 
 `StopFor(type)` is shared by arrivals, parking, bridge geometry and stop-bar painting. `ParkPosition(type)` subtracts
-the aircraft wheelbase. Exclusion affects traffic stand selection and bridge compatibility. A stand still represents
+the aircraft wheelbase. Smaller size-code aircraft on larger push-back stands default to a separate nose-wheel stop
+which aligns the generated aircraft nose to the design nose line. Explicit aircraft configurations override that
+default, including zero. The Aircraft page displays the effective offset; changing eligibility or bridges preserves
+it. Paint labels every valid compatible type, combining names when their stops coincide. Exclusion affects traffic
+stand selection and bridge compatibility. A stand still represents
 one occupied aircraft position; simultaneous alternative MARS stand occupation is a separate traffic feature.
 
 ## Appearance and art

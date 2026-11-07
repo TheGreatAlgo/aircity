@@ -30,6 +30,9 @@ LIGHTS = [("Beacon", "Beacon", (-0.75, 1.05, 1.71), (0, 0, 1), "#FF9A1A", 0.55, 
             for s, x in (("L", -0.78), ("R", 0.78))]]
 SPINNERS = []
 WORK = {"laneWidth": 2.02, "workSpeed": 0.6, "transitSpeed": 4.0, "turnRadius": 5.0}
+CREW = dict(seated=True, position=(-.64,1.82,1.10), leftHand=(-.75,2.23,1.31), rightHand=(-.53,2.23,1.31),
+            leftFoot=(-.74,2.36,.55), rightFoot=(-.54,2.36,.55), height=1.96,
+            walkway=(.66,.60,-.035), accessSteps=[(.96,-2.55,.22),(.96,-2.27,.44),(.96,-1.99,.66),(.96,-1.71,.88)])
 BAGGAGE = {"rearHitch": (0, -0.87, 0.38), "operator": (-0.65, 1.88, 0.89),
            "beltRear": REAR, "beltLength": LENGTH, "beltFrontHeight": FRONT_HEIGHT, "beltSupportOffset": SUPPORT_OFFSET,
            "frontMinHeight": 1.2, "frontMaxHeight": 4.3, "rearMinHeight": 0.7, "rearMaxHeight": 1.1,
@@ -73,6 +76,14 @@ def build():
     for x in (-0.78, 0.78):
         g.lamp(b, x, 4.39, 0.64)
     g.hitch(b, -0.87)
+    # Rear access stairs and a proper walking-width catwalk let the operator reach the stopped belt.
+    for k, (x, f, z) in enumerate(CREW["accessSteps"]):
+        b.box((x-.22,f-.14,z-.045),(x+.22,f+.14,z),"Zinc",bevel=.008)
+        for dx in (-.19,.19):
+            b.box((x+dx-.018,f-.14,.12),(x+dx+.018,f+.14,z-.045),"Chassis",bevel=.004)
+    for f,z in ((-2.55,.98),(-1.71,1.64)):
+        b.cyl((1.22,f,.18),(1.22,f,z),.018,"Yellow",segs=10)
+    b.cyl((1.22,-2.55,.98),(1.22,-1.71,1.64),.021,"Yellow",segs=10)
     parts = [b] + [g.wheel(n, c, r, 0.19) for n, c, r, _ in WHEELS]
     # Everything on the boom is generated horizontal about its rear end, then posed as one rigid assembly.
     pivot = Vector(REAR)
@@ -92,7 +103,7 @@ def build():
         f = REAR[1] + 0.11 + k * 0.25
         belt.box((REAR[0] - 0.295, f, REAR[2]), (REAR[0] + 0.295, f + 0.008, REAR[2] + 0.002), "Plastic")
     boom.box((REAR[0] + 0.43, REAR[1] + 0.6, REAR[2] - 0.08),
-             (REAR[0] + 0.65, REAR[1] + LENGTH - 0.55, REAR[2] - 0.035), "Zinc", bevel=0.01)
+             (REAR[0] + 0.89, REAR[1] + LENGTH - 0.55, REAR[2] - 0.035), "Zinc", bevel=0.01)
     for end in (0, LENGTH):
         boom.cyl((REAR[0] - 0.42, REAR[1] + end, REAR[2] - 0.04),
                  (REAR[0] + 0.42, REAR[1] + end, REAR[2] - 0.04), 0.064, "Plastic", segs=20)
@@ -105,6 +116,10 @@ def build():
                  (x, REAR[1] + 6.50, REAR[2] + 0.64), 0.022, "Yellow", segs=10)
         boom.cyl((x, REAR[1] + 0.70, REAR[2] + 0.30),
                  (x, REAR[1] + 6.50, REAR[2] + 0.30), 0.016, "Yellow", segs=8)
+    x = REAR[0]+.92
+    for f in (.70,2.15,3.60,5.05,6.50):
+        boom.cyl((x,REAR[1]+f,REAR[2]-.05),(x,REAR[1]+f,REAR[2]+.90),.021,"Yellow",segs=10)
+    boom.cyl((x,REAR[1]+.70,REAR[2]+.90),(x,REAR[1]+6.50,REAR[2]+.90),.022,"Yellow",segs=10)
     rotation = Matrix.Rotation(ANGLE, 4, "X")
     for p in (boom, belt):
         bmesh_transform = Matrix.Translation(pivot) @ rotation @ Matrix.Translation(-pivot)

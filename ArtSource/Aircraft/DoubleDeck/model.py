@@ -16,6 +16,7 @@ NAME = "DoubleDeck"
 CARGO_HINGES = {"Cargo_Fwd": ("Top", 145.0, 10.0), "Cargo_Aft": ("Top", 145.0, 10.0),
                 "Cargo_Bulk": ("Top", -100.0, 3.5)}
 DISPLAY_NAME = "Double-deck quadjet"
+SEATS = 550  # typical layout; the player sees "Starling {code}550"
 CATEGORY = "Airliner"
 AO_DISTANCE = 4.5
 

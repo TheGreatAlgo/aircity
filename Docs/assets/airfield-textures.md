@@ -32,7 +32,7 @@ in the public repo.
 | File | Contents |
 |---|---|
 | `Macro.png` (512², linear) | four tileable 1/f noises: R large blobs (tint, wear patches), G medium (sample blend, puddles), B fine (streaks, snow edges), A grain (ragged edges, paint wear) |
-| `RunwayGlyphs.png` (1024 × 1024, one channel) | SDF of `0123456789LCRABDEF` (runway designators; stand size codes and de-icing bay ids), 8 × 4 cells of 128 × 256 px at 24 px/m, a 3 × 9 m box, stroke 0.8 m, spread 0.66 m. `PaintBuilder.Glyph` scales them to any height (stand labels are 2.4–7 m) |
+| `RunwayGlyphs.png` (1024 × 2048, one channel) | SDF digits, full uppercase alphabet, slash and hyphen for runway designators, aircraft stop labels and equipment parking bays; 8 × 8 cells of 128 × 256 px at 24 px/m, a 3 × 9 m box, stroke 0.8 m, spread 0.66 m. `PaintBuilder.Glyph` scales them to any height and accepts mixed-case model names. Existing runway glyphs keep their original cell indices. |
 
 Keep `CHARS`, `CELL`, `PX_PER_M`, `ROWS` and the atlas size in sync with `PaintBuilder.cs` (`GlyphChars`, `CellW` /
 `CellH`, `GlyphPxPerM`, `AtlasW` / `AtlasH`). There are 6 spare cells; the import caps textures at 1024.

@@ -128,5 +128,34 @@
     "Stabiliser_5",
     "MainPlatformGate",
     "SideBridge"
-  ]
+  ],
+  "crew": {
+    "seated": false,
+    "position": [
+      -1.54,
+      1.43,
+      4.92
+    ],
+    "leftHand": [
+      -1.65,
+      2.3,
+      5.31
+    ],
+    "rightHand": [
+      -1.44,
+      2.3,
+      5.31
+    ],
+    "leftFoot": [
+      -1.65,
+      1.43,
+      4.92
+    ],
+    "rightFoot": [
+      -1.44,
+      1.43,
+      4.92
+    ],
+    "height": 3.21
+  }
 }

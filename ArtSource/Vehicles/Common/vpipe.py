@@ -410,6 +410,15 @@ def write_profile(model, objs, path):
     if hasattr(model, "CONTAINER"):
         data["container"] = {k: (to_unity(v) if isinstance(v, (tuple, list)) else v)
                              for k, v in model.CONTAINER.items()}
+    if hasattr(model, "CREW"):
+        data["crew"] = {k: ([{"position": to_unity(p)} for p in v] if k == "accessSteps" else
+                           to_unity(v) if isinstance(v, (tuple, list)) else v)
+                        for k, v in model.CREW.items()}
+    if model.KIND == "BaggageProp":
+        data["props"] = []
+        for ob in objs:
+            corners = np.array([ob.matrix_world @ Vector(c) for c in ob.bound_box])
+            data["props"].append({"name": ob.name,"size": to_unity(corners.max(axis=0)-corners.min(axis=0))})
     if getattr(model, "MOVING_LODS", False):
         data["lodMovers"] = list(model.MOVERS)
     elif getattr(model, "SEPARATE_MOVERS", False):

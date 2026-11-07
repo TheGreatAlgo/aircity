@@ -22,6 +22,8 @@ MOVERS += [f"Stabiliser_{k}" for k in range(6)]
 MOVERS += ["MainPlatformGate"]
 MOVERS += ["SideBridge"]
 WORK = {"laneWidth": 3.6, "workSpeed": .5, "transitSpeed": 4., "turnRadius": 8.7}
+CREW = dict(seated=False, position=(-1.54,4.92,1.43), leftHand=(-1.65,5.31,2.30), rightHand=(-1.44,5.31,2.30),
+            leftFoot=(-1.65,4.92,1.43), rightFoot=(-1.44,4.92,1.43), height=3.21)
 CONTAINER = {"code": "AKE", "maxGross": 7000., "deckWidth": 2.52, "deckLength": 4.8,
              "sideBridgeReach": 2.5,
              "mainTransfer": (0, 1., .508), "frontTransfer": (0, 5.65, 1.8),

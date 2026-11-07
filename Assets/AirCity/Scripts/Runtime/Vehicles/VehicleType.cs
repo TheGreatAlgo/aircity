@@ -118,6 +118,19 @@ namespace AirCity.Vehicles
     }
 
     [Serializable]
+    public sealed class CrewWorkstation
+    {
+        public bool seated;
+        public Vector3 position, leftHand, rightHand, leftFoot, rightFoot;
+        public Vector3 walkway;
+        public Vector3[] accessSteps = Array.Empty<Vector3>();
+        public float height;
+    }
+
+    [Serializable]
+    public struct BaggagePropShape { public string name; public Vector3 size; }
+
+    [Serializable]
     public class ContainerEquipmentDimensions
     {
         public string code;
@@ -152,6 +165,8 @@ namespace AirCity.Vehicles
         [Header("Baggage equipment")]
         public BaggageEquipmentDimensions baggage;
         public ContainerEquipmentDimensions container;
+        public CrewWorkstation crew;
+        public BaggagePropShape[] props = Array.Empty<BaggagePropShape>();
 
         [Header("Work")]
         [Tooltip("Width each vehicle clears / cuts per pass, with overlap (metres).")]

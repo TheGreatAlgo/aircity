@@ -30,7 +30,7 @@ namespace AirCity.EditorTools.Vehicles
         {
             VehicleSetup.CreateMissing();
             var existing = airport.GetComponentsInChildren<BaggageStation>().FirstOrDefault(s => s.name == "Sandbox baggage hall");
-            if (existing != null) { WireCamera(existing); return existing; }
+            if (existing != null) { BaggageDepotSetup.Attach(existing); WireCamera(existing); return existing; }
             var type = AssetDatabase.LoadAssetAtPath<AirCity.Aircraft.AircraftType>("Assets/AirCity/Aircraft/Narrowbody/Narrowbody.aircraft");
             var net = airport.Taxiways;
             int Node(float x, float z) => net.AddNode(new Vector3(x, 0f, z));
@@ -59,6 +59,8 @@ namespace AirCity.EditorTools.Vehicles
             station.transform.SetParent(airport.transform, false);
             station.tractorType = VehicleSetup.Type("BaggageTractor"); station.cartType = VehicleSetup.Type("BaggageCart"); station.loaderType = VehicleSetup.Type("BeltLoader");
             station.bagPrefabs = VehicleSetup.BagPrefabs();
+            station.cartCount = 2;
+            Characters.RampCrewSetup.Assign(station);
             station.tractorPrefab = VehicleSetup.Prefab("BaggageTractor"); station.cartPrefab = VehicleSetup.Prefab("BaggageCart"); station.loaderPrefab = VehicleSetup.Prefab("BeltLoader");
             station.dispatchNode = home; station.arrivalsNode = arrivals; station.arrivalsBearing = 90f;
             station.loaderParking = park + new Vector2(x - park.x + 40f, -15f);
@@ -71,6 +73,7 @@ namespace AirCity.EditorTools.Vehicles
                 Quaternion.LookRotation(airport.transform.TransformDirection(new Vector3(layout.nose.x, 0f, layout.nose.y))));
             var depot = airport.AddDepot(park + new Vector2(65f, -63f), Vector2.up);
             VehicleSetup.Assign(depot); depot.autoDispatch = false; depot.SetFleet(0, 0); depot.SetTugs(1, 0);
+            BaggageDepotSetup.Attach(station);
             airport.BuildGround(); net.Rebuild(); WireCamera(station);
             return station;
         }
@@ -99,9 +102,10 @@ namespace AirCity.EditorTools.Vehicles
                 if (departure == null) throw new InvalidOperationException(reason);
                 Directory.CreateDirectory("Captures/BaggageSandbox");
                 bool captured = false;
-                for (int i = 0; i < 12000 && departure.Phase != FlightPhase.Taxi; i++)
+                for (int i = 0; i < 36000 && departure.Phase != FlightPhase.Taxi; i++)
                 {
                     airport.Simulate(0.25f); station.Present(0.25f);
+                    if (i%1200==0) Debug.Log($"Sandbox bulk progress {i*.25f:F0}s: {job.State}; hold {job.Hold.Count}, carts {job.Fleet.CartCount}, arrivals {job.Fleet.Arrivals.Count}, dispatch {job.Fleet.Dispatch.Count}; transfer {job.TransferSeconds:F1}/{job.BagTravelSeconds:F1}s");
                     if (!captured && job.State == BaggageTurnaroundState.LoadingHold)
                     {
                         var camera = Camera.main; var pose = job.Fleet.LoaderPose;
@@ -110,8 +114,11 @@ namespace AirCity.EditorTools.Vehicles
                         SceneCapture.Capture(camera, "Captures/BaggageSandbox/loading.png", 1800, 1100); captured = true;
                     }
                 }
-                if (!job.DepartureReady || departure.Phase != FlightPhase.Taxi || job.ArrivalTrips < 2 || job.DepartureTrips < 2)
-                    throw new InvalidOperationException($"Sandbox baggage: {job.State}: {job.Waiting}; {departure.Status}");
+                int perTrip=job.Fleet.Carts.Sum(c=>Mathf.Min(c.Capacity,Mathf.FloorToInt(c.WeightCapacity/station.kilogramsPerBag)));
+                int arrivalTrips=Mathf.CeilToInt((float)job.IncomingCount/perTrip), departureTrips=Mathf.CeilToInt((float)job.OutgoingCount/perTrip);
+                if (!job.DepartureReady || departure.Phase != FlightPhase.Taxi || job.ArrivalTrips!=arrivalTrips || job.DepartureTrips!=departureTrips ||
+                    job.Fleet.Arrivals.Count!=job.IncomingCount || job.Hold.Count!=job.OutgoingCount || job.Fleet.CartCount!=0)
+                    throw new InvalidOperationException($"Sandbox baggage: {job.State}: {job.Waiting}; hold {job.Hold.Count}, carts {job.Fleet.CartCount}, transfer {job.TransferSeconds}/{job.BagTravelSeconds}; {departure.Status}");
                 Debug.Log($"Sandbox baggage passed: {job.IncomingCount} arriving / {job.OutgoingCount} departing bags; " +
                     $"{job.ArrivalTrips} arrival and {job.DepartureTrips} departure trips; departure taxiing.");
                 EditorApplication.Exit(0);

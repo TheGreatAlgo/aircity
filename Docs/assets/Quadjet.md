@@ -1,10 +1,10 @@
-# Quadjet — Long-haul quadjet
+# Quadjet — Starling F450 (Long-haul quadjet)
 
 A generic long-haul four-engine airliner with a partial upper deck: a single main deck under a stretched upper-deck
 "hump" that carries the flight deck at its front and blends into the crown behind it, a long, slightly drooped nose
 under the hump, a big swept wing with raked wingtips (no winglets), four turbofans on pylons, a tall fin, a two-wheel
 nose gear and four four-wheel main bogies (two wing gears, two body gears). It carries no real airline or
-manufacturer branding. `CATEGORY = "Airliner"`, `DISPLAY_NAME = "Long-haul quadjet"`. ICAO aerodrome code **F**,
+manufacturer branding. `CATEGORY = "Airliner"`, `SEATS = 450`, `DISPLAY_NAME = "Long-haul quadjet"`. ICAO aerodrome code **F**,
 paved runways only. The pipeline is the shared one in `Docs/systems/aircraft.md`; this page covers only what is
 specific to this type.
 

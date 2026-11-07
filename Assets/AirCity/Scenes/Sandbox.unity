@@ -320,68 +320,6 @@ Transform:
   m_CorrespondingSourceObject: {fileID: 410940734376033650, guid: d031f6937b28d4eb784b9dea99c1032e, type: 3}
   m_PrefabInstance: {fileID: 126854622}
   m_PrefabAsset: {fileID: 0}
---- !u!1001 &276122249
-PrefabInstance:
-  m_ObjectHideFlags: 0
-  serializedVersion: 2
-  m_Modification:
-    serializedVersion: 3
-    m_TransformParent: {fileID: 513700119}
-    m_Modifications:
-    - target: {fileID: 1306295451267340739, guid: caa5e2d1fd20e4fd984bd56dd96b2868, type: 3}
-      propertyPath: m_Name
-      value: Widebody sandbox container turnaround
-      objectReference: {fileID: 0}
-    - target: {fileID: 1831615286731588473, guid: caa5e2d1fd20e4fd984bd56dd96b2868, type: 3}
-      propertyPath: m_LocalPosition.x
-      value: 2250
-      objectReference: {fileID: 0}
-    - target: {fileID: 1831615286731588473, guid: caa5e2d1fd20e4fd984bd56dd96b2868, type: 3}
-      propertyPath: m_LocalPosition.y
-      value: 0
-      objectReference: {fileID: 0}
-    - target: {fileID: 1831615286731588473, guid: caa5e2d1fd20e4fd984bd56dd96b2868, type: 3}
-      propertyPath: m_LocalPosition.z
-      value: -810.44
-      objectReference: {fileID: 0}
-    - target: {fileID: 1831615286731588473, guid: caa5e2d1fd20e4fd984bd56dd96b2868, type: 3}
-      propertyPath: m_LocalRotation.w
-      value: 1
-      objectReference: {fileID: 0}
-    - target: {fileID: 1831615286731588473, guid: caa5e2d1fd20e4fd984bd56dd96b2868, type: 3}
-      propertyPath: m_LocalRotation.x
-      value: -0
-      objectReference: {fileID: 0}
-    - target: {fileID: 1831615286731588473, guid: caa5e2d1fd20e4fd984bd56dd96b2868, type: 3}
-      propertyPath: m_LocalRotation.y
-      value: -0
-      objectReference: {fileID: 0}
-    - target: {fileID: 1831615286731588473, guid: caa5e2d1fd20e4fd984bd56dd96b2868, type: 3}
-      propertyPath: m_LocalRotation.z
-      value: -0
-      objectReference: {fileID: 0}
-    - target: {fileID: 1831615286731588473, guid: caa5e2d1fd20e4fd984bd56dd96b2868, type: 3}
-      propertyPath: m_LocalEulerAnglesHint.x
-      value: 0
-      objectReference: {fileID: 0}
-    - target: {fileID: 1831615286731588473, guid: caa5e2d1fd20e4fd984bd56dd96b2868, type: 3}
-      propertyPath: m_LocalEulerAnglesHint.y
-      value: 0
-      objectReference: {fileID: 0}
-    - target: {fileID: 1831615286731588473, guid: caa5e2d1fd20e4fd984bd56dd96b2868, type: 3}
-      propertyPath: m_LocalEulerAnglesHint.z
-      value: 0
-      objectReference: {fileID: 0}
-    m_RemovedComponents: []
-    m_RemovedGameObjects: []
-    m_AddedGameObjects: []
-    m_AddedComponents: []
-  m_SourcePrefab: {fileID: 100100000, guid: caa5e2d1fd20e4fd984bd56dd96b2868, type: 3}
---- !u!4 &276122250 stripped
-Transform:
-  m_CorrespondingSourceObject: {fileID: 1831615286731588473, guid: caa5e2d1fd20e4fd984bd56dd96b2868, type: 3}
-  m_PrefabInstance: {fileID: 276122249}
-  m_PrefabAsset: {fileID: 0}
 --- !u!1001 &299706173
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -522,82 +460,6 @@ Transform:
   m_CorrespondingSourceObject: {fileID: 6354422350587344538, guid: c75bd6f43e6b64474ac0ff9840d90fa6, type: 3}
   m_PrefabInstance: {fileID: 318112223}
   m_PrefabAsset: {fileID: 0}
---- !u!1 &344564863
-GameObject:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  serializedVersion: 6
-  m_Component:
-  - component: {fileID: 344564864}
-  - component: {fileID: 344564865}
-  m_Layer: 0
-  m_Name: Sandbox widebody bulk hall
-  m_TagString: Untagged
-  m_Icon: {fileID: 0}
-  m_NavMeshLayer: 0
-  m_StaticEditorFlags: 0
-  m_IsActive: 1
---- !u!4 &344564864
-Transform:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 344564863}
-  serializedVersion: 2
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: 0}
-  m_LocalScale: {x: 1, y: 1, z: 1}
-  m_ConstrainProportionsScale: 0
-  m_Children: []
-  m_Father: {fileID: 513700119}
-  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!114 &344564865
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 344564863}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 2fb496f16187f46be8bf61aabc5e340e, type: 3}
-  m_Name:
-  m_EditorClassIdentifier: AirCity.Runtime::AirCity.Vehicles.BaggageStation
-  dispatchNode: 176
-  arrivalsNode: 178
-  dispatchBearing: 0
-  arrivalsBearing: 90
-  tractorType: {fileID: -3326733738379100494, guid: df909079fb16946b782e00e7e864b688, type: 3}
-  cartType: {fileID: -3326733738379100494, guid: 2c05422d21f984fecb2cb048852072ae, type: 3}
-  loaderType: {fileID: -3326733738379100494, guid: 54d58fcb312bc48c8a286cf4449622ee, type: 3}
-  tractorPrefab: {fileID: 3562454459076569721, guid: 46043b41b19ce408589d50124d3bd900, type: 3}
-  cartPrefab: {fileID: 6417324176066320714, guid: e00509808de844d40a1ad333b3f8d771, type: 3}
-  loaderPrefab: {fileID: 2000218504751579054, guid: 46502f3f5e0d14342b993532851943b4, type: 3}
-  bagPrefabs:
-  - {fileID: 8711824811110389129, guid: 3939571d326c746639b855e7005e1d2f, type: 3}
-  - {fileID: 2929987237262034617, guid: db2e721396c3142b498eff35a84869b5, type: 3}
-  - {fileID: 5544638259016835420, guid: e5776fc4f6cea41d0862506e14c587de, type: 3}
-  loaderParking: {x: 2379.875, y: -805.44}
-  loaderParkingBearing: 0
-  dispatchCapacity: 1000
-  arrivalsCapacity: 1000
-  dispatchWeight: 20000
-  arrivalsWeight: 20000
-  secondsPerBag: 0.8
-  accessBlocked: 0
-  automaticHandling: 1
-  automaticHold:
-    aircraft: {fileID: -3326733738379100494, guid: f940e90c224414fddb9e6ebe23fdef9b, type: 3}
-    cargoPoint: Cargo_Bulk
-    bagCapacity: 100
-    weightCapacity: 1500
-  standIds: 9f000000i
-  incomingBags: 20
-  outgoingBags: 30
-  kilogramsPerBag: 15
 --- !u!1001 &485289262
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -727,6 +589,7 @@ GameObject:
   - component: {fileID: 513700119}
   - component: {fileID: 513700118}
   - component: {fileID: 513700117}
+  - component: {fileID: 513700120}
   m_Layer: 0
   m_Name: Airport
   m_TagString: Untagged
@@ -809,15 +672,6 @@ MonoBehaviour:
     centre: {x: 0, y: 0, z: 0}
     size: {x: 0, y: 0}
     rotation: 0
-  - outline:
-    - {x: 2180, y: -940.44}
-    - {x: 2460, y: -940.44}
-    - {x: 2460, y: -680.44}
-    - {x: 2180, y: -680.44}
-    surface: 2
-    centre: {x: 0, y: 0, z: 0}
-    size: {x: 0, y: 0}
-    rotation: 0
   terminals:
   - corners:
     - {x: 190, y: 35}
@@ -894,12 +748,23 @@ Transform:
   - {fileID: 1643819444}
   - {fileID: 1404245077}
   - {fileID: 714872623}
-  - {fileID: 1313155050}
-  - {fileID: 344564864}
-  - {fileID: 276122250}
-  - {fileID: 908059854}
+  - {fileID: 2112188688}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &513700120
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 513700116}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6b2079bcfe704425db034a3d80760803, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: AirCity.Runtime::AirCity.Characters.MarshallerPresentation
+  crewPrefab: {fileID: 7494784821024123176, guid: 6c9d336579bc2485db50f3e7ef69635c, type: 3}
+  wandPrefab: {fileID: 2090809291513298633, guid: 677dfe07d1efa4b0091d22acfe47ff49, type: 3}
 --- !u!1001 &530730819
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -1078,7 +943,7 @@ MonoBehaviour:
   snow: 0
   grass: 5
   vergeGrass: 14
-  letter: 
+  letter:
 --- !u!4 &672519418
 Transform:
   m_ObjectHideFlags: 0
@@ -1259,7 +1124,7 @@ MonoBehaviour:
   snow: 0
   grass: 5
   vergeGrass: 11
-  letter: 
+  letter:
 --- !u!4 &835300414
 Transform:
   m_ObjectHideFlags: 0
@@ -1341,67 +1206,6 @@ Transform:
   m_CorrespondingSourceObject: {fileID: 4019062711515380048, guid: 66b330c0a40764e889b114d9b01e98bd, type: 3}
   m_PrefabInstance: {fileID: 862079739}
   m_PrefabAsset: {fileID: 0}
---- !u!1 &908059853
-GameObject:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  serializedVersion: 6
-  m_Component:
-  - component: {fileID: 908059854}
-  - component: {fileID: 908059855}
-  m_Layer: 0
-  m_Name: Depot 3
-  m_TagString: Untagged
-  m_Icon: {fileID: 0}
-  m_NavMeshLayer: 0
-  m_StaticEditorFlags: 0
-  m_IsActive: 1
---- !u!4 &908059854
-Transform:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 908059853}
-  serializedVersion: 2
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 2340, y: 0, z: -910.44}
-  m_LocalScale: {x: 1, y: 1, z: 1}
-  m_ConstrainProportionsScale: 0
-  m_Children: []
-  m_Father: {fileID: 513700119}
-  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!114 &908059855
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 908059853}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: ae1275a7d63b945f2ad724e6aa3ad8c5, type: 3}
-  m_Name:
-  m_EditorClassIdentifier: AirCity.Runtime::AirCity.Vehicles.MaintenanceDepot
-  snowPloughs: 0
-  mowers: 0
-  maxPloughTeam: 4
-  maxMowerTeam: 3
-  smallTugs: 0
-  largeTugs: 1
-  autoDispatch: 0
-  ploughType: {fileID: -3326733738379100494, guid: d292e0dd214bc4acaa50dc8736d19172, type: 3}
-  mowerType: {fileID: -3326733738379100494, guid: a57d1a571ee3046349a0bd8c7b69b835, type: 3}
-  buildingType: {fileID: -3326733738379100494, guid: 1cc65487f98c7425fb60b6e7346e31d0, type: 3}
-  ploughPrefab: {fileID: 8369827378205381208, guid: 7e47dd6970c944762a9bf921ca57e665, type: 3}
-  mowerPrefab: {fileID: 4096119826812924891, guid: 56c2e4f8136ae412f8be850e3d91a69d, type: 3}
-  buildingPrefab: {fileID: 5713279876857761916, guid: 9b38647b73b9544a29eae5a933200e9c, type: 3}
-  smallTugType: {fileID: -3326733738379100494, guid: 4c0180cb1875f43a78da5b6c9c67d45c, type: 3}
-  largeTugType: {fileID: -3326733738379100494, guid: 878ebe6b8ab2644028f8f4f7afe348ce, type: 3}
-  smallTugPrefab: {fileID: 8397269596793230500, guid: 7e307828d0e93465191fcfd984b23d44, type: 3}
-  largeTugPrefab: {fileID: 2698230359660931699, guid: dfd753f48c044493fb0494e4d9d4dd1a, type: 3}
 --- !u!1001 &914512989
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -1580,7 +1384,7 @@ MonoBehaviour:
   snow: 0
   grass: 5
   vergeGrass: 9
-  letter: 
+  letter:
 --- !u!4 &1131125163
 Transform:
   m_ObjectHideFlags: 0
@@ -1682,7 +1486,6 @@ GameObject:
   - component: {fileID: 1277680205}
   - component: {fileID: 1277680211}
   - component: {fileID: 1277680212}
-  - component: {fileID: 1277680213}
   m_Layer: 0
   m_Name: Main Camera
   m_TagString: MainCamera
@@ -1850,98 +1653,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: AirCity.Runtime::AirCity.Dev.DevBaggageControls
   station: {fileID: 1643819445}
   standIndex: 0
---- !u!114 &1277680213
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1277680204}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: d360834d181d44deba8f3e1fbf10494e, type: 3}
-  m_Name:
-  m_EditorClassIdentifier: AirCity.Runtime::AirCity.Dev.DevContainerControls
-  station: {fileID: 1313155051}
-  standIndex: 0
---- !u!1 &1313155049
-GameObject:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  serializedVersion: 6
-  m_Component:
-  - component: {fileID: 1313155050}
-  - component: {fileID: 1313155051}
-  m_Layer: 0
-  m_Name: Sandbox container hall
-  m_TagString: Untagged
-  m_Icon: {fileID: 0}
-  m_NavMeshLayer: 0
-  m_StaticEditorFlags: 0
-  m_IsActive: 1
---- !u!4 &1313155050
-Transform:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1313155049}
-  serializedVersion: 2
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: 0}
-  m_LocalScale: {x: 1, y: 1, z: 1}
-  m_ConstrainProportionsScale: 0
-  m_Children: []
-  m_Father: {fileID: 513700119}
-  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!114 &1313155051
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1313155049}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: bc2bb1ec3e4774d52893d46a3d4503d4, type: 3}
-  m_Name:
-  m_EditorClassIdentifier: AirCity.Runtime::AirCity.Vehicles.ContainerStation
-  tractorType: {fileID: -3326733738379100494, guid: df909079fb16946b782e00e7e864b688, type: 3}
-  dollyType: {fileID: -3326733738379100494, guid: fe8cd0fd426cf47968b05c92b7dc5ea0, type: 3}
-  loaderType: {fileID: -3326733738379100494, guid: 5db93c2cccd3a4c4aa882984844d2721, type: 3}
-  unitType: {fileID: -3326733738379100494, guid: abb7cf18c1c344327a55ee740ac55873, type: 3}
-  tractorPrefab: {fileID: 3562454459076569721, guid: 46043b41b19ce408589d50124d3bd900, type: 3}
-  dollyPrefab: {fileID: 8345109975887365223, guid: 0371e32b8e05b4bc696ca31db6d89dab, type: 3}
-  loaderPrefab: {fileID: 176612000154852963, guid: 3139effa022604437a5654e9447f7a56, type: 3}
-  unitPrefab: {fileID: 3098817255175010108, guid: b8c7f77684f954ffa87683c37aefae4d, type: 3}
-  dispatchNode: 160
-  arrivalsNode: 164
-  dispatchBearing: 0
-  arrivalsBearing: 90
-  loaderParkingBearing: 0
-  loaderParking: {x: 2359.875, y: -780.44}
-  hallSlots: 16
-  arrivalsBagCapacity: 2000
-  hallGrossCapacity: 25408
-  arrivalsBagWeight: 30000
-  unpackSecondsPerBag: 0.15
-  accessBlocked: 0
-  automaticHandling: 1
-  automaticHold:
-    aircraft: {fileID: -3326733738379100494, guid: f940e90c224414fddb9e6ebe23fdef9b, type: 3}
-    cargoPoint: Cargo_Fwd
-    acceptedCode: AKE
-    slots: 4
-    maxGross: 6352
-  standIds: 9f000000i
-  incomingBags: 120
-  outgoingBags: 210
-  bagsPerContainer: 70
-  kilogramsPerBag: 15
-  outgoingScreened: 1
-  bulkStation: {fileID: 344564865}
+  depotSize: 0
 --- !u!1 &1315848453
 GameObject:
   m_ObjectHideFlags: 0
@@ -2590,10 +2302,10 @@ MonoBehaviour:
     position: {x: 1456.2129, y: 0, z: -363.54}
     runway: {fileID: 0}
   - id: 136
-    position: {x: 1456.2129, y: 0, z: -316.54}
+    position: {x: 1456.2129, y: 0, z: -304.54}
     runway: {fileID: 0}
   - id: 137
-    position: {x: 1436.2129, y: 0, z: -316.54}
+    position: {x: 1436.2129, y: 0, z: -304.54}
     runway: {fileID: 0}
   - id: 138
     position: {x: 1436.2129, y: 0, z: -388.54}
@@ -2607,50 +2319,44 @@ MonoBehaviour:
   - id: 147
     position: {x: 1436.2129, y: 0, z: -400}
     runway: {fileID: 0}
-  - id: 151
-    position: {x: 2050, y: 0, z: 230}
+  - id: 185
+    position: {x: 1456.2129, y: 0, z: -377.54}
     runway: {fileID: 0}
-  - id: 152
-    position: {x: 2050, y: 0, z: -900}
+  - id: 188
+    position: {x: 1456.2129, y: 0, z: -347.54}
     runway: {fileID: 0}
-  - id: 153
-    position: {x: 2450, y: 0, z: -900}
+  - id: 191
+    position: {x: 1460.2129, y: 0, z: -367.54}
     runway: {fileID: 0}
-  - id: 155
-    position: {x: 2050, y: 0, z: 135.03537}
-    runway: {fileID: 1131125162}
-  - id: 160
-    position: {x: 2329.875, y: 0, z: -845.44}
+  - id: 192
+    position: {x: 1460.2129, y: 0, z: -355.54}
     runway: {fileID: 0}
-  - id: 161
-    position: {x: 2329.875, y: 0, z: -740.44}
+  - id: 196
+    position: {x: 1456.2129, y: 0, z: -341.54}
     runway: {fileID: 0}
-  - id: 162
-    position: {x: 2304.875, y: 0, z: -740.44}
+  - id: 199
+    position: {x: 1460.2129, y: 0, z: -351.54}
     runway: {fileID: 0}
-  - id: 163
-    position: {x: 2304.875, y: 0, z: -875.44}
+  - id: 202
+    position: {x: 1456.2129, y: 0, z: -353.54}
     runway: {fileID: 0}
-  - id: 164
-    position: {x: 2316.875, y: 0, z: -875.44}
+  - id: 205
+    position: {x: 1456.2129, y: 0, z: -317.54}
     runway: {fileID: 0}
-  - id: 165
-    position: {x: 2329.875, y: 0, z: -875.44}
+  - id: 208
+    position: {x: 1460.2129, y: 0, z: -343.54}
     runway: {fileID: 0}
-  - id: 172
-    position: {x: 2304.875, y: 0, z: -900}
+  - id: 209
+    position: {x: 1460.2129, y: 0, z: -331.54}
     runway: {fileID: 0}
-  - id: 176
-    position: {x: 2354.875, y: 0, z: -805.44}
+  - id: 210
+    position: {x: 1460.2129, y: 0, z: -327.54}
     runway: {fileID: 0}
-  - id: 177
-    position: {x: 2354.875, y: 0, z: -740.44}
+  - id: 211
+    position: {x: 1458.6129, y: 0, z: -347.54}
     runway: {fileID: 0}
-  - id: 178
-    position: {x: 2341.875, y: 0, z: -875.44}
-    runway: {fileID: 0}
-  - id: 179
-    position: {x: 2354.875, y: 0, z: -875.44}
+  - id: 220
+    position: {x: 1458.6129, y: 0, z: -347.54}
     runway: {fileID: 0}
   edges:
   - id: 16
@@ -3258,17 +2964,6 @@ MonoBehaviour:
     grass: 5
     road: 0
     vergeGrass: 5
-  - id: 141
-    a: 135
-    b: 136
-    width: 12
-    surface: 2
-    lit: 0
-    wear: 0
-    snow: 0
-    grass: 5
-    road: 1
-    vergeGrass: 5
   - id: 142
     a: 136
     b: 137
@@ -3313,17 +3008,6 @@ MonoBehaviour:
     grass: 5
     road: 1
     vergeGrass: 5
-  - id: 146
-    a: 140
-    b: 135
-    width: 12
-    surface: 2
-    lit: 0
-    wear: 0
-    snow: 0
-    grass: 5
-    road: 1
-    vergeGrass: 5
   - id: 148
     a: 129
     b: 147
@@ -3357,43 +3041,10 @@ MonoBehaviour:
     grass: 5
     road: 1
     vergeGrass: 5
-  - id: 154
-    a: 44
-    b: 151
-    width: 25
-    surface: 2
-    lit: 0
-    wear: 0
-    snow: 0
-    grass: 5
-    road: 0
-    vergeGrass: 5
-  - id: 156
-    a: 151
-    b: 155
-    width: 25
-    surface: 2
-    lit: 0
-    wear: 0
-    snow: 0
-    grass: 5
-    road: 0
-    vergeGrass: 5
-  - id: 157
-    a: 155
-    b: 152
-    width: 25
-    surface: 2
-    lit: 0
-    wear: 0
-    snow: 0
-    grass: 5
-    road: 0
-    vergeGrass: 5
-  - id: 166
-    a: 160
-    b: 161
-    width: 14
+  - id: 186
+    a: 140
+    b: 185
+    width: 12
     surface: 2
     lit: 0
     wear: 0
@@ -3401,10 +3052,10 @@ MonoBehaviour:
     grass: 5
     road: 1
     vergeGrass: 5
-  - id: 167
-    a: 161
-    b: 162
-    width: 14
+  - id: 187
+    a: 185
+    b: 135
+    width: 12
     surface: 2
     lit: 0
     wear: 0
@@ -3412,10 +3063,10 @@ MonoBehaviour:
     grass: 5
     road: 1
     vergeGrass: 5
-  - id: 168
-    a: 162
-    b: 163
-    width: 14
+  - id: 193
+    a: 185
+    b: 191
+    width: 4.5
     surface: 2
     lit: 0
     wear: 0
@@ -3423,10 +3074,10 @@ MonoBehaviour:
     grass: 5
     road: 1
     vergeGrass: 5
-  - id: 169
-    a: 163
-    b: 164
-    width: 14
+  - id: 194
+    a: 191
+    b: 192
+    width: 4.5
     surface: 2
     lit: 0
     wear: 0
@@ -3434,10 +3085,10 @@ MonoBehaviour:
     grass: 5
     road: 1
     vergeGrass: 5
-  - id: 170
-    a: 164
-    b: 165
-    width: 14
+  - id: 197
+    a: 188
+    b: 196
+    width: 12
     surface: 2
     lit: 0
     wear: 0
@@ -3445,10 +3096,10 @@ MonoBehaviour:
     grass: 5
     road: 1
     vergeGrass: 5
-  - id: 171
-    a: 165
-    b: 160
-    width: 14
+  - id: 200
+    a: 192
+    b: 199
+    width: 4.5
     surface: 2
     lit: 0
     wear: 0
@@ -3456,32 +3107,10 @@ MonoBehaviour:
     grass: 5
     road: 1
     vergeGrass: 5
-  - id: 173
-    a: 152
-    b: 172
-    width: 25
-    surface: 2
-    lit: 0
-    wear: 0
-    snow: 0
-    grass: 5
-    road: 0
-    vergeGrass: 5
-  - id: 174
-    a: 172
-    b: 153
-    width: 25
-    surface: 2
-    lit: 0
-    wear: 0
-    snow: 0
-    grass: 5
-    road: 0
-    vergeGrass: 5
-  - id: 175
-    a: 163
-    b: 172
-    width: 14
+  - id: 203
+    a: 135
+    b: 202
+    width: 12
     surface: 2
     lit: 0
     wear: 0
@@ -3489,10 +3118,10 @@ MonoBehaviour:
     grass: 5
     road: 1
     vergeGrass: 5
-  - id: 180
-    a: 176
-    b: 177
-    width: 14
+  - id: 204
+    a: 202
+    b: 188
+    width: 12
     surface: 2
     lit: 0
     wear: 0
@@ -3500,10 +3129,10 @@ MonoBehaviour:
     grass: 5
     road: 1
     vergeGrass: 5
-  - id: 181
-    a: 177
-    b: 161
-    width: 14
+  - id: 206
+    a: 196
+    b: 205
+    width: 12
     surface: 2
     lit: 0
     wear: 0
@@ -3511,10 +3140,10 @@ MonoBehaviour:
     grass: 5
     road: 1
     vergeGrass: 5
-  - id: 182
-    a: 165
-    b: 178
-    width: 14
+  - id: 207
+    a: 205
+    b: 136
+    width: 12
     surface: 2
     lit: 0
     wear: 0
@@ -3522,10 +3151,10 @@ MonoBehaviour:
     grass: 5
     road: 1
     vergeGrass: 5
-  - id: 183
-    a: 178
-    b: 179
-    width: 14
+  - id: 212
+    a: 199
+    b: 211
+    width: 4.5
     surface: 2
     lit: 0
     wear: 0
@@ -3533,10 +3162,109 @@ MonoBehaviour:
     grass: 5
     road: 1
     vergeGrass: 5
-  - id: 184
-    a: 179
-    b: 176
-    width: 14
+  - id: 213
+    a: 211
+    b: 196
+    width: 4.5
+    surface: 2
+    lit: 0
+    wear: 0
+    snow: 0
+    grass: 5
+    road: 1
+    vergeGrass: 5
+  - id: 214
+    a: 202
+    b: 211
+    width: 4.5
+    surface: 2
+    lit: 0
+    wear: 0
+    snow: 0
+    grass: 5
+    road: 1
+    vergeGrass: 5
+  - id: 215
+    a: 211
+    b: 208
+    width: 4.5
+    surface: 2
+    lit: 0
+    wear: 0
+    snow: 0
+    grass: 5
+    road: 1
+    vergeGrass: 5
+  - id: 216
+    a: 208
+    b: 209
+    width: 4.5
+    surface: 2
+    lit: 0
+    wear: 0
+    snow: 0
+    grass: 5
+    road: 1
+    vergeGrass: 5
+  - id: 217
+    a: 209
+    b: 210
+    width: 4.5
+    surface: 2
+    lit: 0
+    wear: 0
+    snow: 0
+    grass: 5
+    road: 1
+    vergeGrass: 5
+  - id: 218
+    a: 210
+    b: 205
+    width: 4.5
+    surface: 2
+    lit: 0
+    wear: 0
+    snow: 0
+    grass: 5
+    road: 1
+    vergeGrass: 5
+  - id: 221
+    a: 199
+    b: 220
+    width: 4.5
+    surface: 2
+    lit: 0
+    wear: 0
+    snow: 0
+    grass: 5
+    road: 1
+    vergeGrass: 5
+  - id: 222
+    a: 220
+    b: 196
+    width: 4.5
+    surface: 2
+    lit: 0
+    wear: 0
+    snow: 0
+    grass: 5
+    road: 1
+    vergeGrass: 5
+  - id: 223
+    a: 202
+    b: 220
+    width: 4.5
+    surface: 2
+    lit: 0
+    wear: 0
+    snow: 0
+    grass: 5
+    road: 1
+    vergeGrass: 5
+  - id: 224
+    a: 220
+    b: 208
+    width: 4.5
     surface: 2
     lit: 0
     wear: 0
@@ -4658,58 +4386,7 @@ MonoBehaviour:
     baggageEntryNode: 137
     baggageExitNode: 138
     framed: 1
-  - id: 159
-    number: 17
-    kind: 0
-    code: 4
-    surface: 2
-    exit: 0
-    noSmallAircraft: 1
-    position: {x: 2250, y: 0, z: -900}
-    heading: 0
-    front: 90
-    lane: 25
-    bridges: []
-    head:
-      id: 0bbbcbe169644305a936912946911530
-      appearance: {fileID: 0}
-      foundation: 0
-      exterior:
-        facade:
-          lean: 0
-          cladding: {r: 0.8, g: 0.81, b: 0.8, a: 1}
-          glassTint: {r: 1, g: 1, b: 1, a: 1}
-          frames: {r: 0.42, g: 0.44, b: 0.46, a: 1}
-          glazing: 1
-          mullionSpacing: 3
-          spandrel: 1.1
-        faces: []
-        roof: {r: 0.58, g: 0.58, b: 0.56, a: 1}
-        parapet: 0.3
-        roofShape:
-          form: 0
-          rise: 3
-          overhang: 0
-          across: 0
-        columnGap: 0
-        usesStyle: 0
-        style: 0
-      from: {x: 0, y: 0}
-      to: {x: 0, y: 0}
-      root: {x: 0, y: 0}
-      floor: 0
-      upperFloor: 0
-      width: 0
-      connectionFloor: 0
-      linkBends: []
-      supportColumns: []
-      linkSupportColumns: []
-    additionalHeads: []
-    serviceConfigurations: []
-    baggageEntryNode: 161
-    baggageExitNode: 163
-    framed: 1
-  nextId: 185
+  nextId: 225
 --- !u!1001 &1570641842
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -5026,10 +4703,10 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 2fb496f16187f46be8bf61aabc5e340e, type: 3}
   m_Name:
   m_EditorClassIdentifier: AirCity.Runtime::AirCity.Vehicles.BaggageStation
-  dispatchNode: 135
-  arrivalsNode: 139
+  dispatchNode: 192
+  arrivalsNode: 192
   dispatchBearing: 0
-  arrivalsBearing: 90
+  arrivalsBearing: 0
   tractorType: {fileID: -3326733738379100494, guid: df909079fb16946b782e00e7e864b688, type: 3}
   cartType: {fileID: -3326733738379100494, guid: 2c05422d21f984fecb2cb048852072ae, type: 3}
   loaderType: {fileID: -3326733738379100494, guid: 54d58fcb312bc48c8a286cf4449622ee, type: 3}
@@ -5040,8 +4717,17 @@ MonoBehaviour:
   - {fileID: 8711824811110389129, guid: 3939571d326c746639b855e7005e1d2f, type: 3}
   - {fileID: 2929987237262034617, guid: db2e721396c3142b498eff35a84869b5, type: 3}
   - {fileID: 5544638259016835420, guid: e5776fc4f6cea41d0862506e14c587de, type: 3}
+  bagPropType: {fileID: -3326733738379100494, guid: 59fb8e68df06e45d79f22352ce3af946, type: 3}
+  crewPrefab: {fileID: 7494784821024123176, guid: 6c9d336579bc2485db50f3e7ef69635c, type: 3}
+  crewType: {fileID: 5869860215628962850, guid: b5e1e88c1a8b5443ab0eace27f85ea22, type: 3}
+  cartCount: 2
+  depot: {fileID: 2112188689}
+  depotBay: 0
+  workersPerTeam: 4
   loaderParking: {x: 1476.2129, y: -363.54}
   loaderParkingBearing: 0
+  parkAtStand: 1
+  parkingStandId: 0
   dispatchCapacity: 1000
   arrivalsCapacity: 1000
   dispatchWeight: 20000
@@ -5474,6 +5160,55 @@ Transform:
   m_CorrespondingSourceObject: {fileID: 8714577273675053963, guid: 9720ec80150184e9ca4f0b9ba418c21a, type: 3}
   m_PrefabInstance: {fileID: 2110644121}
   m_PrefabAsset: {fileID: 0}
+--- !u!1 &2112188687
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 2112188688}
+  - component: {fileID: 2112188689}
+  m_Layer: 0
+  m_Name: Baggage depot
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &2112188688
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2112188687}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 513700119}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &2112188689
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2112188687}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 335e6f0a7c0b54b2abd2608a0834c4de, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: AirCity.Runtime::AirCity.Vehicles.BaggageDepot
+  size: 0
+  hiredWorkers: 4
+  firstBay: {x: 1456.2129, y: -355.54}
+  bearing: 0
+  bayLayoutVersion: 3
 --- !u!1 &2115154156
 GameObject:
   m_ObjectHideFlags: 0
@@ -5527,7 +5262,7 @@ MonoBehaviour:
   snow: 0
   grass: 19
   vergeGrass: 8
-  letter: 
+  letter:
 --- !u!1001 &2128559120
 PrefabInstance:
   m_ObjectHideFlags: 0

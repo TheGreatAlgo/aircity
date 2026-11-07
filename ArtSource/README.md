@@ -2,6 +2,14 @@
 
 Scripts that generate the game's art. The outputs go straight into `Assets/AirCity/`. Regenerate rather than hand-edit.
 
+Ramp workers have their own skinned-character generator in `Characters/RampCrew/build.py`; run it through
+Blender to regenerate the shared FBX, LODs, fabric/skin atlases and `.crew` timing data. See
+[`Docs/assets/RampCrew.md`](../Docs/assets/RampCrew.md). Equipment workstations are declared as `CREW` in
+vehicle models; `python3 ArtSource/Vehicles/crew_profiles.py` refreshes those metadata fields without rebaking art.
+The same character build exports marshalling wands. `Vehicles/prop_profiles.py` (Blender, `-- --model BaggageProps`)
+exports per-bag dimensions for stacking. `Aircraft/hold_profiles.py` refreshes hold packing envelopes from the
+source compartments without rebaking unchanged aircraft geometry.
+
 ## Aircraft
 
 Every aircraft type is built procedurally in Blender (5.2+) by one shared pipeline (`Aircraft/Common`) from a
@@ -45,7 +53,7 @@ FBX, textures and type data automatically.
 
 `model.py` is a plain module. See `Cessna172/model.py` (light single) and `Narrowbody/model.py` (twinjet).
 
-- `NAME`, `DISPLAY_NAME`, `CATEGORY` (`AirCity.Aircraft.AircraftCategory`), `S_REF`, `Fuselage`, `AO_DISTANCE`.
+- `NAME` (internal only), `DISPLAY_NAME` (the kind: "Narrowbody twinjet"), `SEATS` (the player sees "Starling <size code><seats>", see `Docs/systems/aircraft.md` Naming), `CATEGORY` (`AirCity.Aircraft.AircraftCategory`), `S_REF`, `Fuselage`, `AO_DISTANCE`.
 - `build()` → `(body MeshBuilder, [Mover, ...])`. Movers are separately animated parts; the runtime finds them by
   name: `Propeller` / `Fan_*` spin; `Rudder*`, `Elevator*`, `Aileron_L*` / `Aileron_R*`, `Flap_L*` / `Flap_R*`
   deflect; `NoseGear` steers; the wheels named in `GEAR` roll. Give a mover a `hinge` direction when its hinge

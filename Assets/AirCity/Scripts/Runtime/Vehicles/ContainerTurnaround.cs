@@ -8,7 +8,7 @@ namespace AirCity.Vehicles
     {
         WaitingAircraft, WaitingEquipment, LoaderApproach, SettingUp, ToStand, HoldToFront, AlignMainHigh,
         FrontToMain, LowerMain, MainToDolly, ToArrivals, Unpacking, ToDispatch, Collecting, Outbound,
-        DollyToMain, RaiseMain, MainToFront, FrontToHold, ReturnDispatch, Withdrawing, Complete, Cancelled, Docking, Undocking
+        DollyToMain, RaiseMain, MainToFront, FrontToHold, ReturnDispatch, Withdrawing, Complete, Cancelled, Docking, Undocking, ParkingTrain
     }
 
     /// <summary>One dolly, one dual-platform loader and any number of compatible containers up to the hold capacity.</summary>
@@ -143,7 +143,7 @@ namespace AirCity.Vehicles
                     if (!MoveLoader(Plan.loaderDock, dt)) break;
                     docked = true; loaderDistance = 0f;
                     if (cancelled) { Withdraw(true); break; }
-                    Set(ContainerTurnaroundState.ToStand, Plan.toStand);
+                    Set(ContainerTurnaroundState.ToStand, Plan.initial ?? Plan.toStand);
                     break;
                 case ContainerTurnaroundState.ToStand:
                     Fleet.Stabilisers = Mathf.MoveTowards(Fleet.Stabilisers, 1f, dt);
@@ -240,15 +240,25 @@ namespace AirCity.Vehicles
                     if (loaderHome)
                     {
                         if (!Door(false, dt)) break;
-                        Fleet.Job = null; Set(cancelled ? ContainerTurnaroundState.Cancelled : ContainerTurnaroundState.Complete);
-                        if (cancelled) Waiting = "cancelled; all containers and baggage retained at their recorded locations";
+                        if (Plan.dispatchPark != null && Vector2.Distance(Fleet.Train.Tractor.position,Plan.trainParking.Value.position)>.05f)
+                            Set(ContainerTurnaroundState.ParkingTrain,Plan.dispatchPark);
+                        else Complete();
                     }
+                    break;
+                case ContainerTurnaroundState.ParkingTrain:
+                    if (Drive(dt)) Complete();
                     break;
                 case ContainerTurnaroundState.Undocking:
                     if (MoveLoader(Plan.loaderUndock, dt))
                     { docked = false; loaderDistance = 0f; Set(ContainerTurnaroundState.Withdrawing); }
                     break;
             }
+        }
+        void Complete()
+        {
+            Fleet.TrainSpeed=Fleet.LoaderSpeed=0f;
+            Fleet.Job=null; Set(cancelled ? ContainerTurnaroundState.Cancelled : ContainerTurnaroundState.Complete);
+            if (cancelled) Waiting="cancelled; all containers and baggage retained at their recorded locations";
         }
         bool Incoming(ContainerUnit unit) => unit != null && inbound.Contains(unit);
         bool ManifestLocationsValid()
@@ -274,7 +284,9 @@ namespace AirCity.Vehicles
             if (current != null) Set(ContainerTurnaroundState.Collecting); else Withdraw(true);
         }
         void Withdraw(bool home)
-        { trainHome = home; loaderHome = false; loaderDistance = 0f; Set(ContainerTurnaroundState.Withdrawing, home ? null : Plan.home); }
+        {
+            trainHome = home; loaderHome = false; loaderDistance = 0f; Set(ContainerTurnaroundState.Withdrawing, home ? null : Plan.home);
+        }
         void Set(ContainerTurnaroundState state, VehiclePath path = null)
         {
             State = state; TransferUnit = null; TransferFrom = TransferTo = null; TransferProgress = 0f; handling = 0f;

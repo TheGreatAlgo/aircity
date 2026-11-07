@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using AirCity.Aircraft;
 using UnityEngine;
 
 namespace AirCity.Airfield.Building
@@ -8,7 +9,7 @@ namespace AirCity.Airfield.Building
     ///  - pad: from under the taxiway out to the far end in the stand's frame (AirfieldKind.Stand), so stands of one
     ///    angle side by side tile and their slab joints line up; grass and dirt get ragged edges and no paint;
     ///  - push-back stands: a lead-in line curving off the taxiway centreline (from both ways when the stand is
-    ///    about square on), a stop bar for the nose gear, a red boundary round the parked aircraft, and at the
+    ///    about square on), labelled aircraft-specific nose-wheel stop bars, a red boundary round the parked aircraft, and at the
     ///    entrance the stand number (yellow) and the size code it takes (white);
     ///  - taxi-out stands: the hairpin lead-in round to the stand centreline, down it to the stop bar and on as the
     ///    lead-out turning onto the taxiway; boundary, number and code read by the pilot coming down the centreline;
@@ -19,7 +20,7 @@ namespace AirCity.Airfield.Building
     {
         const float LineHalfWidth = 0.075f, SafetyHalfWidth = 0.1f, StopBarHalfWidth = 0.2f, TextGap = 1.2f;
 
-        public void Build(StandLayout l, SurfaceBuilder surface, PaintBuilder paint)
+        public void Build(StandLayout l, SurfaceBuilder surface, PaintBuilder paint, IEnumerable<AircraftType> types)
         {
             var s = l.stand;
             bool paved = s.surface.IsPaved();
@@ -28,8 +29,8 @@ namespace AirCity.Airfield.Building
             if (!paved) return;
             paint.frame = RunwayFrame.None;
             if (s.DeIcing) DeIcingPaint(l, paint);
-            else if (l.TaxiOut) TaxiOutPaint(l, paint);
-            else PushBackPaint(l, paint);
+            else if (l.TaxiOut) TaxiOutPaint(l, paint, types);
+            else PushBackPaint(l, paint, types);
         }
 
         /// <summary>Stand numbers and code letters (metres tall), by code: readable from the cockpit, small on a
@@ -50,7 +51,7 @@ namespace AirCity.Airfield.Building
 
         // ------------------------------------------------------------------ parking stands
 
-        void PushBackPaint(StandLayout l, PaintBuilder paint)
+        void PushBackPaint(StandLayout l, PaintBuilder paint, IEnumerable<AircraftType> types)
         {
             char c = l.Code;
             float span = RunwayRules.MaxWingspan(c), clr = RunwayRules.StandClearance(c);
@@ -74,15 +75,7 @@ namespace AirCity.Airfield.Building
                 straight = Mathf.Min(straight, td);
             }
             paint.Strip(OffUnpaved(l, new List<Vector2> { l.entry + l.axis * straight, l.stop }), LineHalfWidth, yellow);
-            StopBar(l, paint, span);
-            foreach (var configuration in l.stand.serviceConfigurations)
-            {
-                if (configuration == null || configuration.aircraft == null || !configuration.allowed ||
-                    Mathf.Abs(configuration.stopOffset) < 0.05f || !l.ParkingFits(configuration.aircraft)) continue;
-                var at = l.StopFor(configuration.aircraft);
-                paint.Box(at, l.Right, StopBarHalfWidth, Mathf.Clamp(configuration.aircraft.Wingspan * 0.08f, 1.5f, 4f), yellow);
-                paint.Text(at + l.Right * 5f, l.axis, configuration.aircraft.model, 1f, yellow);
-            }
+            AircraftStops(l, paint, types);
 
             float half = span * 0.5f + clr * 0.25f;
             float rear = l.tailS - clr * 0.25f, front = l.noseS + clr * 0.25f;
@@ -94,7 +87,7 @@ namespace AirCity.Airfield.Building
             Labels(l, paint, l.axis, l.At(0f, textS), h2);
         }
 
-        void TaxiOutPaint(StandLayout l, PaintBuilder paint)
+        void TaxiOutPaint(StandLayout l, PaintBuilder paint, IEnumerable<AircraftType> types)
         {
             char c = l.Code;
             float span = RunwayRules.MaxWingspan(c), clr = RunwayRules.StandClearance(c);
@@ -111,7 +104,7 @@ namespace AirCity.Airfield.Building
             line.Add(l.entry + l.axis * td);
             Geo.Arc(line, centre, l.entry + l.axis * td, l.entry + l.outAlong * td, 1f, false);
             paint.Strip(OffUnpaved(l, line), LineHalfWidth, yellow);
-            StopBar(l, paint, span);
+            AircraftStops(l, paint, types);
 
             float half = span * 0.5f + clr * 0.25f;
             float near = l.noseS - clr * 0.25f, back = l.tailS + clr * 0.25f;
@@ -141,15 +134,46 @@ namespace AirCity.Airfield.Building
         void StopBar(StandLayout l, PaintBuilder paint, float span) =>
             paint.Box(l.stop, l.Right, StopBarHalfWidth, Mathf.Clamp(span * 0.08f, 1.5f, 4f), PaintBuilder.Yellow);
 
+        void AircraftStops(StandLayout l, PaintBuilder paint, IEnumerable<AircraftType> types)
+        {
+            var marks = StandMarkings.Stops(l, types);
+            if (marks.Count == 0) { StopBar(l, paint, RunwayRules.MaxWingspan(l.Code)); return; }
+            var right = Geo.Right(l.nose);
+            float labelS = float.NegativeInfinity;
+            foreach (var mark in marks)
+            {
+                const float bar = 3f;
+                var yellow = PaintBuilder.Yellow;
+                paint.Box(mark.position, right, .15f, bar, yellow);
+                float s = Vector2.Dot(mark.position-l.entry,l.nose);
+                float row = Mathf.Max(s, labelS+1.65f); labelS = row;
+                var leader = mark.position-right*(bar+.65f);
+                var labelEdge = leader+l.nose*(row-s);
+                paint.Line(mark.position-right*bar,leader,.055f,yellow);
+                paint.Line(leader,labelEdge,.055f,yellow);
+                float available = (l.nose == l.axis ? -l.x0 : l.x1)-bar-1.4f;
+                float height = Mathf.Min(1.2f, available / Mathf.Max(1f, mark.Label.Length*.48f));
+                float pitch = height*.48f;
+                float width = (mark.Label.Length-1)*pitch+height/3f;
+                paint.Text(labelEdge-right*(.35f+width*.5f),l.nose,mark.Label,pitch,yellow,height);
+            }
+            var furthest = marks[marks.Count-1].position;
+            // Continue past the final stop for alignment; all bars remain exactly at StopFor(type).
+            if (!l.TaxiOut) paint.Line(l.stop,furthest+l.nose*.8f,LineHalfWidth,PaintBuilder.Yellow);
+        }
+
         /// <summary>The red line round the parked aircraft (x0..x1 across, s0..s1 along).</summary>
         static void Boundary(StandLayout l, PaintBuilder paint, float x0, float x1, float s0, float s1)
         {
             var red = PaintBuilder.Red;
             Vector2 a = l.At(x0, s0), b = l.At(x1, s0), c = l.At(x1, s1), d = l.At(x0, s1);
-            paint.Line(a, b, SafetyHalfWidth, red, SafetyHalfWidth);
-            paint.Line(b, c, SafetyHalfWidth, red, SafetyHalfWidth);
-            paint.Line(c, d, SafetyHalfWidth, red, SafetyHalfWidth);
-            paint.Line(d, a, SafetyHalfWidth, red, SafetyHalfWidth);
+            void Edge(Vector2 p,Vector2 q)
+            {
+                if (paint.parkingBays == null) { paint.Line(p,q,SafetyHalfWidth,red,SafetyHalfWidth); return; }
+                foreach (var segment in StandMarkings.RoadSegments(p,q,paint.parkingBays,SafetyHalfWidth+.15f))
+                    paint.Line(segment.a,segment.b,SafetyHalfWidth,red);
+            }
+            Edge(a,b); Edge(b,c); Edge(c,d); Edge(d,a);
         }
 
         /// <summary>The stand's label (yellow) on the reader's left of `centre` and its size code (white) on the

@@ -40,8 +40,12 @@ namespace AirCity.Vehicles
         public static bool Validate(BaggageTrain preview, Func<BaggageVehiclePose, VehicleType, bool> clear, out string reason)
         {
             reason = null;
-            if (clear != null && (!clear(preview.Tractor, preview.TractorType) || !clear(preview.Cart, preview.CartType)))
-            { reason = "baggage parking footprint is blocked"; return false; }
+            if (clear != null)
+            {
+                if (!clear(preview.Tractor,preview.TractorType)) { reason = "baggage parking footprint is blocked"; return false; }
+                for (int i = 0; i < preview.CartCount; i++)
+                    if (!clear(preview.CartAt(i),preview.CartType)) { reason = "cart " + (i+1) + " parking footprint is blocked"; return false; }
+            }
             return preview.Advance(preview.Path.Length, clear, out reason);
         }
     }

@@ -16,11 +16,14 @@ How to build, test and look at things without the GUI, and the sandbox controls.
 
 The sandbox's **BAGGAGE** section shows the selected station and its queues; **View station** frames its apron.
 Expand **STATION SETUP** to place endpoints/loader parking, set headings and demand, add stations and assign
-stands. Select an aircraft for handling counts, screening release, cancellation and retry. **Send to reclaim**
+stands. **Stand staging** parks equipment on the cargo side of the stand; **Stage at Stand** selects its home
+when the station serves several stands. Turn staging off to place a manual loader bay. Stand layout edits
+recalculate idle equipment and its paint. Setup waits until all bulk/container work on the served stands finishes.
+Select an aircraft for handling counts, screening release, cancellation and retry. **Send to reclaim**
 frees arrivals bay capacity while retaining baggage records. **AirCity > Vehicles > Enable Sandbox Baggage**
 adds the initial service stand to an existing sandbox. See [baggage](baggage.md#sandbox-handling-and-larger-manifests).
 
-The main sandbox's **CONTAINERS > View station** frames its widebody service area. **CONTAINER STATION SETUP**
+The optional container example’s **CONTAINERS > View station** frames its widebody service area. **CONTAINER STATION SETUP**
 provides aircraft/hold compatibility, demand, station creation, endpoint placement/headings and stand assignment.
 Setup starts folded; long sidebar panels scroll so their lower controls remain accessible.
 The panel and aircraft inspector expose screening, access blocking, cancellation/retry and arrivals/reclaim.
@@ -231,3 +234,14 @@ Selecting a terminal exposes **Design building** directly; no stand is required 
 uses inactive models supplied by `DevTrafficControls`, so previews remain available after the original aircraft
 departs. The Unity editor's **AirCity > Airfield > Gate Designer** remains available for scene authoring and project
 asset presets. See [gates.md](gates.md).
+
+`StandStagingReview.FromCommandLine` renders the real staged fleets and baggage working areas in
+`Captures/StandStaging/`, including both airport orientations and a live narrowbody loading view. It leaves
+saved scene transforms unchanged. `StandMarkingsReview.InstallFromCommandLine` only upgrades missing saved
+station staging fields and review aircraft metadata.
+
+`BaggageDepotSetup.InstallSandbox` migrates the main Sandbox to one baggage example and a Small depot.
+`BaggageDepotReview.Run` captures its real collection/unloading cycle and verifies departure and conservation;
+results and animation frames are under `Logs/baggage-depot-*` and `Captures/BaggageDepot/`. Run these in an
+isolated project copy while the editor is open. The depot tests include a 50-stand queue/workforce test; this
+does not claim 50 simultaneous turnarounds or a rendering benchmark.

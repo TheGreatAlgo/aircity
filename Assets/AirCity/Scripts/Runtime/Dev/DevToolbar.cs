@@ -91,8 +91,9 @@ namespace AirCity.Dev
 
         static readonly string[] CodeTips =
         {
-            "Code A: wingspan under 15 m (Cessna 172)", "Code B: under 24 m (CRJ200, Beech 1900)", "Code C: under 36 m (A320, 737)",
-            "Code D: under 52 m (767)", "Code E: under 65 m (777, A350)", "Code F: under 80 m (A380, 747-8)",
+            "Code A: wingspan under 15 m (Starling A4)", "Code B: under 24 m (commuter turboprops and small regional jets)",
+            "Code C: under 36 m (Starling C180)", "Code D: under 52 m (mid-size widebodies)",
+            "Code E: under 65 m (Starling E350)", "Code F: under 80 m (Starling F450, F550)",
         };
 
         static readonly string[] SurfaceTips =
@@ -1105,7 +1106,7 @@ namespace AirCity.Dev
                 B("Taxi-out", () => airfield.SetStandExit(StandExit.TaxiOut),
                     "Nose out: the aircraft swings round on the way in and taxis out itself; needs about twice the room (I)",
                     airfield.StandExit == StandExit.TaxiOut));
-            PropButtons("Light a/c", B("Take", () => airfield.SetStandNoSmall(false), "Light aircraft (under 5.7 t, such as a Cessna) may park here",
+            PropButtons("Light a/c", B("Take", () => airfield.SetStandNoSmall(false), "Light aircraft (under 5.7 t, such as the Starling A4) may park here",
                     !airfield.StandNoSmall),
                 B("Turn away", () => airfield.SetStandNoSmall(true), "Turn light aircraft away: keep it for bigger aircraft", airfield.StandNoSmall));
         }
@@ -1244,7 +1245,7 @@ namespace AirCity.Dev
                     {
                         var type = t;
                         lands.Add(B("Land " + (type.maxTakeoffMass < 5700f ? "light" : "jet"), () => traffic.Land(type),
-                            $"A {type.displayName} comes in on final for the runway in use and taxis to a free stand"));
+                            $"A {type.TypeName} comes in on final for the runway in use and taxis to a free stand"));
                     }
                     if (lands.Count > 0) Buttons(lands.ToArray());
                     Buttons(B("Auto traffic", () => traffic.AutoTraffic = !traffic.AutoTraffic,

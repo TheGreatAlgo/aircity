@@ -1,7 +1,7 @@
-# Narrowbody — Narrowbody twinjet
+# Narrowbody — Starling C180 (Narrowbody twinjet)
 
 A short/medium-haul twinjet with Airbus A320-family proportions and A320-200 airport-planning performance. The
-nose and flight-deck glazing are styled after the Airbus A220. `CATEGORY = "Airliner"`, `DISPLAY_NAME = "Narrowbody
+nose and flight-deck glazing are styled after the Airbus A220. `CATEGORY = "Airliner"`, `SEATS = 180`, `DISPLAY_NAME = "Narrowbody
 twinjet"`. ICAO aerodrome code **C** (span < 36 m). Paved runways only. Built by the shared pipeline; see
 `Docs/systems/aircraft.md`.
 

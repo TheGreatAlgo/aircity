@@ -74,6 +74,7 @@ namespace AirCity.Aircraft
             public string transform;
             public Vector3 pivot, axis;
             public float openAngle, seconds, holdDepth;
+            public float holdSideMin, holdSideMax, holdHeight, holdFloorStart;
         }
 
         [Serializable]
@@ -125,9 +126,27 @@ namespace AirCity.Aircraft
         }
 
         [Header("Identity")]
+        [Tooltip("Internal model key: folder, asset and texture names. Never shown to the player.")]
         public string model;
+        [Tooltip("What kind of aircraft this is, for the player (\"narrowbody twinjet\"). The name they see is TypeName.")]
         public string displayName;
+        [Tooltip("Seats in a typical layout. The player-facing designator is the size code letter and this number.")]
+        public int seats;
         public AircraftCategory category;
+
+        /// <summary>The one (fictional) manufacturer every aircraft in the game comes from. Real manufacturers and
+        /// type names are trademarks and never appear in anything the player sees.</summary>
+        public const string Manufacturer = "Starling";
+
+        /// <summary>Player-facing type designator: the ICAO size code letter and the seat count ("A4", "C180",
+        /// "F550"), so the letter painted at a stand's entrance tells which aircraft fit it.</summary>
+        public string Designator => seats > 0 ? $"{SizeCode}{seats}" : SizeCode.ToString();
+
+        /// <summary>The name the player sees ("Starling C180").</summary>
+        public string TypeName => $"{Manufacturer} {Designator}";
+
+        /// <summary>Name with its kind ("Starling C180 narrowbody twinjet").</summary>
+        public string FullName => string.IsNullOrEmpty(displayName) ? TypeName : $"{TypeName} {displayName.ToLowerInvariant()}";
 
         [Header("Dimensions")]
         public Bounds bounds;

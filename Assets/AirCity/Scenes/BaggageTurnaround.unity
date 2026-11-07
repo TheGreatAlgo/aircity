@@ -230,8 +230,14 @@ MonoBehaviour:
   - {fileID: 8711824811110389129, guid: 3939571d326c746639b855e7005e1d2f, type: 3}
   - {fileID: 2929987237262034617, guid: db2e721396c3142b498eff35a84869b5, type: 3}
   - {fileID: 5544638259016835420, guid: e5776fc4f6cea41d0862506e14c587de, type: 3}
+  bagPropType: {fileID: -3326733738379100494, guid: 59fb8e68df06e45d79f22352ce3af946, type: 3}
+  crewPrefab: {fileID: 7494784821024123176, guid: 6c9d336579bc2485db50f3e7ef69635c, type: 3}
+  crewType: {fileID: 5869860215628962850, guid: b5e1e88c1a8b5443ab0eace27f85ea22, type: 3}
+  cartCount: 2
   loaderParking: {x: 76.212906, y: -363.54}
   loaderParkingBearing: 0
+  parkAtStand: 1
+  parkingStandId: 0
   dispatchCapacity: 1000
   arrivalsCapacity: 1000
   dispatchWeight: 20000
@@ -240,11 +246,11 @@ MonoBehaviour:
   accessBlocked: 0
   automaticHandling: 0
   automaticHold:
-    aircraft: {fileID: 0}
+    aircraft: {fileID: -3326733738379100494, guid: 5524b49403a8e4f1b80b74efaf00033e, type: 3}
     cargoPoint: Cargo_Fwd
     bagCapacity: 100
     weightCapacity: 1500
-  standIds: 
+  standIds: 08000000i
   incomingBags: 120
   outgoingBags: 180
   kilogramsPerBag: 15
@@ -380,6 +386,7 @@ GameObject:
   m_Component:
   - component: {fileID: 920773672}
   - component: {fileID: 920773673}
+  - component: {fileID: 920773674}
   m_Layer: 0
   m_Name: Turnaround airport
   m_TagString: Untagged
@@ -445,6 +452,20 @@ MonoBehaviour:
   groundSnow: 0
   timeScale: 12
   windFrom: 270
+--- !u!114 &920773674
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 920773671}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6b2079bcfe704425db034a3d80760803, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: AirCity.Runtime::AirCity.Characters.MarshallerPresentation
+  crewPrefab: {fileID: 7494784821024123176, guid: 6c9d336579bc2485db50f3e7ef69635c, type: 3}
+  wandPrefab: {fileID: 2090809291513298633, guid: 677dfe07d1efa4b0091d22acfe47ff49, type: 3}
 --- !u!1 &969069812
 GameObject:
   m_ObjectHideFlags: 0

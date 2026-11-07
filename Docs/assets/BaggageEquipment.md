@@ -3,8 +3,10 @@
 First equipment art set: `BaggageTractor`, `BaggageCart`, `BeltLoader` and `BaggageProps`.
 `BaggageDelivery.unity` reviews outbound delivery; `BaggageTurnaround.unity` connects the equipment to an airport
 stand for arrivals unloading, departing baggage loading and departure clearance. Hold contents remain ledger records; aircraft cargo hatches and openings are modelled.
-Aircraft hatches animate with the turnaround; the container fleet is documented in [ContainerEquipment](ContainerEquipment.md). The next slice adds close sill docking, timed individual bags on the conveyor, bounded cart/hold loads and reverse
-withdrawal before lowering. See [the baggage system](../systems/baggage.md). Terminal facilities remain deferred.
+Aircraft hatches animate with the turnaround; the container fleet is documented in [ContainerEquipment](ContainerEquipment.md).
+Close sill docking, individual conveyor bags, bounded loads and reverse withdrawal are implemented. [Ramp crew](RampCrew.md)
+drive the equipment, handle bags beside the cart and belt, and work inside the hold. See [the baggage system](../systems/baggage.md).
+Terminal facilities remain deferred.
 
 These are reusable, realistically proportioned, unbranded mesh assets in blue/white. They
 share the existing generated vehicle pipeline, metallic/smoothness atlases, restrained grime and separate
@@ -18,7 +20,7 @@ The [container equipment set](ContainerEquipment.md) adds a separate LD3, dolly 
 |---|---|
 | `BaggageTractor` | Compact open driving station, 1.60 m wheelbase, 0.30 m wheel radius. Seat, pedals, steering wheel, grille, steps, handrails, lamps and front/rear pin couplings. Hitch height 0.38 m. |
 | `BaggageCart` | Covered body 3.05 × 1.65 m, roof about 2.05 m high, 2.16 m wheelbase and 0.203 m wheel radius. Rolling side curtains, front steering turntable, hinged drawbar, coupling eye, rear clevis, corner bumpers and reflectors. Separate display load with ten bags. |
-| `BeltLoader` | Rigid 7.8 m conveyor with 0.60 m usable belt, 3.60 m wheelbase and 0.33 m wheel radius. Proposed working range: aircraft end 1.2–4.3 m, receiving end 0.7–1.1 m. Independent crossed-arm lifts with sliding bearings, rollers, rubber end bumpers, access strip, handrails and side driving station. |
+| `BeltLoader` | Rigid 7.8 m conveyor with 0.60 m usable belt, 3.60 m wheelbase and 0.33 m wheel radius. Proposed working range: aircraft end 1.2–4.3 m, receiving end 0.7–1.1 m. Independent crossed-arm lifts with sliding bearings, rollers, rubber end bumpers, rear access steps, a 0.46 m walkway, handrails and side driving station. |
 | `BaggageProps` | Four independent meshes: large and small hard cases, soft suitcase and duffel. Handles, wheels, zipper bands, tags and shell ribs where appropriate. Individual prefabs have their origins at ground contact. |
 
 Reference classes: [TLD JST](https://www.tld-group.com/products/baggage-tractors/jst-series/) for the open

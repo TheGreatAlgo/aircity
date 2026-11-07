@@ -13,7 +13,7 @@ namespace AirCity.EditorTools.Aircraft
     /// <see cref="AircraftType"/>. Paths in the file are relative to it, positions are already in Unity space.
     /// Re-imports automatically when the generator rewrites the file or any referenced texture.
     /// </summary>
-    [ScriptedImporter(8, "aircraft")]
+    [ScriptedImporter(11, "aircraft")]
     public class AircraftTypeImporter : ScriptedImporter
     {
 #pragma warning disable 0649   // assigned by JsonUtility
@@ -32,7 +32,7 @@ namespace AirCity.EditorTools.Aircraft
             public float taxiSpeed, rotateSpeed, approachSpeed, climbRate, climbSpeed;
         }
         [Serializable] class PointJson { public string name, type; public float[] position, normal, size; }
-        [Serializable] class CargoDoorJson { public string point, transform; public float[] pivot, axis; public float openAngle, seconds, holdDepth; }
+        [Serializable] class CargoDoorJson { public string point, transform; public float[] pivot, axis; public float openAngle, seconds, holdDepth, holdSideMin, holdSideMax, holdHeight, holdFloorStart; }
         [Serializable] class LightJson { public string name, type; public float[] position, direction, color; public float spread; }
 
         [Serializable]
@@ -45,6 +45,7 @@ namespace AirCity.EditorTools.Aircraft
         class TypeJson
         {
             public string model, displayName, category;
+            public int seats;
             public BoundsJson bounds;
             public float[] wingOutline;
             public FootprintJson[] serviceFootprints;
@@ -70,6 +71,7 @@ namespace AirCity.EditorTools.Aircraft
             t.name = json.model;
             t.model = json.model;
             t.displayName = string.IsNullOrEmpty(json.displayName) ? json.model : json.displayName;
+            t.seats = json.seats;
             t.category = Parse(ctx, json.category, AircraftCategory.GeneralAviation);
 
             if (json.bounds?.min != null && json.bounds.max != null)
@@ -123,7 +125,8 @@ namespace AirCity.EditorTools.Aircraft
             var doors = new List<AircraftType.CargoDoor>();
             foreach (var d in json.cargoDoors ?? Array.Empty<CargoDoorJson>())
                 doors.Add(new AircraftType.CargoDoor { point = d.point, transform = d.transform,
-                    pivot = V3(d.pivot), axis = V3(d.axis).normalized, openAngle = d.openAngle, seconds = d.seconds, holdDepth = d.holdDepth });
+                    pivot = V3(d.pivot), axis = V3(d.axis).normalized, openAngle = d.openAngle, seconds = d.seconds, holdDepth = d.holdDepth,
+                    holdSideMin = d.holdSideMin, holdSideMax = d.holdSideMax, holdHeight = d.holdHeight, holdFloorStart = d.holdFloorStart });
             t.cargoDoors = doors.ToArray();
             var lights = new List<AircraftType.LightPoint>();
             foreach (var l in json.lights ?? Array.Empty<LightJson>())

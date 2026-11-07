@@ -26,19 +26,30 @@ namespace AirCity.Vehicles
         public VehiclePath Path { get; private set; }
         public float Distance { get; private set; }
         public BaggageVehiclePose Tractor { get; private set; }
-        public BaggageVehiclePose Cart { get; private set; }
-        public Vector2 DrawbarFacing { get; private set; }
+        public BaggageVehiclePose Cart => carts[0];
+        BaggageVehiclePose[] carts, trialCarts;
+        Vector2[] drawbars, trialDrawbars;
+        public int CartCount => carts.Length;
+        public BaggageVehiclePose CartAt(int index) => carts[index];
+        public Vector2 DrawbarAt(int index) => drawbars[index];
+        public float SteeringAt(int index) => Mathf.DeltaAngle(Bearing(carts[index].facing),Bearing(drawbars[index]));
+        public Vector2 RearHitchAt(int index) => index < 0 ? TractorHitch : carts[index].Point(CartType.baggage.rearHitch);
+        public Vector2 FrontHitchAt(int index) => carts[index].Point(CartType.baggage.steeringPivot) + drawbars[index]*DrawbarLength;
+        public Vector2 DrawbarFacing => drawbars[0];
         public float CartSteering => Mathf.DeltaAngle(Bearing(Cart.facing), Bearing(DrawbarFacing));
         public Vector2 TractorHitch => Tractor.Point(TractorType.baggage.rearHitch);
         public Vector2 CartHitch => Cart.Point(CartType.baggage.steeringPivot) + DrawbarFacing * DrawbarLength;
         float DrawbarLength => CartType.baggage.frontHitch.z - CartType.baggage.steeringPivot.z;
 
-        public BaggageTrain(VehicleType tractor, VehicleType cart, VehiclePath path)
+        public BaggageTrain(VehicleType tractor, VehicleType cart, VehiclePath path, int cartCount = 1)
         {
             if (tractor == null || tractor.kind != VehicleKind.BaggageTractor || tractor.baggage == null ||
                 cart == null || !cart.IsBaggageTrailer || cart.baggage == null || path == null || path.Count < 2)
                 throw new ArgumentException("A baggage train needs a tractor, cart, interfaces and a forward path.");
+            if (cartCount < 1) throw new ArgumentOutOfRangeException(nameof(cartCount));
             var b = cart.baggage;
+            if (cartCount > 1 && Mathf.Abs(b.frontHitch.y-b.rearHitch.y) > .01f)
+                throw new ArgumentException("Cart-to-cart hitch heights are incompatible.");
             if (b.steeringPivot.z <= 0f || b.frontHitch.z <= b.steeringPivot.z ||
                 Mathf.Abs(b.frontHitch.x) > 0.001f || Mathf.Abs(b.steeringPivot.x) > 0.001f ||
                 Mathf.Abs(b.frontHitch.y - tractor.baggage.rearHitch.y) > 0.01f)
@@ -46,10 +57,12 @@ namespace AirCity.Vehicles
             for (float d = 0f; d <= path.Length; d += 0.5f)
                 if (path.Reversing(d)) throw new ArgumentException("Baggage trains need forward circulation.");
             TractorType = tractor; CartType = cart; Path = path;
+            carts = new BaggageVehiclePose[cartCount]; trialCarts = new BaggageVehiclePose[cartCount];
+            drawbars = new Vector2[cartCount]; trialDrawbars = new Vector2[cartCount];
             var p = path.Pose(0f, out var f, out _);
             Tractor = new BaggageVehiclePose(p, f);
-            Cart = new BaggageVehiclePose(TractorHitch - f * b.frontHitch.z, f);
-            DrawbarFacing = f;
+            for (int i = 0; i < cartCount; i++)
+            { carts[i] = new BaggageVehiclePose(RearHitchAt(i-1) - f*b.frontHitch.z,f); drawbars[i] = f; }
         }
 
         public bool Advance(float metres, Func<BaggageVehiclePose, VehicleType, bool> clear, out string reason)
@@ -63,17 +76,23 @@ namespace AirCity.Vehicles
                 var p = Path.Pose(at, out var f, out _);
                 var tractor = new BaggageVehiclePose(p, f);
                 var hitch = tractor.Point(TractorType.baggage.rearHitch);
-                var oldAxle = Cart.Point(CartType.baggage.steeringPivot);
-                var drawbar = (hitch - oldAxle).normalized;
-                var axle = hitch - drawbar * DrawbarLength;
-                var body = (axle - Cart.position).normalized;
-                var cart = new BaggageVehiclePose(axle - body * CartType.baggage.steeringPivot.z, body);
-                float steer = Mathf.DeltaAngle(Bearing(body), Bearing(drawbar));
-                if (Mathf.Abs(steer) > SteeringLimit)
-                { reason = "cart turn exceeds the drawbar steering limit"; return false; }
-                if (clear != null && (!clear(tractor, TractorType) || !clear(cart, CartType)))
-                { reason = "baggage train access is blocked"; return false; }
-                Tractor = tractor; Cart = cart; DrawbarFacing = drawbar; Distance = at;
+                if (clear != null && !clear(tractor,TractorType)) { reason = "baggage tractor access is blocked"; return false; }
+                for (int i = 0; i < carts.Length; i++)
+                {
+                    var oldAxle = carts[i].Point(CartType.baggage.steeringPivot);
+                    var drawbar = (hitch-oldAxle).normalized;
+                    var axle = hitch-drawbar*DrawbarLength;
+                    var body = (axle-carts[i].position).normalized;
+                    var cart = new BaggageVehiclePose(axle-body*CartType.baggage.steeringPivot.z,body);
+                    if (Mathf.Abs(Mathf.DeltaAngle(Bearing(body),Bearing(drawbar))) > SteeringLimit)
+                    { reason = "cart " + (i+1) + " exceeds the drawbar steering limit"; return false; }
+                    if (clear != null && !clear(cart,CartType)) { reason = "baggage train access is blocked at cart " + (i+1); return false; }
+                    trialCarts[i] = cart; trialDrawbars[i] = drawbar;
+                    hitch = cart.Point(CartType.baggage.rearHitch);
+                }
+                // Commit every link together; a blocked rear cart must not advance the tractor or another cart.
+                (carts,trialCarts) = (trialCarts,carts); (drawbars,trialDrawbars) = (trialDrawbars,drawbars);
+                Tractor = tractor; Distance = at;
             }
             return true;
         }
@@ -93,6 +112,8 @@ namespace AirCity.Vehicles
         internal BaggageTrain Preview(VehiclePath continuation)
         {
             var copy = (BaggageTrain)MemberwiseClone();
+            copy.carts = (BaggageVehiclePose[])carts.Clone(); copy.drawbars = (Vector2[])drawbars.Clone();
+            copy.trialCarts = new BaggageVehiclePose[carts.Length]; copy.trialDrawbars = new Vector2[carts.Length];
             copy.Continue(continuation);
             return copy;
         }

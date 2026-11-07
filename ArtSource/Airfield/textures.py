@@ -170,9 +170,9 @@ def build_macro():
 
 # Runway designation characters, drawn as strokes on a 3 x 9 m box (x right, y up = away from the threshold).
 # Keep CHARS, CELL, PX_PER_M, ROWS and the atlas size in sync with PaintBuilder.cs (GlyphChars, CellW / CellH, GlyphPxPerM).
-CHARS = "0123456789LCRABDEF"   # runway designators; stand size codes and de-icing bay ids
-CELL = (128, 256)            # pixels per cell; 8 x 4 cells in a 1024 x 1024 atlas
-ROWS = 4
+CHARS = "0123456789LCRABDEFGHIJKMNOPQSTUVWXYZ/-"  # runway, aircraft and equipment labels
+CELL = (128, 256)            # pixels per cell; 8 x 8 cells in a 1024 x 2048 atlas
+ROWS = 8
 PX_PER_M = 24.0
 BOX = (3.0, 9.0)
 STROKE = 0.8                 # metres (ICAO: about a quarter of the 3 m digit width)
@@ -238,6 +238,49 @@ def glyph_strokes(ch):
         return [[(xr, yt), (xl, yt), (xl, yb), (xr, yb)], [(xl, 4.7), (xr - 0.4, 4.7)]]
     if ch == "F":
         return [[(xr, yt), (xl, yt), (xl, yb)], [(xl, 4.7), (xr - 0.5, 4.7)]]
+    ym = 4.5
+    if ch == "G":
+        return glyph_strokes("C") + [[(xc, ym), (xr, ym), (xr, yb + r)]]
+    if ch == "H":
+        return [[(xl, yb), (xl, yt)], [(xr, yb), (xr, yt)], [(xl, ym), (xr, ym)]]
+    if ch == "I":
+        return [[(xl, yt), (xr, yt)], [(xc, yt), (xc, yb)], [(xl, yb), (xr, yb)]]
+    if ch == "J":
+        return [[(xl, yt), (xr, yt), (xr, yb + r)] + _arc(xc, yb + r, r, 0, -180)]
+    if ch == "K":
+        return [[(xl, yb), (xl, yt)], [(xr, yt), (xl, ym), (xr, yb)]]
+    if ch == "M":
+        return [[(xl, yb), (xl, yt), (xc, ym), (xr, yt), (xr, yb)]]
+    if ch == "N":
+        return [[(xl, yb), (xl, yt), (xr, yb), (xr, yt)]]
+    if ch == "O":
+        return glyph_strokes("0")
+    if ch == "P":
+        return glyph_strokes("R")[:2]
+    if ch == "Q":
+        return glyph_strokes("0") + [[(xc, 2.5), (xr, yb)]]
+    if ch == "S":
+        return [_arc(xc, yt-r, r, 20, 180) + [(xl, ym+r)] +
+                _arc(xc, ym+r, r, 180, 270)[1:] + _arc(xc, ym-r, r, 90, 0)[1:] +
+                [(xr, yb+r)] + _arc(xc, yb+r, r, 0, -160)[1:]]
+    if ch == "T":
+        return [[(xl, yt), (xr, yt)], [(xc, yt), (xc, yb)]]
+    if ch == "U":
+        return [[(xl, yt), (xl, yb+r)] + _arc(xc, yb+r, r, 180, 360)[1:] + [(xr, yt)]]
+    if ch == "V":
+        return [[(xl, yt), (xc, yb), (xr, yt)]]
+    if ch == "W":
+        return [[(xl, yt), (xl+.45, yb), (xc, ym), (xr-.45, yb), (xr, yt)]]
+    if ch == "X":
+        return [[(xl, yt), (xr, yb)], [(xr, yt), (xl, yb)]]
+    if ch == "Y":
+        return [[(xl, yt), (xc, ym), (xr, yt)], [(xc, ym), (xc, yb)]]
+    if ch == "Z":
+        return [[(xl, yt), (xr, yt), (xl, yb), (xr, yb)]]
+    if ch == "/":
+        return [[(xl, yb), (xr, yt)]]
+    if ch == "-":
+        return [[(xl, ym), (xr, ym)]]
     raise ValueError(ch)
 
 

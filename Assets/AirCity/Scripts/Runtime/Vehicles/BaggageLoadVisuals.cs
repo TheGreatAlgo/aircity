@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using AirCity.Characters;
 using UnityEngine;
 
 namespace AirCity.Vehicles
@@ -8,31 +9,47 @@ namespace AirCity.Vehicles
     {
         readonly Transform root;
         readonly GameObject[] prefabs;
-        readonly List<Transform> bags = new List<Transform>();
+        readonly List<Transform>[] pools;
+        readonly int[] counts;
         BaggageTurnaround lastJob;
         int used;
-        public BaggageLoadVisuals(Transform root, GameObject[] prefabs) { this.root = root; this.prefabs = prefabs; }
+        public BaggageLoadVisuals(Transform root, GameObject[] prefabs)
+        { this.root = root; this.prefabs = prefabs; pools = new List<Transform>[prefabs?.Length ?? 0]; counts = new int[pools.Length];
+            for (int i = 0; i < pools.Length; i++) pools[i] = new List<Transform>(); }
 
-        void Show(Vector3 position, Quaternion rotation)
+        void Show(Vector3 position, Quaternion rotation, RampCrewRig holder = null, int variant = -1)
         {
-            if (prefabs == null || prefabs.Length == 0 || used >= 72) return;
-            if (used == bags.Count)
+            if (prefabs == null || prefabs.Length == 0) return;
+            int bucket = variant >= 0 ? variant%pools.Length : used%pools.Length;
+            var pool = pools[bucket]; int at = counts[bucket];
+            if (at == pool.Count)
             {
-                var prefab = prefabs[used % prefabs.Length];
-                if (prefab == null) return;
-                bags.Add(Object.Instantiate(prefab, root).transform);
+                if (prefabs[bucket] == null) return;
+                pool.Add(Object.Instantiate(prefabs[bucket],root).transform);
             }
-            var bag = bags[used++]; bag.gameObject.SetActive(true);
+            var bag = pool[at]; counts[bucket]++; used++; bag.gameObject.SetActive(true);
             // Lay a suitcase flat with its lowest point on the conveyor/floor; origins differ between props.
             var mesh = bag.GetComponent<MeshFilter>().sharedMesh.bounds;
             var localRotation = rotation * Quaternion.Euler(90f, 0f, 0f);
-            bag.localRotation = localRotation;
-            bag.localPosition = position + Vector3.up * mesh.extents.z - localRotation * mesh.center;
+            if (holder != null)
+            {
+                holder.Grip(position,rotation); bag.SetParent(holder.CarrySocket,false);
+                bag.localRotation = Quaternion.Euler(90f,0f,0f);
+                bag.localPosition = Vector3.up * mesh.extents.z - bag.localRotation * mesh.center;
+            }
+            else
+            {
+                bag.SetParent(root,false); bag.localRotation = localRotation;
+                bag.localPosition = position + Vector3.up * mesh.extents.z - localRotation * mesh.center;
+            }
         }
 
-        public void Present(BaggageFleet fleet)
+        static int Variant(BaggageBatch batch,int bag) => BaggageHoldPacking.Variant(batch,bag);
+
+        public void Present(BaggageFleet fleet, RampCrewRig ground = null, RampCrewRig hold = null,
+            IReadOnlyList<RampCrewRig> groundWorkers=null,IReadOnlyList<RampCrewRig> holdWorkers=null)
         {
-            used = 0;
+            used = 0; System.Array.Clear(counts,0,counts.Length);
             if (fleet.Job != null) lastJob = fleet.Job;
             var job = fleet.Job ?? lastJob;
             int holdCount = job?.Hold.Count ?? 0, cartCount = fleet.Cart.Count;
@@ -40,44 +57,57 @@ namespace AirCity.Vehicles
             {
                 bool loading = job.TransferTo == job.Hold;
                 int started = 0, arrived = 0;
-                float travel = job.BagTravelSeconds, interval = fleet.Station.secondsPerBag;
-                var facing = Quaternion.LookRotation(job.Plan.inward);
+                float travel = job.BagTravelSeconds, interval = job.TransferInterval;
                 for (int i = 0; i < job.TransferBatch.Count; i++)
                 {
                     float elapsed = job.TransferSeconds - i * interval;
                     if (elapsed < 0f) break;
                     started++;
                     if (elapsed >= travel) { arrived++; continue; }
-                    Show(BaggageLoadPath.At(fleet, job.Plan, elapsed / travel, loading), facing);
+                    var pose = job.DepotTransfer ? fleet.Station.depot.BagAt(fleet,elapsed,i) : fleet.Crew.BagAt(elapsed,loading,i);
+                    var workers=pose.holder==0 ? groundWorkers : holdWorkers;
+                    var holder=pose.holder<0 ? null : workers!=null && workers.Count>pose.worker ? workers[pose.worker] : pose.holder==0 ? ground : hold;
+                    Show(pose.bottom,pose.rotation,holder,Variant(job.TransferBatch,i));
                 }
-                if (loading) { cartCount -= started; holdCount += arrived; }
+                if (job.DepotTransfer) cartCount+=fleet.IsCart(job.TransferFrom) ? -started : arrived;
+                else if (loading) { cartCount -= started; holdCount += arrived; }
                 else { holdCount -= started; cartCount += arrived; }
             }
             var cart = fleet.Equipment.Cart.baggage;
             int columns = Mathf.Max(1, Mathf.FloorToInt((cart.loadMax.x - cart.loadMin.x) / 0.5f));
             int rows = Mathf.Max(1, Mathf.FloorToInt((cart.loadMax.z - cart.loadMin.z) / 0.8f));
-            for (int i = 0; i < Mathf.Min(24, cartCount); i++)
+            for (int cartIndex = 0; cartIndex < fleet.Carts.Length; cartIndex++)
             {
-                var local = new Vector3(cart.loadMin.x + 0.25f + i % columns * 0.5f,
-                    cart.loadMin.y + i / (columns * rows) * 0.31f, cart.loadMin.z + 0.4f + i / columns % rows * 0.8f);
-                var p = fleet.Train.Cart.Point(local);
-                Show(new Vector3(p.x, local.y, p.y), Quaternion.LookRotation(new Vector3(fleet.Train.Cart.facing.x, 0, fleet.Train.Cart.facing.y)));
+                var pose = fleet.Train.CartAt(cartIndex); int count = cartIndex == fleet.ActiveCart ? cartCount : fleet.Carts[cartIndex].Count;
+                for (int i = 0; i < Mathf.Min(24,count); i++)
+                {
+                    var local = new Vector3(cart.loadMin.x+.25f+i%columns*.5f,
+                        cart.loadMin.y+i/(columns*rows)*.31f,cart.loadMin.z+.4f+i/columns%rows*.8f);
+                    var p = pose.Point(local);
+                    Show(new Vector3(p.x,local.y,p.y),Quaternion.LookRotation(new Vector3(pose.facing.x,0,pose.facing.y)));
+                }
             }
             if (job?.Plan != null && job.Aircraft != null && job.Aircraft.CargoDoors.IsOpen(job.HoldConfiguration.cargoPoint))
             {
-                job.HoldConfiguration.aircraft.TryGetPoint(job.HoldConfiguration.cargoPoint, out var point);
-                int across = Mathf.Max(1, Mathf.FloorToInt(point.size.x / 0.5f));
-                float depth = BaggageLoadPath.HoldDepth(job);
-                int rowsInHold = Mathf.Max(1, Mathf.FloorToInt((depth - 0.08f) / 0.6f));
-                var side = Vector3.Cross(Vector3.up, job.Plan.inward);
-                for (int i = 0; i < Mathf.Min(across * rowsInHold * 3, holdCount); i++)
+                foreach (var allocation in job.Packing.Allocations)
                 {
-                    var p = job.Plan.door + job.Plan.inward * (0.32f + i / across % rowsInHold * 0.6f) +
-                        side * ((i % across - (across - 1) * 0.5f) * 0.5f) + Vector3.up * (i / (across * rowsInHold) * 0.28f);
-                    Show(p, Quaternion.LookRotation(job.Plan.inward));
+                    var batch = allocation.Key;
+                    for (int i = 0; i < allocation.Value.Length; i++)
+                    {
+                        int slot = allocation.Value[i]; if (slot < 0) continue;
+                        bool show = batch.Location == job.Hold;
+                        if (batch == job.TransferBatch)
+                        {
+                            float elapsed = job.TransferSeconds-i*job.TransferInterval;
+                            if (job.TransferFrom == job.Hold && elapsed >= 0) show = false;
+                            if (job.TransferTo == job.Hold && elapsed >= job.BagTravelSeconds) show = true;
+                        }
+                        if (show) Show(job.Packing.WorldSlot(slot),job.Packing.BagRotation(batch,i),null,Variant(batch,i));
+                    }
                 }
             }
-            for (int i = used; i < bags.Count; i++) bags[i].gameObject.SetActive(false);
+            for (int bucket = 0; bucket < pools.Length; bucket++)
+                for (int i = counts[bucket]; i < pools[bucket].Count; i++) pools[bucket][i].gameObject.SetActive(false);
         }
     }
 }

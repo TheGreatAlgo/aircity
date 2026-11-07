@@ -31,7 +31,9 @@ namespace AirCity.Dev
             {
                 if (Station == null || Airport == null) return false;
                 foreach (var job in Airport.Baggage.ContainerJobs)
-                    if (job.Fleet.Station == station && !job.Finished) return false;
+                    if (!job.Finished && (job.Fleet.Station == station || station.standIds.Contains(job.Stand.id))) return false;
+                foreach (var job in Airport.Baggage.Jobs)
+                    if (!job.Finished && station.standIds.Contains(job.Stand.id)) return false;
                 return true;
             }
         }
@@ -70,16 +72,19 @@ namespace AirCity.Dev
             station.loaderType = source.loaderType; station.unitType = source.unitType;
             station.tractorPrefab = source.tractorPrefab; station.dollyPrefab = source.dollyPrefab;
             station.loaderPrefab = source.loaderPrefab; station.unitPrefab = source.unitPrefab;
+            station.crewPrefab = source.crewPrefab;
             var h = source.automaticHold;
             station.automaticHold = new ContainerHoldConfiguration { aircraft = h.aircraft, cargoPoint = h.cargoPoint,
                 acceptedCode = h.acceptedCode, slots = h.slots, maxGross = h.maxGross };
-            Message = "Place dispatch, arrivals and loader parking, assign stands, then enable automatic handling.";
+            station.parkAtStand=true;
+            Message = "Place dispatch and arrivals, assign stands, then enable automatic handling.";
         }
         public void ChangeAircraft(int step)
         {
             if (!CanConfigure || Airport.aircraftTypes.Count == 0) return;
             var types = Airport.aircraftTypes; int i = types.IndexOf(station.automaticHold.aircraft);
             station.automaticHold.aircraft = types[(i + step + types.Count) % types.Count];
+            Airport.Baggage.RefreshParking(station);
         }
         public void ChangeCargoPoint(int step)
         {
@@ -89,6 +94,7 @@ namespace AirCity.Dev
             if (points.Count == 0) return;
             int i = points.IndexOf(station.automaticHold.cargoPoint);
             station.automaticHold.cargoPoint = points[(i + step + points.Count) % points.Count];
+            Airport.Baggage.RefreshParking(station);
         }
         public void NextBulkStation()
         {
@@ -101,13 +107,14 @@ namespace AirCity.Dev
         {
             if (!CanConfigure || stand == null || stand.DeIcing) return;
             if (!station.standIds.Remove(stand.id)) station.standIds.Add(stand.id);
+            Airport.Baggage.RefreshParking(station);
         }
         public void Turn(BaggagePlacement endpoint, float degrees)
         {
             if (!CanConfigure) return;
             if (endpoint == BaggagePlacement.Dispatch) station.dispatchBearing = Mathf.Repeat(station.dispatchBearing + degrees, 360f);
             else if (endpoint == BaggagePlacement.Arrivals) station.arrivalsBearing = Mathf.Repeat(station.arrivalsBearing + degrees, 360f);
-            else station.loaderParkingBearing = Mathf.Repeat(station.loaderParkingBearing + degrees, 360f);
+            else { station.parkAtStand=false; station.loaderParkingBearing = Mathf.Repeat(station.loaderParkingBearing + degrees, 360f); }
             Airport.Baggage.RefreshParking(station);
         }
         public void BeginPlacement(BaggagePlacement placement)
@@ -121,7 +128,7 @@ namespace AirCity.Dev
         {
             if (!CanConfigure) return;
             var point = BaggageServicePlan.XZ(Airport.transform.InverseTransformPoint(worldPoint));
-            if (Placement == BaggagePlacement.Loader) station.loaderParking = point;
+            if (Placement == BaggagePlacement.Loader) { station.parkAtStand=false; station.loaderParking = point; }
             else
             {
                 var net = Airport.Taxiways; TaxiwayNode best = null; float distance = 15f;
@@ -142,5 +149,9 @@ namespace AirCity.Dev
             Message = null; Airport.Baggage.RefreshParking(station);
             GetComponent<DevAirfieldTool>().SetTool(DevTool.Select);
         }
+        public void StandParking(bool enabled)
+        { if (!CanConfigure) return; station.parkAtStand=enabled; Airport.Baggage.RefreshParking(station); }
+        public void StageAt(Stand stand)
+        { if (!CanConfigure || stand==null || !station.standIds.Contains(stand.id)) return; station.parkingStandId=stand.id; station.parkAtStand=true; Airport.Baggage.RefreshParking(station); }
     }
 }

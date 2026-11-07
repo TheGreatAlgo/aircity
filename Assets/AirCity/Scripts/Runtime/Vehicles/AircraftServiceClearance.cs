@@ -1,6 +1,7 @@
 using AirCity.Aircraft;
 using AirCity.Airfield;
 using UnityEngine;
+using System.Runtime.CompilerServices;
 using Box = AirCity.Vehicles.AirportMaintenance.Box;
 
 namespace AirCity.Vehicles
@@ -8,6 +9,22 @@ namespace AirCity.Vehicles
     /// <summary>Projected aircraft parts protect swept wings, engines, tail and gear during close servicing.</summary>
     public static class AircraftServiceClearance
     {
+        sealed class Envelope
+        {
+            public object parts;
+            public Bounds original,bounds;
+        }
+        static readonly ConditionalWeakTable<AircraftType,Envelope> envelopes = new ConditionalWeakTable<AircraftType,Envelope>();
+        static Bounds ServiceBounds(AircraftType type)
+        {
+            if (envelopes.TryGetValue(type,out var cached) && ReferenceEquals(cached.parts,type.serviceFootprints) && cached.original==type.bounds)
+                return cached.bounds;
+            var bounds=type.bounds;
+            foreach (var part in type.serviceFootprints)
+                foreach (var p in part.outline) bounds.Encapsulate(new Vector3(p.x,0,p.y));
+            envelopes.Remove(type); envelopes.Add(type,new Envelope { parts=type.serviceFootprints,original=type.bounds,bounds=bounds });
+            return bounds;
+        }
         public static bool Clear(Airport airport, Aircraft.Aircraft aircraft, BaggageVehiclePose pose, Bounds bounds,
             VehicleType vehicle, bool servicing, AircraftType.ServicePoint cargo, Vector3 tip, float serviceHeight)
         {
@@ -18,6 +35,7 @@ namespace AirCity.Vehicles
             var box = Box.Of(pose.position, pose.facing, bounds, 0.2f);
             if (!servicing || aircraft.type.serviceFootprints.Length == 0)
                 return !box.Overlaps(Box.Of(BaggageServicePlan.XZ(at), facing, aircraft.type.bounds, 0.75f));
+            if (!box.Overlaps(Box.Of(BaggageServicePlan.XZ(at),facing,ServiceBounds(aircraft.type),.5f))) return true;
 
             var right = new Vector2(facing.y, -facing.x);
             Vector2 Local(Vector2 p)
@@ -67,10 +85,16 @@ namespace AirCity.Vehicles
                 return min > radius || max < -radius;
             }
             if (Separated(box.ax) || Separated(box.az)) return false;
+            float area=0f;
+            for (int i=0;i<polygon.Length;i++)
+            { var a=polygon[i]; var b=polygon[(i+1)%polygon.Length]; area+=a.x*b.y-a.y*b.x; }
             for (int i = 0; i < polygon.Length; i++)
             {
                 var edge = polygon[(i + 1) % polygon.Length] - polygon[i];
-                if (Separated(new Vector2(-edge.y, edge.x))) return false;
+                // A convex polygon already lies inside each of its edge planes. Only project the box.
+                var outward=new Vector2(edge.y,-edge.x)*(area>=0f ? 1f : -1f);
+                float radius=box.hx*Mathf.Abs(Vector2.Dot(box.ax,outward))+box.hz*Mathf.Abs(Vector2.Dot(box.az,outward));
+                if (Vector2.Dot(box.c-polygon[i],outward)>radius) return false;
             }
             return true;
         }

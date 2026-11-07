@@ -1,6 +1,7 @@
 {
   "model": "Quadjet",
   "displayName": "Long-haul quadjet",
+  "seats": 450,
   "category": "Airliner",
   "bounds": {
     "min": [
@@ -1224,7 +1225,11 @@
       ],
       "openAngle": 145.0,
       "seconds": 10.0,
-      "holdDepth": 2.5
+      "holdDepth": 2.5,
+      "holdSideMin": -1.32,
+      "holdSideMax": 1.32,
+      "holdHeight": 1.68,
+      "holdFloorStart": 0.05
     },
     {
       "point": "Cargo_Aft",
@@ -1241,7 +1246,11 @@
       ],
       "openAngle": 145.0,
       "seconds": 10.0,
-      "holdDepth": 2.5
+      "holdDepth": 2.5,
+      "holdSideMin": -1.32,
+      "holdSideMax": 1.32,
+      "holdHeight": 1.68,
+      "holdFloorStart": 0.05
     },
     {
       "point": "Cargo_Bulk",
@@ -1258,7 +1267,11 @@
       ],
       "openAngle": -100.0,
       "seconds": 3.5,
-      "holdDepth": 2.5
+      "holdDepth": 2.5,
+      "holdSideMin": -0.56,
+      "holdSideMax": 0.56,
+      "holdHeight": 1.24,
+      "holdFloorStart": 0.05
     }
   ],
   "lights": [

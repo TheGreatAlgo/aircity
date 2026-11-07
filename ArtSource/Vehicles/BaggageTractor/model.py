@@ -15,6 +15,8 @@ WHEELS = [(f"Wheel_{end}{side}", (sign * track, f, 0.30), 0.30, end == "F")
 MOVERS = [w[0] for w in WHEELS]
 SPINNERS = []
 WORK = {"laneWidth": 1.47, "workSpeed": 1.4, "transitSpeed": 6.0, "turnRadius": 2.9}
+CREW = dict(seated=True, position=(0,.24,1.10), leftHand=(-.11,.73,1.28), rightHand=(.11,.73,1.28),
+            leftFoot=(-.11,.74,.45), rightFoot=(.11,.74,.45), height=1.96)
 BAGGAGE = {"rearHitch": (0, -0.68, 0.38), "frontHitch": (0, 2.34, 0.38),
            "operator": (0, 0.27, 0.88)}
 LIGHTS = [("Beacon", "Beacon", (-0.49, -0.18, 1.78), (0, 0, 1), "#FF9A1A", 0.55, 0),

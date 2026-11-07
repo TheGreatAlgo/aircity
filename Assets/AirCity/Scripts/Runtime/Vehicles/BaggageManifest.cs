@@ -23,8 +23,8 @@ namespace AirCity.Vehicles
     {
         public string Name { get; }
         public string Flight { get; private set; }
-        public int Capacity { get; }
-        public float WeightCapacity { get; }
+        public int Capacity { get; private set; }
+        public float WeightCapacity { get; private set; }
         public bool RequiresScreening { get; }
         public int Count { get; internal set; }
         public float Weight { get; internal set; }
@@ -56,6 +56,12 @@ namespace AirCity.Vehicles
             if (Count != 0 || string.IsNullOrWhiteSpace(flight)) return false;
             Flight = flight;
             return true;
+        }
+
+        internal void Resize(int capacity,float weightCapacity)
+        {
+            if (capacity<Count || weightCapacity<Weight) throw new ArgumentException("A baggage store cannot shrink below its contents.");
+            Capacity=capacity; WeightCapacity=weightCapacity;
         }
     }
 

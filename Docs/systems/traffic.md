@@ -113,6 +113,27 @@ last curve ends before the turn into the stand). Holds are noted on the way:
 | Runway | the runway-holding position (`RunwayRules.HoldingDistance`, measured along the section) | the runway is free and no arrival is due before it would be done with it |
 | Route (arrivals) | just off the runway, if there's room before the next junction | nobody coming the other way on the rest of the route |
 
+## Gate marshalling
+
+`Airport.Marshalling` creates one marshaller for an arrival within 100 m of the end of its stand route.
+They walk from a waiting position to a point ahead and slightly left of the parked aircraft's nose, using the
+stand's aircraft-specific stop and the generated aircraft length. The aircraft waits short of its final approach
+if the marshaller is still taking position. Final taxi is limited to 1.5 m/s over the last 35 m and 0.65 m/s over
+the last 8 m, retaining all existing route, obstacle, braking and exact-stop constraints.
+
+Signals follow actual route heading, remaining distance and holds: straight ahead, pilot-left/right turns,
+slow down, hold and crossed-wand stop. After parking the marshaller holds the stop, signals clear and walks away.
+`AirTraffic.Simulate` also advances this exit after the flight leaves its active list. Pausing freezes both
+the walk and signal cycle. Aircraft deletion or a changed destination recalls the worker.
+Layout changes also recall and replace the guidance position. Departures and direct push-back requests wait
+until the marshaller has walked clear.
+
+`MarshallerPresentation` reuses the ramp worker and two generated orange illuminated wands. It is installed on
+the saved airport scenes and assigned by `AirfieldSetup.AssignMaterials` for new airports. Character/wand visuals
+can be omitted in headless simulation. Presentation is culled beyond 250 m and cleaned up when disabled.
+Signal posing references [EASA's illustrated marshalling signals](https://www.easa.europa.eu/en/document-library/easy-access-rules/online-publications/easy-access-rules-standardised-european?erules-id=ERULES-1963177438-9854);
+this remains a simplified game animation. See [RampCrew](../assets/RampCrew.md) for generation.
+
 ## Keeping apart
 
 - **Runways:** one flight at a time holds each runway (`runways`): lining up and taking off until 60 m up, landing

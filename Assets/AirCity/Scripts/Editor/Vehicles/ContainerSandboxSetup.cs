@@ -50,6 +50,7 @@ namespace AirCity.EditorTools.Vehicles
             station.loaderType = VehicleSetup.Type("ContainerLoader"); station.unitType = VehicleSetup.Type("ContainerLD3");
             station.tractorPrefab = VehicleSetup.Prefab("BaggageTractor"); station.dollyPrefab = VehicleSetup.Prefab("ContainerDolly");
             station.loaderPrefab = VehicleSetup.Prefab("ContainerLoader"); station.unitPrefab = VehicleSetup.Prefab("ContainerLD3");
+            Characters.RampCrewSetup.Assign(station);
             float x = park.x + type.bounds.max.x + 7f + station.loaderType.turnRadius + station.loaderType.bounds.max.z - station.loaderType.container.mainTransfer.z;
             int home = Node(x + 25, park.y - 35), ne = Node(x + 25, park.y + 70), entry = Node(x, park.y + 70);
             int exit = Node(x, park.y - 65), arrivals = Node(x + 12, park.y - 65), corner = Node(x + 25, park.y - 65);
@@ -67,6 +68,7 @@ namespace AirCity.EditorTools.Vehicles
             bulk.transform.SetParent(airport.transform, false);
             bulk.tractorType = VehicleSetup.Type("BaggageTractor"); bulk.cartType = VehicleSetup.Type("BaggageCart"); bulk.loaderType = VehicleSetup.Type("BeltLoader");
             bulk.bagPrefabs = VehicleSetup.BagPrefabs();
+            Characters.RampCrewSetup.Assign(bulk);
             bulk.tractorPrefab = VehicleSetup.Prefab("BaggageTractor"); bulk.cartPrefab = VehicleSetup.Prefab("BaggageCart"); bulk.loaderPrefab = VehicleSetup.Prefab("BeltLoader");
             int bulkHome = Node(x + 50, park.y + 5), bulkNorth = Node(x + 50, park.y + 70);
             int bulkArrival = Node(x + 37, park.y - 65), bulkCorner = Node(x + 50, park.y - 65);

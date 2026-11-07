@@ -6,7 +6,7 @@ namespace AirCity.Vehicles
 {
     public sealed partial class AirportBaggage
     {
-        public ContainerStation[] ContainerStations => airport.GetComponentsInChildren<ContainerStation>();
+        public ContainerStation[] ContainerStations => cachedContainerStations ??= System.Array.FindAll(airport.GetComponentsInChildren<ContainerStation>(),s=>s.isActiveAndEnabled);
         public ContainerTurnaround ContainerJobOf(Aircraft.Aircraft aircraft) => containerJobs.FindLast(j => j.Aircraft == aircraft);
 
         void EndDepartedVisits()
@@ -124,7 +124,8 @@ namespace AirCity.Vehicles
 
         public void RefreshParking(ContainerStation station)
         {
-            if (containerFleets.TryGetValue(station, out var fleet) && !containerJobs.Exists(j => j.Fleet == fleet && !j.Finished)) fleet.ResetParking();
+            RefreshIdleParking();
+            airport.Taxiways.RefreshEquipmentPaint();
         }
     }
 }

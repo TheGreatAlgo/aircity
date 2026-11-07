@@ -20,7 +20,7 @@ namespace AirCity.Vehicles
             {
                 var cart = fleet.Equipment.Cart.baggage;
                 local = (cart.loadMin + cart.loadMax) * 0.5f; local.y = cart.loadMin.y;
-                pose = fleet.Train.Cart;
+                pose = fleet.CartPose;
             }
             else if (index == 3) return plan.door + plan.inward * Mathf.Min(0.65f, HoldDepth(fleet.Job) - 0.32f);
             else

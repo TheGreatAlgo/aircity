@@ -129,6 +129,7 @@ namespace AirCity.Airfield
         bool dirty;
         AirportMaintenance maintenance;
         AirTraffic traffic;
+        AirportMarshalling marshalling;
         AirportBridges bridges;
         AirportBaggage baggage;
         Pavement pavement;
@@ -191,6 +192,7 @@ namespace AirCity.Airfield
 
         /// <summary>The flights: departures, arrivals and the tower that keeps them apart.</summary>
         public AirTraffic Traffic => traffic ??= new AirTraffic(this);
+        public AirportMarshalling Marshalling => marshalling ??= new AirportMarshalling(this);
 
         /// <summary>The stands' jet bridges at work: docking with parked aircraft, pulling back for push-back.</summary>
         public AirportBridges Bridges => bridges ??= new AirportBridges(this);
@@ -615,6 +617,7 @@ namespace AirCity.Airfield
             terminalPart.Set(terminalMesh.mesh.Apply(terminalPart.Target, "Terminals", false, 2), building);
             terminalPart.Renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.On;
             LayoutChanged();
+            GetComponentInChildren<TaxiwayNetwork>()?.EquipmentPaintChanged();
         }
     }
 }

@@ -976,6 +976,7 @@ namespace AirCity.Airfield
 
         void OnDisable()
         {
+            equipmentPaintPart?.Destroy();
             surfacePart?.Destroy();
             paintPart?.Destroy();
             glowPart?.Destroy();
@@ -987,15 +988,52 @@ namespace AirCity.Airfield
 
         void Update()
         {
-            if (!dirty) return;
-            dirty = false;
-            Rebuild();
+            if (dirty) { dirty = false; Rebuild(); }
+            else if (equipmentPaintDirty) RefreshEquipmentPaint();
+        }
+
+        AirfieldPart equipmentPaintPart;
+        bool equipmentPaintDirty = true;
+        public void EquipmentPaintChanged() => equipmentPaintDirty = true;
+        public Mesh EquipmentPaintMesh => equipmentPaintPart?.Mesh;
+
+        /// <summary>Parking paint changes independently of operational geometry and must not invalidate service plans.</summary>
+        public void RefreshEquipmentPaint() => RefreshEquipmentPaint(true);
+
+        void RefreshEquipmentPaint(bool refreshRoads)
+        {
+            var airport = Airport;
+            if (airport == null || !isActiveAndEnabled) return;
+            equipmentPaintDirty = false;
+            var bays = StandMarkings.Equipment(airport);
+            if (refreshRoads && surfacePart?.Mesh != null && paintPart != null)
+            {
+                var surface = new SurfaceBuilder(Surfaces.Count);
+                var roadPaint = new PaintBuilder { parkingBays = bays };
+                var layouts = Layouts();
+                var roads = new TaxiwayBuilder(this,airport.Runways,Frontages(layouts));
+                roads.Build(surface,roadPaint,new LightBuilder());
+                surface.mesh.owner = roadPaint.mesh.owner = -1;
+                surface.state = roadPaint.state = SurfaceValues.Initial;
+                var stands = new StandBuilder();
+                foreach (var l in layouts) stands.Build(l,surface,roadPaint,airport.Bridges.TypesFor(l.stand));
+                owners = roads.owners;
+                paintPart.Set(roadPaint.Apply(paintPart.Target,"Taxiway paint"),airport.paint);
+                state.Capture(surfacePart.Mesh,surface.mesh,paintPart.Mesh,roadPaint.mesh);
+                RefreshState();
+            }
+            equipmentPaintPart ??= new AirfieldPart(transform, "Equipment parking paint");
+            var paint = new PaintBuilder { parkingBays = bays.FindAll(b=>!b.working) };
+            var builder = new EquipmentParkingBuilder();
+            foreach (var bay in bays) builder.Build(bay,paint);
+            equipmentPaintPart.Set(paint.Apply(equipmentPaintPart.Target,"Equipment parking paint"),airport.paint);
         }
 
         public void Rebuild()
         {
             var airport = Airport;
             if (airport == null || !isActiveAndEnabled) return;
+            airport.LayoutChanged();
             foreach (var n in nodes)
                 if (n.runway != null) n.position = n.runway.ClosestOnCentreline(n.position);
 
@@ -1005,7 +1043,7 @@ namespace AirCity.Airfield
             fixturePart ??= new AirfieldPart(transform, "Fixtures");
             vergePart ??= new AirfieldPart(transform, "Verges");
             var surface = new SurfaceBuilder(Surfaces.Count);
-            var paint = new PaintBuilder();
+            var paint = new PaintBuilder { parkingBays = StandMarkings.Equipment(airport) };
             var lights = new LightBuilder();
             var verges = new SurfaceBuilder(1);
             var layouts = Layouts();
@@ -1016,12 +1054,11 @@ namespace AirCity.Airfield
             surface.mesh.owner = paint.mesh.owner = -1;
             surface.state = paint.state = SurfaceValues.Initial;
             var standBuilder = new StandBuilder();
-            foreach (var l in layouts) standBuilder.Build(l, surface, paint);
+            foreach (var l in layouts) standBuilder.Build(l, surface, paint, airport.Bridges.TypesFor(l.stand));
             owners = builder.owners;
             vergeOwners = builder.vergeOwners;
             vergePart.Set(verges.mesh.Apply(vergePart.Target, "Taxiway verges"), airport.grassStrip);
             vergeState.Capture(vergePart.Mesh, verges.mesh, null, null);
-            airport.LayoutChanged();
             surfacePart.Set(surface.mesh.Apply(surfacePart.Target, "Taxiway surface"),
                 airport.SurfaceMaterial(PavementSurface.Dirt), airport.SurfaceMaterial(PavementSurface.Asphalt),
                 airport.SurfaceMaterial(PavementSurface.Concrete), airport.SurfaceMaterial(PavementSurface.Grass));
@@ -1031,6 +1068,7 @@ namespace AirCity.Airfield
             state.Capture(surfacePart.Mesh, surface.mesh, paintPart.Mesh, paint.mesh);
             RefreshState();
             LightCount = lights.LightCount;
+            RefreshEquipmentPaint(false);
         }
 
         public int LightCount { get; private set; }

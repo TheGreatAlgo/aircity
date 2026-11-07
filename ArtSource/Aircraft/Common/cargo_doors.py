@@ -31,12 +31,14 @@ def definitions(model):
             # The floor stays within the curved shell throughout the compartment, including the nose taper.
             half_width = min(model.Fuselage.side_x(s, z) for s in np.linspace(*hold, 32)) - 0.08
             depth = abs(x) + half_width
+        side_min, side_max = sorted(((s - station)*sign for s in hold)) if hold else (-w/2,w/2)
         out.append(dict(point=name, transform="CargoDoor_" + name, pivot=pivot,
                         axis=(0, 0, 1) if hinge == "Forward" else (0, -1, 0),
                         # These are Unity rotation signs (Blender port becomes Unity -X).
                         openAngle=angle * sign if hinge == "Forward" else -angle * sign,
                         seconds=seconds, position=pos, size=size, sign=sign,
-                        holdDepth=depth, hold=hold))
+                        holdDepth=depth, hold=hold, holdSideMin=side_min, holdSideMax=side_max, holdHeight=h,
+                        holdFloorStart=max(0,abs(x)-half_width) if hold else .05))
     return out
 
 

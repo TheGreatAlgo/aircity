@@ -12,7 +12,7 @@ namespace AirCity.EditorTools.Vehicles
     /// Imports &lt;Model&gt;.vehicle (JSON written by the vehicle pipeline in ArtSource/Vehicles) as a
     /// <see cref="VehicleType"/>. Positions are already in Unity space (+Z forward, +X right).
     /// </summary>
-    [ScriptedImporter(12, "vehicle")]
+    [ScriptedImporter(15, "vehicle")]
     public class VehicleTypeImporter : ScriptedImporter
     {
 #pragma warning disable 0649   // assigned by JsonUtility
@@ -36,6 +36,15 @@ namespace AirCity.EditorTools.Vehicles
             public BaggageLiftDimensions mainLift, frontLift;
         }
 
+        [Serializable] class CrewJson
+        {
+            public bool seated;
+            public float[] position, leftHand, rightHand, leftFoot, rightFoot, walkway;
+            public CrewStepJson[] accessSteps;
+            public float height;
+        }
+        [Serializable] class CrewStepJson { public float[] position; }
+        [Serializable] class PropJson { public string name; public float[] size; }
         [Serializable]
         class WorkJson
         {
@@ -76,6 +85,8 @@ namespace AirCity.EditorTools.Vehicles
             public BridgeJson bridge;
             public BaggageJson baggage;
             public ContainerJson container;
+            public CrewJson crew;
+            public PropJson[] props;
         }
 #pragma warning restore 0649
 
@@ -94,6 +105,14 @@ namespace AirCity.EditorTools.Vehicles
                 t.bounds = b;
             }
             t.wheelbase = json.wheelbase;
+            t.props = Array.ConvertAll(json.props ?? Array.Empty<PropJson>(),p=>new BaggagePropShape { name = p.name,size = V3(p.size) });
+            if (json.crew != null)
+            {
+                var c = json.crew;
+                t.crew = new CrewWorkstation { seated = c.seated, position = V3(c.position),
+                    leftHand = V3(c.leftHand), rightHand = V3(c.rightHand), leftFoot = V3(c.leftFoot), rightFoot = V3(c.rightFoot), height = c.height,
+                    walkway = V3(c.walkway), accessSteps = Array.ConvertAll(c.accessSteps ?? Array.Empty<CrewStepJson>(), step => V3(step.position)) };
+            }
             if (json.container != null)
             {
                 var c = json.container;

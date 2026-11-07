@@ -475,7 +475,7 @@ namespace AirCity.Traffic
 
         public void Simulate(float seconds)
         {
-            if (flights.Count == 0)
+            if (flights.Count == 0 && airport.Marshalling.Crew.Count == 0)
             {
                 Clock += seconds;
                 return;
@@ -490,6 +490,7 @@ namespace AirCity.Traffic
                 outlines = null;
                 foreach (var f in flights.ToArray())
                     if (!f.Finished) f.Step(dt);
+                airport.Marshalling.Step(dt,flights);
                 flights.RemoveAll(f => f.Finished);
             }
         }

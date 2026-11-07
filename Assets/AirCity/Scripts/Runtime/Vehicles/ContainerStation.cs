@@ -1,17 +1,21 @@
 using System.Collections.Generic;
 using AirCity.Airfield;
+using AirCity.Characters;
 using UnityEngine;
 
 namespace AirCity.Vehicles
 {
-    [DisallowMultipleComponent]
+    [ExecuteAlways, DisallowMultipleComponent]
     public sealed class ContainerStation : MonoBehaviour
     {
         public VehicleType tractorType, dollyType, loaderType, unitType;
         public GameObject tractorPrefab, dollyPrefab, loaderPrefab, unitPrefab;
+        public GameObject crewPrefab;
         public int dispatchNode, arrivalsNode;
         public float dispatchBearing, arrivalsBearing, loaderParkingBearing;
         public Vector2 loaderParking;
+        public bool parkAtStand = true;
+        public int parkingStandId;
         [Min(1)] public int hallSlots = 16, arrivalsBagCapacity = 2000;
         [Min(1f)] public float hallGrossCapacity = 25408f, arrivalsBagWeight = 30000f;
         [Min(0.01f)] public float unpackSecondsPerBag = 0.15f;
@@ -28,9 +32,20 @@ namespace AirCity.Vehicles
         public BaggageStation bulkStation;
         public string Problem { get; internal set; }
         public Airport Airport => GetComponentInParent<Airport>();
+        void OnEnable() => PaintChanged();
+        void OnTransformParentChanged() => PaintChanged();
+        bool paintDirty;
+        void OnValidate() => paintDirty = true;
+        void Update() { if (paintDirty) { paintDirty = false; if (Airport != null) Airport.Baggage.RefreshParking(this); } }
+        void PaintChanged()
+        {
+            var airport = Airport;
+            if (airport != null) { airport.GetComponentInChildren<TaxiwayNetwork>()?.EquipmentPaintChanged(); airport.Baggage.ParkingChanged(); }
+        }
         Transform visualRoot;
         BaggageEquipmentRig tractor, dolly;
         ContainerEquipmentRig dollyRig, loader;
+        RampCrewRig driver, loaderOperator;
         readonly Dictionary<ContainerUnit, ContainerEquipmentRig> unitVisuals = new Dictionary<ContainerUnit, ContainerEquipmentRig>();
 
         void LateUpdate() { if (Application.isPlaying && Airport != null) Present(Time.deltaTime * Airport.timeScale); }
@@ -39,7 +54,9 @@ namespace AirCity.Vehicles
             var airport = Airport;
             if (airport == null) return;
             var fleet = airport.Baggage.ContainerFleet(this);
-            if (fleet?.Train == null || tractorPrefab == null || dollyPrefab == null || loaderPrefab == null || unitPrefab == null) return;
+            if (fleet?.Train == null || tractorPrefab == null || dollyPrefab == null || loaderPrefab == null || unitPrefab == null)
+            { if (visualRoot != null) visualRoot.gameObject.SetActive(false); return; }
+            if (visualRoot != null) visualRoot.gameObject.SetActive(true);
             if (visualRoot == null)
             {
                 visualRoot = new GameObject("Container equipment (runtime)") { hideFlags = HideFlags.DontSave }.transform;
@@ -48,6 +65,12 @@ namespace AirCity.Vehicles
                 dolly = Instantiate(dollyPrefab, visualRoot).GetComponent<BaggageEquipmentRig>();
                 dollyRig = dolly.GetComponent<ContainerEquipmentRig>();
                 loader = Instantiate(loaderPrefab, visualRoot).GetComponent<ContainerEquipmentRig>();
+                if (crewPrefab != null)
+                {
+                    driver = Instantiate(crewPrefab, visualRoot).GetComponent<RampCrewRig>(); driver.Initialize(2);
+                    loaderOperator = Instantiate(crewPrefab, visualRoot).GetComponent<RampCrewRig>(); loaderOperator.Initialize(3);
+                    driver.name = "Container tractor driver"; loaderOperator.name = "Container loader operator";
+                }
             }
             Place(tractor.gameObject, fleet.Train.Tractor, fleet.TrainSpeed, dt);
             Place(dolly.gameObject, fleet.Train.Cart, fleet.TrainSpeed, dt);
@@ -58,6 +81,8 @@ namespace AirCity.Vehicles
             loader.mainHeight = fleet.MainHeight; loader.frontHeight = fleet.FrontHeight; loader.stabilisers = fleet.Stabilisers;
             loader.sideGateOpen = loader.bridgeExtended = fleet.Job != null && fleet.Job.SideTransfer;
             loader.restraintsReleased = fleet.Job != null && fleet.Job.PlatformTransfer; loader.Apply();
+            if (driver != null) driver.Apply(BaggageCrew.Workstation(tractorType, fleet.Train.Tractor));
+            if (loaderOperator != null) loaderOperator.Apply(BaggageCrew.Workstation(loaderType, fleet.LoaderPose));
             foreach (var visual in unitVisuals.Values) if (visual != null) visual.gameObject.SetActive(false);
             foreach (var unit in airport.Baggage.Containers.Units)
             {
@@ -81,6 +106,7 @@ namespace AirCity.Vehicles
         }
         void OnDisable()
         {
+            PaintChanged();
             if (visualRoot != null) { if (Application.isPlaying) Destroy(visualRoot.gameObject); else DestroyImmediate(visualRoot.gameObject); }
             visualRoot = null; unitVisuals.Clear();
         }
@@ -105,6 +131,8 @@ namespace AirCity.Vehicles
         public float DollyAngle { get; internal set; }
         public float TrainSpeed { get; internal set; }
         public float LoaderSpeed { get; internal set; }
+        internal int ParkingVersion { get; private set; } = -1;
+        string parkingProblem;
         internal ContainerFleet(ContainerStation station, ContainerLedger ledger)
         {
             Station = station;
@@ -119,14 +147,20 @@ namespace AirCity.Vehicles
         }
         internal void ResetParking()
         {
-            LoaderPose = new BaggageVehiclePose(Station.loaderParking, BaggageServicePlan.Facing(Station.loaderParkingBearing));
+            ParkingVersion = Station.Airport.LayoutVersion;
+            var parking = StandEquipmentLayout.For(Station);
+            if (Station.Problem==parkingProblem) Station.Problem=null;
+            parkingProblem=parking?.problem;
+            if (parking != null && !parking.Valid) { Station.Problem=parkingProblem; Train=null; return; }
+            LoaderPose = parking?.loader ?? new BaggageVehiclePose(Station.loaderParking, BaggageServicePlan.Facing(Station.loaderParkingBearing));
             MainHeight = Station.dollyType.container.transfer.y; FrontHeight = Station.loaderType.container.frontMinHeight;
             DollyAngle = 0f;
             var net = Station.Airport.Taxiways;
             if (net.Node(Station.dispatchNode) != null)
             {
-                var path = new VehiclePath(); path.Start(net.At(Station.dispatchNode), 1f);
-                path.LineTo(net.At(Station.dispatchNode) + BaggageServicePlan.Facing(Station.dispatchBearing), 1f);
+                var pose=parking?.train ?? new BaggageVehiclePose(net.At(Station.dispatchNode),BaggageServicePlan.Facing(Station.dispatchBearing));
+                var path = new VehiclePath(); path.Start(pose.position, 1f);
+                path.LineTo(pose.position+pose.facing, 1f);
                 Train = new BaggageTrain(Station.tractorType, Station.dollyType, path);
             }
         }

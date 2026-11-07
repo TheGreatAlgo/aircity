@@ -385,6 +385,9 @@ namespace AirCity.Traffic
             Waiting = null;
             // the first hold it isn't cleared past: ask in time to go on without stopping
             float stopAt = path.Length;
+            var marshaller = kind == FlightKind.Arrival ? traffic.Airport.Marshalling.For(this) : null;
+            if (marshaller != null && !marshaller.Ready)
+            { stopAt = Mathf.Max(Along,path.Length-25f); Waiting = "waiting for the marshaller to take position"; }
             var holds = Route.holds;
             for (int i = 0; i < holds.Count; i++)
             {
@@ -405,6 +408,7 @@ namespace AirCity.Traffic
             }
 
             float limit = path.SpeedLimit(Along);
+            if (marshaller != null) limit = Mathf.Min(limit,marshaller.SpeedLimit);
             limit = Mathf.Min(limit, Mathf.Sqrt(2f * TaxiBraking * Mathf.Max(0f, stopAt - Along)));
             float free = traffic.FreeAhead(this, Along, Speed, out var who);
             if (free < float.MaxValue)

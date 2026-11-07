@@ -62,7 +62,7 @@ namespace AirCity.Dev
                 GUILayout.Label("AC101 arrivals → AC102 departure", DevGui.Bold);
                 GUILayout.Label(Job.Waiting ?? Job.State.ToString(), DevGui.Label);
                 GUILayout.Label($"Arrivals  {Job.Fleet.Arrivals.Count} / 30 bags", DevGui.Small);
-                GUILayout.Label($"Dispatch  {Job.Fleet.Dispatch.Count} bags  ·  Cart  {Job.Fleet.Cart.Count}", DevGui.Small);
+                GUILayout.Label($"Dispatch  {Job.Fleet.Dispatch.Count} bags  ·  Cart  {Job.Fleet.CartCount}", DevGui.Small);
                 GUILayout.Label($"Hold  {Job.Hold.Count} bags  ·  Airport total  {airport.Baggage.Ledger.Count}", DevGui.Small);
                 GUILayout.Label(Departure?.Waiting ?? Departure?.Phase.ToString() ?? "Aircraft arriving / parking", DevGui.Small);
                 GUILayout.BeginHorizontal();
@@ -73,7 +73,7 @@ namespace AirCity.Dev
                 if (GUILayout.Button(station.accessBlocked ? "Clear access" : "Block access")) station.accessBlocked = !station.accessBlocked;
                 if (GUILayout.Button("Cancel handling")) Job.Cancel();
                 GUILayout.EndHorizontal();
-                GUILayout.Label("Logical cargo hold · opening doors follow later", DevGui.Hint);
+                GUILayout.Label($"{Job.Fleet.Carts.Length} carts · Cargo doors and ramp crew active", DevGui.Hint);
                 GUILayout.Label("Right-drag orbit · scroll zoom · WASD pan", DevGui.Hint);
             }
             GUILayout.EndArea();

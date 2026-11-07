@@ -33,7 +33,7 @@ namespace AirCity.Tests
 
         void Initialize() { demo.Initialize(); Assert.That(demo.Problem, Is.Null); }
 
-        void Until(Func<bool> done, float seconds = 600f)
+        void Until(Func<bool> done, float seconds = 1800f)
         {
             for (int i = 0; i < seconds * 4f && !done(); i++)
             {
@@ -73,7 +73,12 @@ namespace AirCity.Tests
             Assert.That(demo.Job.Fleet.Arrivals.Weight, Is.EqualTo(450f)); Assert.That(demo.Job.Fleet.Cart.Count, Is.Zero);
             Assert.That(demo.Job.Fleet.Equipment.Owner, Is.Null);
             Assert.That(demo.airport.Baggage.Reserved(demo.Job.Stand), Is.False);
-            Assert.That(Vector2.Distance(demo.Job.Fleet.LoaderPose.position, demo.station.loaderParking), Is.LessThan(0.01f));
+            Assert.That(Vector2.Distance(demo.Job.Fleet.LoaderPose.position, demo.Job.Plan.loaderPark.position), Is.LessThan(0.01f));
+            StandEquipmentLayoutTests.AssertParked(demo.Job.Fleet.Train,StandEquipmentLayout.For(demo.station).trainBay);
+            Assert.That(demo.Job.BagTravelSeconds,Is.Zero,"finished visits have no active crew transfer");
+            Assert.That(demo.Job.TransferInterval,Is.EqualTo(demo.station.secondsPerBag));
+            Assert.That(demo.Job.Fleet.TrainSpeed,Is.Zero,"parked equipment stops its wheels and lights");
+            Assert.That(demo.Job.Fleet.LoaderSpeed,Is.Zero);
         }
 
         [Test]
@@ -102,6 +107,8 @@ namespace AirCity.Tests
             Assert.That(demo.airport.Bridges.SetBridges(stand, 1), Is.EqualTo(1));
             for (int i = 0; i < 200 && demo.airport.Bridges.Clear(demo.aircraft); i++) demo.airport.Simulate(1f);
             Assert.That(demo.airport.Bridges.Clear(demo.aircraft), Is.False);
+            Assert.IsFalse(StandEquipmentLayout.For(demo.station).Valid,"the compact bridge fixture has no room for both staging exit turns");
+            demo.station.parkAtStand=false; demo.airport.Baggage.RefreshParking(demo.station);
             Initialize(); demo.autoDeparture = true;
             Until(() => demo.Job.Acquired, 15f);
             Until(() => demo.Job.DepartureReady && demo.Departure != null && demo.Departure.Phase != FlightPhase.Ready);
@@ -116,7 +123,7 @@ namespace AirCity.Tests
             demo.airport.Simulate(1f);
             Assert.That(demo.Job.Acquired, Is.False);
             Assert.That(demo.Job.Hold.Count, Is.EqualTo(30));
-            Until(() => demo.Job.Finished, 1500f);
+            Until(() => demo.Job.Finished, 3000f);
             Assert.That(demo.Job.DepartureReady, Is.True);
         }
 
@@ -143,6 +150,7 @@ namespace AirCity.Tests
             Assert.That(demo.Job.DepartureReady, Is.True);
         }
 
+        [TestCase(BaggageTurnaroundState.ParkingTrain)]
         [TestCase(BaggageTurnaroundState.LoaderApproach)]
         [TestCase(BaggageTurnaroundState.Docking)]
         [TestCase(BaggageTurnaroundState.Undocking)]
@@ -246,6 +254,7 @@ namespace AirCity.Tests
             review.airport.timeScale = 30f;
             for (int i = 0; i < 300 && !review.Job.Acquired; i++) yield return null;
             Assert.That(review.Job.Acquired, Is.True, review.Job.Waiting);
+            Assert.That(Object.FindObjectsByType<AirCity.Characters.RampCrewRig>(FindObjectsSortMode.None).Length,Is.GreaterThanOrEqualTo(2));
             LogAssert.NoUnexpectedReceived();
             yield return new ExitPlayMode();
         }

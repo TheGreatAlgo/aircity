@@ -18,6 +18,7 @@ CARGO_SILL = 2.45
 CARGO_STATIONS = (("Cargo_Fwd", 8.55), ("Cargo_Aft", 23.2))
 CARGO_HOLDS = {"Cargo_Fwd": (7.3, 12.8), "Cargo_Aft": (21.8, 26.2)}
 DISPLAY_NAME = "Narrowbody twinjet"
+SEATS = 180  # typical layout; the player sees "Starling {code}180"
 CATEGORY = "Airliner"
 AO_DISTANCE = 2.5
 

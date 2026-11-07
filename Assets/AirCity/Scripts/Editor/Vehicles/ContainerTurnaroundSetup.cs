@@ -57,6 +57,7 @@ namespace AirCity.EditorTools.Vehicles
             station.loaderType = VehicleSetup.Type("ContainerLoader"); station.unitType = VehicleSetup.Type("ContainerLD3");
             station.tractorPrefab = VehicleSetup.Prefab("BaggageTractor"); station.dollyPrefab = VehicleSetup.Prefab("ContainerDolly");
             station.loaderPrefab = VehicleSetup.Prefab("ContainerLoader"); station.unitPrefab = VehicleSetup.Prefab("ContainerLD3");
+            Characters.RampCrewSetup.Assign(station);
             float x = park.x + type.bounds.max.x + 7f + station.loaderType.turnRadius + station.loaderType.bounds.max.z - station.loaderType.container.mainTransfer.z;
             int home = Node(x + 25, park.y - 35), ne = Node(x + 25, park.y + 70), entry = Node(x, park.y + 70);
             int exit = Node(x, park.y - 65), arrivals = Node(x + 12, park.y - 65), corner = Node(x + 25, park.y - 65);
@@ -68,9 +69,12 @@ namespace AirCity.EditorTools.Vehicles
             stand.baggageEntryNode = ne; stand.baggageExitNode = exit;
             station.dispatchNode = home; station.arrivalsNode = arrivals; station.arrivalsBearing = 90;
             station.loaderParking = new Vector2(x + 55, park.y + 30);
+            station.automaticHold.aircraft=type;
+            station.standIds.Add(stand.id);
             var bulk = new GameObject("Bulk baggage hall").AddComponent<BaggageStation>(); bulk.transform.SetParent(root.transform, false);
             bulk.tractorType = VehicleSetup.Type("BaggageTractor"); bulk.cartType = VehicleSetup.Type("BaggageCart"); bulk.loaderType = VehicleSetup.Type("BeltLoader");
             bulk.bagPrefabs = VehicleSetup.BagPrefabs();
+            Characters.RampCrewSetup.Assign(bulk);
             bulk.tractorPrefab = VehicleSetup.Prefab("BaggageTractor"); bulk.cartPrefab = VehicleSetup.Prefab("BaggageCart"); bulk.loaderPrefab = VehicleSetup.Prefab("BeltLoader");
             int bulkHome = Node(x + 50, park.y + 5), bulkNorth = Node(x + 50, park.y + 70);
             int bulkArrival = Node(x + 37, park.y - 65), bulkCorner = Node(x + 50, park.y - 65);
@@ -78,6 +82,8 @@ namespace AirCity.EditorTools.Vehicles
                 net.Connect(pair.Item1, pair.Item2, 14f, PavementSurface.Concrete, false, RoadClass.Service);
             bulk.dispatchNode = bulkHome; bulk.arrivalsNode = bulkArrival; bulk.arrivalsBearing = 90;
             bulk.loaderParking = new Vector2(x + 75, park.y + 5);
+            bulk.automaticHold.aircraft=type; bulk.automaticHold.cargoPoint="Cargo_Bulk";
+            bulk.standIds.Add(stand.id);
             var depot = airport.AddDepot(park + new Vector2(90, -100), Vector2.up);
             VehicleSetup.Assign(depot); depot.autoDispatch = false; depot.SetFleet(0, 0); depot.SetTugs(0, 1);
             airport.BuildGround(); net.Rebuild(); runway.Rebuild();

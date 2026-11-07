@@ -35,6 +35,7 @@ namespace AirCity.Tests
         void Configure(int incoming = 230, int outgoing = 240)
         {
             var station = demo.station;
+            station.cartCount = 1; // Preserve the single-cart repeated-trip regression alongside the multi-cart suite.
             station.automaticHandling = true;
             station.automaticHold = new BulkHoldConfiguration { aircraft = demo.aircraft.type, bagCapacity = 400, weightCapacity = 6000f };
             station.standIds.Add(demo.standId); station.incomingBags = incoming; station.outgoingBags = outgoing;
@@ -51,7 +52,7 @@ namespace AirCity.Tests
         void Until(BaggageTurnaround job, Func<bool> done, float step = 0.25f)
         {
             var airport = job.Fleet.Station.Airport;
-            for (float elapsed = 0f; elapsed < 2400f && !done(); elapsed += step) airport.Simulate(step);
+            for (float elapsed = 0f; elapsed < 9000f && !done(); elapsed += step) airport.Simulate(step);
             Assert.That(done(), Is.True, $"{job.State}: {job.Waiting}");
             Conserved(airport);
         }
@@ -158,6 +159,7 @@ namespace AirCity.Tests
         public void AutomaticHandling_ArrivingFlightGetsItsManifestAfterParking()
         {
             Configure(120, 180);
+            Assert.That(demo.airport.Baggage.Fleet(demo.station).Train, Is.Not.Null,"equipment is already staged before arrival");
             demo.aircraft.transform.position = new Vector3(0f, 0f, -5000f);
             var arrival = demo.airport.Traffic.Arrive(demo.aircraft, out var why);
             Assert.That(arrival, Is.Not.Null, why);
@@ -167,6 +169,8 @@ namespace AirCity.Tests
             var job = demo.airport.Baggage.JobOf(demo.aircraft);
             Assert.That(job, Is.Not.Null, arrival.Status);
             Assert.That(arrival.Finished, Is.True);
+            demo.airport.Simulate(2f);
+            Assert.That(job.Plan, Is.Not.Null, $"{job.Waiting}; plane {demo.aircraft.transform.position} / {demo.aircraft.transform.forward}; loader {job.Fleet.LoaderPose.position}; train {job.Fleet.Train.Tractor.position}; stand {job.Stand.id}");
             Until(job, () => job.DepartureReady);
             Assert.That(job.Fleet.Arrivals.Count, Is.EqualTo(120)); Assert.That(job.Hold.Count, Is.EqualTo(180));
         }
@@ -231,7 +235,8 @@ namespace AirCity.Tests
             var job = airport.Baggage.JobOf(plane);
             Assert.That(job, Is.Not.Null, station.Problem);
             Until(job, () => job.DepartureReady);
-            Assert.That(job.ArrivalTrips, Is.EqualTo(2)); Assert.That(job.DepartureTrips, Is.EqualTo(2));
+            Assert.That(station.cartCount,Is.EqualTo(2));
+            Assert.That(job.ArrivalTrips, Is.EqualTo(1)); Assert.That(job.DepartureTrips, Is.EqualTo(1));
         }
 
         [UnityTest]
@@ -246,10 +251,16 @@ namespace AirCity.Tests
             try { EditorSceneManager.OpenScene(AirCity.EditorTools.Aircraft.AircraftSetup.SandboxScene, OpenSceneMode.Single); }
             finally { Application.logMessageReceived -= LoadingLog; }
             if (warned) LogAssert.Expect(LogType.Warning, renderTargetWarning);
+            UnityEditor.SessionState.SetFloat("AirCity.Baggage.PlayRequested",(float)UnityEditor.EditorApplication.timeSinceStartup);
             yield return new EnterPlayMode(); yield return null;
+            LogAssert.Expect(LogType.Log,new System.Text.RegularExpressions.Regex("^Sandbox first Play frame: "));
+            Debug.Log($"Sandbox first Play frame: {UnityEditor.EditorApplication.timeSinceStartup-UnityEditor.SessionState.GetFloat("AirCity.Baggage.PlayRequested",0):F3}s after request.");
             var controls = Object.FindFirstObjectByType<DevBaggageControls>();
             Assert.That(controls, Is.Not.Null);
             var airport = controls.Station.Airport; airport.timeScale = 30f;
+            Assert.That(airport.GetComponentsInChildren<BaggageDepot>().Length,Is.EqualTo(1));
+            Assert.That(airport.Baggage.Stations.Length,Is.EqualTo(1));
+            Assert.That(airport.Baggage.ContainerStations.Length,Is.Zero,"the default world has one baggage example");
             for (int i = 0; i < 100 && !airport.Baggage.Active; i++) yield return null;
             Assert.That(airport.Baggage.Active, Is.True);
             LogAssert.NoUnexpectedReceived();

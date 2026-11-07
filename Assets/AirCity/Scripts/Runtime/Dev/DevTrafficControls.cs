@@ -77,12 +77,12 @@ namespace AirCity.Dev
             if (Traffic == null || !templates.TryGetValue(type, out var template)) return;
             if (!Traffic.CanArrive(type, out string problem))
             {
-                Message = $"No {type.displayName} can land: {problem}";
+                Message = $"No {type.TypeName} can land: {problem}";
                 return;
             }
             var go = Instantiate(template, Airport.transform);
             go.hideFlags = HideFlags.DontSave;   // not the hidden template's flags: it shows in the hierarchy
-            go.name = $"{type.displayName} {Registration()}";
+            go.name = $"{type.TypeName} {Registration()}";
             go.SetActive(true);
             var applier = go.GetComponent<AircraftLiveryApplier>();
             if (applier != null && liveries.Count > 0) applier.SetLivery(liveries[Random.Range(0, liveries.Count)], go.name.Substring(go.name.LastIndexOf(' ') + 1));
@@ -91,7 +91,7 @@ namespace AirCity.Dev
             if (f == null)
             {
                 Destroy(go);
-                Message = $"No {type.displayName} can land: {problem}";
+                Message = $"No {type.TypeName} can land: {problem}";
                 return;
             }
             Message = null;
@@ -130,7 +130,7 @@ namespace AirCity.Dev
                 var copy = Instantiate(a.gameObject);
                 copy.SetActive(false);
                 copy.hideFlags = HideFlags.HideAndDontSave;
-                copy.name = a.type.displayName;
+                copy.name = a.type.TypeName;
                 templates[a.type] = copy;
             }
         }

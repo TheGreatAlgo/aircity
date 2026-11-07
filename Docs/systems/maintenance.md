@@ -202,13 +202,14 @@ no tugs at all.
 
 1. **Waiting:** no free tug that can move it. `DispatchTows` picks the smallest that can, then the nearest.
 2. **Coming:** from the depot along the network to the stand's section, then into the stand **along its side
-   line** (the side clearer of other aircraft' footprints, then the nearer), a quarter turn across the front of
+   line** (clearer of other aircraft and staged baggage equipment, then the shorter route), a quarter turn across the front of
    the stand, on past the nose, and a reversing quarter turn into line behind the nose wheel. Then straight
    back under the nose at a crawl (`HitchSpeed` 0.6 m/s). **By road:** if a service road runs across the stand's
    head (`TaxiwayNetwork.RoadAccess`, side 0), the tug routes to that road instead, drives along it in its lane to
    a turn's radius past the stand's centreline (from whichever way it can, preferring the way it arrives), backs a
    quarter turn round into the stand, facing out, and backs straight on to the nose wheel (`RoadIn`, `BackIn`,
-   `BackInFromRoad`). It never uses the taxiway to get there.
+   `BackInFromRoad`). Road back-ins reject staged equipment collisions and can fall back to the taxiway approach.
+   The crossing turn can move beyond occupied equipment bays, preserving their actual parked positions.
 3. **Lifting** (8 s): the cradle (`Vehicle.SetLift`) and the aircraft's nose rise together.
 4. **Pushing:** the tug backs along the nose path at `workSpeed` (1.3 / 1.1 m/s). Each step it puts the aircraft
    where the nose wheel is (`PlaceAircraft`). It also turns the aircraft's wheels and steers its nose gear the way

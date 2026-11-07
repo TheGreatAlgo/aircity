@@ -4,7 +4,7 @@ using UnityEngine;
 
 namespace AirCity.Dev
 {
-    public enum BaggagePlacement { Dispatch, Arrivals, Loader }
+    public enum BaggagePlacement { Dispatch, Arrivals, Loader, Depot }
 
     /// <summary>Sandbox authoring actions. The airport owns all baggage and operational state.</summary>
     public sealed class DevBaggageControls : MonoBehaviour
@@ -30,11 +30,26 @@ namespace AirCity.Dev
             get
             {
                 if (Station == null || Airport == null) return false;
-                foreach (var job in Airport.Baggage.Jobs) if (job.Fleet.Station == station && !job.Finished) return false;
+                foreach (var job in Airport.Baggage.Jobs)
+                    if (!job.Finished && (job.Fleet.Station == station || station.standIds.Contains(job.Stand.id))) return false;
+                foreach (var job in Airport.Baggage.ContainerJobs)
+                    if (!job.Finished && station.standIds.Contains(job.Stand.id)) return false;
                 return true;
             }
         }
         public int standIndex;
+        public BaggageDepotSize depotSize;
+
+        public void HireWorker() { if (Station?.depot!=null) { Station.depot.Hire(out var why); Message=why; } }
+        public void FireWorker() { if (Station?.depot!=null) { Station.depot.Fire(out var why); Message=why; } }
+        public void ResizeDepot(int step)
+        {
+            if (Station?.depot!=null)
+            {
+                var requested=(BaggageDepotSize)Mathf.Clamp((int)Station.depot.size+step,0,2);
+                Station.depot.Resize(requested,out var why); Message=why;
+            }
+        }
         public Stand AssignmentStand
         {
             get
@@ -49,7 +64,7 @@ namespace AirCity.Dev
             if (!CanConfigure) return;
             if (endpoint == BaggagePlacement.Dispatch) station.dispatchBearing = Mathf.Repeat(station.dispatchBearing + degrees, 360f);
             else if (endpoint == BaggagePlacement.Arrivals) station.arrivalsBearing = Mathf.Repeat(station.arrivalsBearing + degrees, 360f);
-            else station.loaderParkingBearing = Mathf.Repeat(station.loaderParkingBearing + degrees, 360f);
+            else { station.parkAtStand=false; station.loaderParkingBearing = Mathf.Repeat(station.loaderParkingBearing + degrees, 360f); }
             Airport.Baggage.RefreshParking(station);
         }
 
@@ -65,6 +80,12 @@ namespace AirCity.Dev
             var orbit = GetComponent<DevOrbitCamera>();
             if (orbit == null) return;
             var at = Airport.Taxiways.Node(station.dispatchNode) != null ? Airport.Taxiways.At(station.dispatchNode) : station.loaderParking;
+            if (station.depot!=null)
+            {
+                var depot=station.depot; at=depot.Point(10,(depot.Maximum.teams-1)*12f-5f);
+                orbit.pivot=Airport.transform.TransformPoint(new Vector3(at.x,0,at.y));
+                orbit.distance=Mathf.Max(75,depot.Maximum.teams*30f); orbit.pitch=45; orbit.yaw=depot.bearing-110; return;
+            }
             orbit.pivot = Airport.transform.TransformPoint(new Vector3(at.x - 20f, 0f, at.y + 15f));
             orbit.distance = 180f; orbit.pitch = 58f; orbit.yaw = 215f;
         }
@@ -73,31 +94,39 @@ namespace AirCity.Dev
         {
             var source = Station;
             if (source == null) return;
+            if (source.depot!=null)
+            {
+                var added=source.depot.AddTeam(source,out var why);
+                if (added!=null) station=added; Message=why; return;
+            }
             var go = new GameObject("Baggage station " + (Airport.Baggage.Stations.Length + 1));
             go.transform.SetParent(Airport.transform, false);
             station = go.AddComponent<BaggageStation>();
             station.tractorType = source.tractorType; station.cartType = source.cartType; station.loaderType = source.loaderType;
             station.tractorPrefab = source.tractorPrefab; station.cartPrefab = source.cartPrefab; station.loaderPrefab = source.loaderPrefab;
-            station.bagPrefabs = source.bagPrefabs;
+            station.bagPrefabs = source.bagPrefabs; station.cartCount = source.cartCount; station.bagPropType = source.bagPropType;
+            station.crewPrefab = source.crewPrefab; station.crewType = source.crewType;
             var h = source.automaticHold;
             station.automaticHold = new BulkHoldConfiguration { aircraft = h.aircraft, cargoPoint = h.cargoPoint,
                 bagCapacity = h.bagCapacity, weightCapacity = h.weightCapacity };
-            Message = "Place dispatch, arrivals and loader parking, then assign a stand.";
+            station.parkAtStand=true;
+            Message = "Place dispatch and arrivals, then assign a stand for equipment staging.";
         }
 
         public void BeginPlacement(BaggagePlacement placement)
         {
-            if (!CanConfigure) return;
+            if (!CanConfigure && placement!=BaggagePlacement.Depot) return;
             Placement = placement;
-            Message = placement == BaggagePlacement.Loader ? "Click loader parking on the apron." : "Click a service-road junction.";
+            Message = placement == BaggagePlacement.Loader ? "Click loader parking on the apron." : placement==BaggagePlacement.Depot ?
+                "Choose a paved service-road junction with space on its right for the baggage depot." : "Click a service-road junction.";
             GetComponent<DevAirfieldTool>().SetTool(DevTool.Baggage);
         }
 
         public void Place(Vector3 worldPoint)
         {
-            if (!CanConfigure) return;
+            if (!CanConfigure && Placement!=BaggagePlacement.Depot) return;
             var point = BaggageServicePlan.XZ(Airport.transform.InverseTransformPoint(worldPoint));
-            if (Placement == BaggagePlacement.Loader) station.loaderParking = point;
+            if (Placement == BaggagePlacement.Loader) { station.parkAtStand=false; station.loaderParking = point; }
             else
             {
                 var net = Airport.Taxiways;
@@ -113,6 +142,16 @@ namespace AirCity.Dev
                 var heading = (net.At(TaxiwayNetwork.Other(edge, best.id)) - net.At(best.id)).normalized;
                 if (Placement == BaggagePlacement.Arrivals) heading = -heading;
                 float bearing = Mathf.Repeat(Mathf.Atan2(heading.x, heading.y) * Mathf.Rad2Deg, 360f);
+                if (Placement==BaggagePlacement.Depot)
+                {
+                    var go=new GameObject("Baggage depot"); go.transform.SetParent(Airport.transform,false);
+                    var depot=go.AddComponent<BaggageDepot>(); depot.size=depotSize; depot.firstBay=net.At(best.id); depot.bearing=bearing;
+                    var placementProblem=depot.PlacementProblem();
+                    if (placementProblem!=null) { Destroy(go); Message=placementProblem; return; }
+                    var added=depot.AddTeam(station,out var why);
+                    if (added==null) { Destroy(go); Message=why; return; }
+                    station=added; depot.Rebuild(); Message=null; GetComponent<DevAirfieldTool>().SetTool(DevTool.Select); return;
+                }
                 if (Placement == BaggagePlacement.Dispatch) { station.dispatchNode = best.id; station.dispatchBearing = bearing; }
                 else { station.arrivalsNode = best.id; station.arrivalsBearing = bearing; }
             }
@@ -125,6 +164,12 @@ namespace AirCity.Dev
         {
             if (!CanConfigure || stand == null || stand.DeIcing) return;
             if (!station.standIds.Remove(stand.id)) station.standIds.Add(stand.id);
+            Airport.Baggage.RefreshParking(station);
         }
+
+        public void StandParking(bool enabled)
+        { if (!CanConfigure) return; station.parkAtStand=enabled; Airport.Baggage.RefreshParking(station); }
+        public void StageAt(Stand stand)
+        { if (!CanConfigure || stand==null || !station.standIds.Contains(stand.id)) return; station.parkingStandId=stand.id; station.parkAtStand=true; Airport.Baggage.RefreshParking(station); }
     }
 }

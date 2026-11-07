@@ -123,21 +123,35 @@ namespace AirCity.Vehicles
             // the line across the front of the stand: the turn behind the nose starts clear of it
             float head = sN + noseAhead + r + rear + 1.5f;
             var others = depot.Airport.Maintenance.ParkedAircraft(job.aircraft);
+            others.AddRange(depot.Airport.Baggage.VehicleBoxes());
             VehiclePath best = null;
             int bestOff = int.MaxValue;
             float bestD = float.MaxValue;
             entry = default;
             var poses = new List<(Vector2 p, Vector2 facing)>();
+            // The crossing turn can sit beyond staged equipment rather than cutting through its bays.
+            float clearHead = head;
+            foreach (var o in others)
+            {
+                float across = Vector2.Dot(o.c - l.entry, l.Right);
+                float acrossExtent = o.hx * Mathf.Abs(Vector2.Dot(o.ax,l.Right)) + o.hz * Mathf.Abs(Vector2.Dot(o.az,l.Right));
+                if (across + acrossExtent < l.x0 || across - acrossExtent > l.x1) continue;
+                float s = Vector2.Dot(o.c - l.entry, l.axis);
+                if (s < 0 || s > l.far + type.Length) continue;
+                float extent = o.hx * Mathf.Abs(Vector2.Dot(o.ax,l.axis)) + o.hz * Mathf.Abs(Vector2.Dot(o.az,l.axis));
+                clearHead = Mathf.Max(clearHead, s + extent + r + type.Length + 1f);
+            }
+            foreach (float crossing in new[] { head, clearHead })
             foreach (float side in new[] { 1f, -1f })
             {
                 float xs = side > 0f ? l.x1 : l.x0;
                 var e = l.At(xs, l.SAt(xs, l.halfWidth));
                 var p = new VehiclePath();
                 p.Start(e, StandSpeed);
-                p.LineTo(l.At(xs, head - r), StandSpeed);
-                p.ArcAround(l.At(xs - side * r, head - r), side * Mathf.PI * 0.5f, StandSpeed);
-                p.LineTo(l.At(xN - side * r, head), StandSpeed);
-                p.ArcAround(l.At(xN - side * r, head - r), -side * Mathf.PI * 0.5f, ReverseSpeed, reverse: true);
+                p.LineTo(l.At(xs, crossing - r), StandSpeed);
+                p.ArcAround(l.At(xs - side * r, crossing - r), side * Mathf.PI * 0.5f, StandSpeed);
+                p.LineTo(l.At(xN - side * r, crossing), StandSpeed);
+                p.ArcAround(l.At(xN - side * r, crossing - r), -side * Mathf.PI * 0.5f, ReverseSpeed, reverse: true);
                 p.LineTo(n0, HitchSpeed, reverse: true);
                 poses.Clear();
                 p.Poses(0f, p.Length, 1f, poses);
@@ -152,7 +166,7 @@ namespace AirCity.Vehicles
                             break;
                         }
                 }
-                float d = Vector2.Distance(from, e);
+                float d = Vector2.Distance(from, e) + p.Length;
                 if (off < bestOff || (off == bestOff && d < bestD))
                 {
                     best = p;
@@ -214,7 +228,17 @@ namespace AirCity.Vehicles
             if (along < 0f || along > Vector2.Distance(ra, rb)) return false;
             // the tug's back, facing out at the end of the turn, clear of the nose
             float noseAhead = plan.type.bounds.max.z - plan.type.Wheelbase;
-            return Vector2.Dot(x - l.axis * r - n0, l.axis) + type.bounds.min.z >= noseAhead + 1.5f;
+            if (Vector2.Dot(x - l.axis * r - n0, l.axis) + type.bounds.min.z < noseAhead + 1.5f) return false;
+            // A road-side back-in may cross the stand's equipment staging. Try the other direction or taxiway approach.
+            var equipment = depot.Airport.Baggage.VehicleBoxes();
+            var approach = new VehiclePath(); approach.Start(start, ReverseSpeed);
+            approach.ArcAround(centre, angle, ReverseSpeed, reverse: true);
+            approach.LineTo(n0, HitchSpeed, reverse: true);
+            var poses = new List<(Vector2 p, Vector2 facing)>();
+            approach.Poses(0, approach.Length, .5f, poses);
+            foreach (var (p, f) in poses)
+                if (equipment.Exists(o => AirportMaintenance.Box.Of(p, f, type.bounds, .5f).Overlaps(o))) return false;
+            return true;
         }
 
         /// <summary>From the road the route reached on, the way in: along the road heading on towards the stand (if

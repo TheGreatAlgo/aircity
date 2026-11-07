@@ -27,7 +27,7 @@ namespace AirCity.Airfield
         public PavementSurface surface = PavementSurface.Concrete;
         [Tooltip("Parking stands: pushed back, or taxi out nose first.")]
         public StandExit exit;
-        [Tooltip("Turns small aircraft away (light aircraft under 5.7 t, such as a Cessna): keeps a jet stand for jets.")]
+        [Tooltip("Turns small aircraft away (light aircraft under 5.7 t, such as the Starling A4): keeps a jet stand for jets.")]
         public bool noSmallAircraft;
         [Tooltip("Where the stand's centreline crosses its front line, the taxilane centreline (de-icing bays: the bay's " +
                  "middle), Airport space.")]
@@ -169,14 +169,24 @@ namespace AirCity.Airfield
         /// <summary>The pad's corners, counter-clockwise from above.</summary>
         public Vector2[] Pad => new[] { At(x0, near0), At(x1, near1), At(x1, far), At(x0, far) };
 
-        /// <summary>Where an aircraft of this type stands (its origin, under the main gear) with its nose gear on the
-        /// stop bar, and the way it faces.</summary>
-        public Vector2 StopFor(AircraftType type) => stop + axis * (stand.ServiceFor(type)?.stopOffset ?? 0f);
+        /// <summary>Smaller aircraft on a larger push-back stand bring their nose to the design nose line.
+        /// An authored configuration always takes precedence, including an explicit zero offset.</summary>
+        public float StopOffsetFor(AircraftType type)
+        {
+            var configuration = stand.ServiceFor(type);
+            if (configuration != null) return configuration.stopOffset;
+            if (type == null || TaxiOut || stand.DeIcing || type.SizeCode >= Code) return 0f;
+            return Mathf.Max(0f, RunwayRules.NoseGearSetback * RunwayRules.StandLength(Code) -
+                (type.bounds.max.z - type.Wheelbase));
+        }
+
+        public Vector2 StopFor(AircraftType type) => stop + axis * StopOffsetFor(type);
+        /// <summary>Aircraft origin under the main gear, with the nose wheel exactly on its painted stop.</summary>
         public Vector2 ParkPosition(AircraftType type) => StopFor(type) - nose * type.Wheelbase;
 
         public bool ParkingFits(AircraftType type)
         {
-            float offset = stand.ServiceFor(type)?.stopOffset ?? 0f;
+            float offset = StopOffsetFor(type);
             if (Mathf.Abs(offset) < 0.001f) return true;
             if (TaxiOut || stand.DeIcing) return false;
             var park = ParkPosition(type);

@@ -655,6 +655,7 @@ def write_profile(model, paths, px_per_m, reg, font, bounds, wing, service):
     profile = {
         "model": model.NAME,
         "displayName": model.DISPLAY_NAME,
+        "seats": model.SEATS,
         "category": model.CATEGORY,
         "bounds": {"min": to_unity((hi[0], hi[1], lo[2])), "max": to_unity((lo[0], lo[1], hi[2]))},
         "wingOutline": wing,
@@ -697,7 +698,8 @@ def write_profile(model, paths, px_per_m, reg, font, bounds, wing, service):
         "points": [{"name": n, "type": t, "position": to_unity(pos), "normal": to_unity(nrm), "size": list(size)}
                    for t, n, pos, nrm, size in model.POINTS],
         "cargoDoors": [{"point": d["point"], "transform": d["transform"], "pivot": to_unity(d["pivot"]),
-                        "axis": to_unity(d["axis"]), "openAngle": d["openAngle"], "seconds": d["seconds"], "holdDepth": d["holdDepth"]}
+                        "axis": to_unity(d["axis"]), "openAngle": d["openAngle"], "seconds": d["seconds"], "holdDepth": d["holdDepth"],
+                        "holdSideMin": d["holdSideMin"], "holdSideMax": d["holdSideMax"], "holdHeight": d["holdHeight"], "holdFloorStart": d["holdFloorStart"]}
                        for d in cargo_doors.definitions(model)],
         "lights": [{"name": n, "type": t, "position": to_unity(pos), "direction": to_unity(d), "spread": spread,
                     "color": list(col)} for t, n, pos, d, spread, col in model.LIGHTS],

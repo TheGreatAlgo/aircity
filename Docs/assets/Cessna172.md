@@ -1,7 +1,7 @@
-# Cessna172 — Light single
+# Cessna172 — Starling A4 (Light single)
 
 A Cessna 172 Skyhawk-style four-seat, high-wing, fixed-gear single-engine prop. The performance numbers are C172S
-POH figures. `CATEGORY = "GeneralAviation"`, `DISPLAY_NAME = "Light single"`. ICAO aerodrome code **A** (span
+POH figures. `CATEGORY = "GeneralAviation"`, `SEATS = 4`, `DISPLAY_NAME = "Light single"`. ICAO aerodrome code **A** (span
 < 15 m). It is the only type with `unpavedRunways = true`, so it can use dirt and grass strips. Built by the shared
 pipeline; see `Docs/systems/aircraft.md`.
 

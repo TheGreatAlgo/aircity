@@ -36,10 +36,14 @@ namespace AirCity.Dev
             Note(station.Problem ?? containers.Message);
             if (!Fold("container-setup", "CONTAINER STATION SETUP")) return;
             bool edit = containers.CanConfigure;
+            Buttons(B("Stand staging",()=>containers.StandParking(!station.parkAtStand),
+                "Place equipment beside its assigned stand; bays follow the stand and cargo door",station.parkAtStand,enabled:edit));
+            if (station.parkAtStand)
+                Note("Equipment home: "+(StandEquipmentLayout.Home(airport,station.standIds,station.parkingStandId)?.Name ?? "Assign a stand"));
             Buttons(B("Next station", containers.NextStation, "Select the next container station"),
                 B("Add station", containers.AddStation, "Create an unassigned station with automatic handling off"));
             var hold = station.automaticHold;
-            PropStepper("Aircraft", hold.aircraft?.displayName ?? "Choose aircraft", () => containers.ChangeAircraft(-1),
+            PropStepper("Aircraft", hold.aircraft?.TypeName ?? "Choose aircraft", () => containers.ChangeAircraft(-1),
                 () => containers.ChangeAircraft(1), "Explicit aircraft compatibility", edit, edit);
             string cargo = hold.cargoPoint switch { "Cargo_Fwd" => "Forward hold", "Cargo_Aft" => "Aft hold", "Cargo_Bulk" => "Bulk hold", _ => hold.cargoPoint ?? "Choose hold" };
             PropStepper("Cargo hold", cargo, () => containers.ChangeCargoPoint(-1),
@@ -63,19 +67,22 @@ namespace AirCity.Dev
                 "Choose a loose-bag station whose automatic jobs wait for containers to finish", enabled: edit));
             Buttons(B("Dispatch", () => containers.BeginPlacement(BaggagePlacement.Dispatch), "Place at a service-road junction", enabled: edit),
                 B("Arrivals", () => containers.BeginPlacement(BaggagePlacement.Arrivals), "Place at a service-road junction", enabled: edit),
-                B("Loader bay", () => containers.BeginPlacement(BaggagePlacement.Loader), "Place loader parking", enabled: edit));
+                B("Loader bay", () => containers.BeginPlacement(BaggagePlacement.Loader), "Place manual loader parking", enabled: edit && !station.parkAtStand));
             PropStepper("Dispatch heading", $"{station.dispatchBearing:000}°", () => containers.Turn(BaggagePlacement.Dispatch, -90),
                 () => containers.Turn(BaggagePlacement.Dispatch, 90), "Direction leaving and returning to dispatch", edit, edit);
             PropStepper("Arrivals heading", $"{station.arrivalsBearing:000}°", () => containers.Turn(BaggagePlacement.Arrivals, -90),
                 () => containers.Turn(BaggagePlacement.Arrivals, 90), "Direction entering arrivals", edit, edit);
-            PropStepper("Loader heading", $"{station.loaderParkingBearing:000}°", () => containers.Turn(BaggagePlacement.Loader, -90),
-                () => containers.Turn(BaggagePlacement.Loader, 90), "Loader parking direction", edit, edit);
+            if (!station.parkAtStand)
+                PropStepper("Loader heading", $"{station.loaderParkingBearing:000}°", () => containers.Turn(BaggagePlacement.Loader, -90),
+                    () => containers.Turn(BaggagePlacement.Loader, 90), "Loader parking direction", edit, edit);
             var stand = containers.AssignmentStand;
             PropStepper("Assign stand", stand?.Name ?? "None", () => containers.standIndex--, () => containers.standIndex++, "Choose a stand to serve");
             if (stand != null)
                 Buttons(B("Serve " + stand.Name, () => containers.ToggleStand(stand), "Assign this stand to the selected station",
                     station.standIds.Contains(stand.id), enabled: edit));
             Note($"{station.standIds.Count} assigned stands");
+            if (station.parkAtStand && stand != null && station.standIds.Contains(stand.id))
+                Buttons(B("Stage at "+stand.Name,()=>containers.StageAt(stand),"Use this stand as the equipment home",enabled:edit));
             Note(baggage.ContainerDemandProblem(station, out int size) ?? $"Packing up to {size} bags per ULD, within gross limits");
             if (!edit) Note("Station setup is locked while handling is unfinished.");
         }

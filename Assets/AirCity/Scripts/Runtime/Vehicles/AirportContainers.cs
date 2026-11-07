@@ -65,8 +65,9 @@ namespace AirCity.Vehicles
                 if (other != job && other.Acquired && !other.Finished && plan.reservation.Overlaps(other.Plan.reservation))
                 { reason = "container working space is reserved"; return false; }
             job.Plan = plan; fleet.Job = job;
-            if (fleet.Train == null) fleet.Train = new BaggageTrain(station.tractorType, station.dollyType, plan.toStand);
-            else fleet.Train.Continue(plan.toStand);
+            var initial=plan.initial ?? plan.toStand;
+            if (fleet.Train == null) fleet.Train = new BaggageTrain(station.tractorType, station.dollyType, initial);
+            else fleet.Train.Continue(initial);
             return true;
         }
         internal bool ClearContainer(ContainerTurnaround job, BaggageVehiclePose pose, VehicleType type)
@@ -91,6 +92,7 @@ namespace AirCity.Vehicles
         }
         static IEnumerable<Box> ContainerBoxes(ContainerFleet fleet)
         {
+            if (fleet.Train==null) yield break;
             var station = fleet.Station;
             if (fleet.Train != null)
             {

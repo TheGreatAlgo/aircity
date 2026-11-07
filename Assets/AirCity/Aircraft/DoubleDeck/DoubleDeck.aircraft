@@ -1,6 +1,7 @@
 {
   "model": "DoubleDeck",
   "displayName": "Double-deck quadjet",
+  "seats": 550,
   "category": "Airliner",
   "bounds": {
     "min": [
@@ -1426,7 +1427,11 @@
       ],
       "openAngle": 145.0,
       "seconds": 10.0,
-      "holdDepth": 2.5
+      "holdDepth": 2.5,
+      "holdSideMin": -1.395,
+      "holdSideMax": 1.395,
+      "holdHeight": 1.75,
+      "holdFloorStart": 0.05
     },
     {
       "point": "Cargo_Aft",
@@ -1443,7 +1448,11 @@
       ],
       "openAngle": 145.0,
       "seconds": 10.0,
-      "holdDepth": 2.5
+      "holdDepth": 2.5,
+      "holdSideMin": -1.395,
+      "holdSideMax": 1.395,
+      "holdHeight": 1.75,
+      "holdFloorStart": 0.05
     },
     {
       "point": "Cargo_Bulk",
@@ -1460,7 +1469,11 @@
       ],
       "openAngle": -100.0,
       "seconds": 3.5,
-      "holdDepth": 2.5
+      "holdDepth": 2.5,
+      "holdSideMin": -0.565,
+      "holdSideMax": 0.565,
+      "holdHeight": 1.13,
+      "holdFloorStart": 0.05
     }
   ],
   "lights": [

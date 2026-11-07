@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using AirCity.Airfield;
 using AirCity.Traffic;
 using UnityEngine;
@@ -11,34 +12,61 @@ namespace AirCity.Vehicles
     {
         public readonly BaggageStation Station;
         public readonly BaggageEquipmentSet Equipment;
-        public readonly BaggageStore Dispatch, Arrivals, Cart;
+        public readonly BaggageStore Dispatch, Arrivals;
+        readonly BaggageLedger ledger;
+        public BaggageStore[] Carts { get; private set; }
+        public int ActiveCart { get; private set; }
+        public BaggageStore Cart => Carts[ActiveCart];
+        public BaggageVehiclePose CartPose => Train.CartAt(ActiveCart);
+        public int CartCount { get { int n = 0; foreach (var c in Carts) n += c.Count; return n; } }
+        public float CartWeight { get { float n = 0; foreach (var c in Carts) n += c.Weight; return n; } }
+        public bool IsCart(BaggageStore store) => Array.IndexOf(Carts,store) >= 0;
+        internal void SelectCart(int index)
+        { if (index == ActiveCart) return; ActiveCart = index; Crew.CartChanged(); }
         public BaggageTurnaround Job { get; internal set; }
         public BaggageTrain Train { get; internal set; }
         public BaggageVehiclePose LoaderPose { get; internal set; }
         public float LoaderHeight { get; internal set; }
         public float TrainSpeed { get; internal set; }
         public float LoaderSpeed { get; internal set; }
+        internal int ParkingVersion { get; private set; } = -1;
+        string parkingProblem;
+        public BaggageCrew Crew { get; }
+        public int Workers => Station.depot!=null ? Station.depot.Workers(this) : 2;
 
         internal BaggageFleet(BaggageStation station, BaggageLedger ledger)
         {
-            Station = station;
+            Station = station; this.ledger = ledger;
             Equipment = new BaggageEquipmentSet(station.tractorType, station.cartType, station.loaderType);
-            Dispatch = ledger.Store(station.name + " dispatch", station.dispatchCapacity, station.dispatchWeight);
-            Arrivals = ledger.Store(station.name + " arrivals", station.arrivalsCapacity, station.arrivalsWeight);
-            Cart = ledger.Store(station.name + " cart", 100, station.cartType.baggage.payload);
+            Dispatch = station.depot!=null ? station.depot.Dispatch(ledger) : ledger.Store(station.name + " dispatch", station.dispatchCapacity, station.dispatchWeight);
+            Arrivals = station.depot!=null ? station.depot.Arrivals(ledger) : ledger.Store(station.name + " arrivals", station.arrivalsCapacity, station.arrivalsWeight);
+            Crew = new BaggageCrew(this);
             ResetParking();
         }
 
         internal void ResetParking()
         {
-            LoaderPose = new BaggageVehiclePose(Station.loaderParking, BaggageServicePlan.Facing(Station.loaderParkingBearing));
+            ParkingVersion = Station.Airport.LayoutVersion;
+            Crew.Reset(); ActiveCart = 0;
+            if (Carts == null || Carts.Length != Mathf.Max(1,Station.cartCount))
+            {
+                if (Carts != null && CartCount != 0) return;
+                Carts = new BaggageStore[Mathf.Max(1,Station.cartCount)];
+                for (int i = 0; i < Carts.Length; i++) Carts[i] = ledger.Store(Station.name + " cart " + (i+1),100,Station.cartType.baggage.payload);
+            }
+            var parking=StandEquipmentLayout.For(Station);
+            if (Station.Problem==parkingProblem) Station.Problem=null;
+            parkingProblem=parking?.problem;
+            if (parking != null && !parking.Valid) { Station.Problem=parkingProblem; Train=null; return; }
+            LoaderPose = parking?.loader ?? new BaggageVehiclePose(Station.loaderParking, BaggageServicePlan.Facing(Station.loaderParkingBearing));
             LoaderHeight = Station.loaderType.baggage.frontMinHeight;
             var net = Station.Airport.Taxiways;
             if (net.Node(Station.dispatchNode) != null)
             {
-                var path = new VehiclePath(); path.Start(net.At(Station.dispatchNode), 1f);
-                path.LineTo(net.At(Station.dispatchNode) + BaggageServicePlan.Facing(Station.dispatchBearing), 1f);
-                Train = new BaggageTrain(Station.tractorType, Station.cartType, path);
+                var pose=parking?.train ?? new BaggageVehiclePose(net.At(Station.dispatchNode),BaggageServicePlan.Facing(Station.dispatchBearing));
+                var path = new VehiclePath(); path.Start(pose.position, 1f);
+                path.LineTo(pose.position+pose.facing, 1f);
+                Train = new BaggageTrain(Station.tractorType, Station.cartType, path,Carts.Length);
             }
         }
     }
@@ -56,7 +84,9 @@ namespace AirCity.Vehicles
         public BaggageStore Reclaim { get; }
         public IReadOnlyList<BaggageTurnaround> Jobs => jobs;
         public bool Active => jobs.Exists(j => !j.Finished) || containerJobs.Exists(j => !j.Finished);
-        public BaggageStation[] Stations => airport.GetComponentsInChildren<BaggageStation>();
+        BaggageStation[] cachedStations;
+        ContainerStation[] cachedContainerStations;
+        public BaggageStation[] Stations => cachedStations ??= airport.GetComponentsInChildren<BaggageStation>().Where(s=>s.isActiveAndEnabled).ToArray();
         public bool NeedsSimulation => Active || Array.Exists(Stations, s => s.automaticHandling) || Array.Exists(ContainerStations, s => s.automaticHandling);
         public AirportBaggage(Airport airport)
         {
@@ -67,7 +97,20 @@ namespace AirCity.Vehicles
         public BaggageTurnaround JobOf(Aircraft.Aircraft aircraft) => jobs.FindLast(j => j.Aircraft == aircraft);
         public void RefreshParking(BaggageStation station)
         {
-            if (fleets.TryGetValue(station, out var fleet) && !jobs.Exists(j => j.Fleet == fleet && !j.Finished)) fleet.ResetParking();
+            cachedStations=null; cachedContainerStations=null;
+            RefreshIdleParking();
+            airport.Taxiways.RefreshEquipmentPaint();
+        }
+
+        bool parkingDirty;
+        public void ParkingChanged() { parkingDirty=true; cachedStations=null; cachedContainerStations=null; }
+        void RefreshIdleParking()
+        {
+            parkingDirty=false;
+            foreach (var fleet in fleets.Values)
+                if (!jobs.Exists(j=>j.Fleet==fleet && !j.Finished)) fleet.ResetParking();
+            foreach (var fleet in containerFleets.Values)
+                if (!containerJobs.Exists(j=>j.Fleet==fleet && !j.Finished)) fleet.ResetParking();
         }
 
         bool OnStand(Aircraft.Aircraft aircraft, Stand stand)
@@ -85,16 +128,20 @@ namespace AirCity.Vehicles
         {
             stand = null;
             if (aircraft == null || aircraft.type == null) return null;
+            BaggageStation best=null; int bestQueue=int.MaxValue;
             foreach (var station in stations)
             {
                 if (!station.automaticHandling || station.automaticHold == null || station.automaticHold.aircraft != aircraft.type) continue;
                 foreach (int id in station.standIds)
                 {
                     var candidate = airport.Taxiways.stands.Find(s => s.id == id);
-                    if (candidate != null && OnStand(aircraft, candidate)) { stand = candidate; return station; }
+                    if (candidate==null || !OnStand(aircraft,candidate)) continue;
+                    int queue=0; foreach (var job in jobs) if (!job.Finished && job.Fleet.Station==station) queue++;
+                    if (queue<bestQueue) { stand=candidate; best=station; bestQueue=queue; }
+                    break;
                 }
             }
-            return null;
+            return best;
         }
 
         /// <summary>Demand belongs to an aircraft visit, never to a rendered review or a departure button.</summary>
@@ -206,6 +253,7 @@ namespace AirCity.Vehicles
 
         public string DepartureBlocker(Aircraft.Aircraft aircraft)
         {
+            if (airport.Marshalling.Clearing(aircraft)) return "waiting for the marshaller to clear";
             PrepareAutomatic(aircraft);
             for (int i = jobs.Count - 1; i >= 0; i--)
                 if (jobs[i].Aircraft == aircraft && !jobs[i].VisitEnded)
@@ -250,24 +298,33 @@ namespace AirCity.Vehicles
             var fleet = job.Fleet;
             if (!ContainersReady(job)) { reason = "waiting for container equipment to return"; return false; }
             if (fleet.Equipment.Owner != null) { reason = "waiting for baggage equipment"; return false; }
-            if (fleet.Cart.Count != 0) { reason = "baggage cart is occupied"; return false; }
-            if (!BaggageServicePlan.Build(airport, job, fleet.Station, out var plan, out reason)) return false;
+            if (fleet.CartCount != 0) { reason = "baggage cart is occupied"; return false; }
+            var depot=fleet.Station.depot;
+            if (depot!=null && !depot.TryAssignCrew(fleet,out reason)) return false;
+            if (fleet.Carts.Length != Mathf.Max(1,fleet.Station.cartCount)) fleet.ResetParking();
+            if (!BaggageServicePlan.Build(airport, job, fleet.Station, out var plan, out reason)) { depot?.ReleaseCrew(fleet); return false; }
             foreach (var other in jobs)
                 if (other != job && other.Acquired && !other.Finished && plan.reservation.Overlaps(other.Plan.reservation))
-                { reason = "stand baggage working space is reserved"; return false; }
+                { reason = "stand baggage working space is reserved"; depot?.ReleaseCrew(fleet); return false; }
             foreach (var other in containerJobs)
                 if (other.Acquired && !other.Finished && plan.reservation.Overlaps(other.Plan.reservation))
-                { reason = "container working space is reserved"; return false; }
-            if (!fleet.Equipment.Reserve(job, out reason)) return false;
+                { reason = "container working space is reserved"; depot?.ReleaseCrew(fleet); return false; }
+            if (!fleet.Equipment.Reserve(job, out reason)) { depot?.ReleaseCrew(fleet); return false; }
             job.Plan = plan;
-            if (fleet.Train == null) fleet.Train = new BaggageTrain(fleet.Equipment.Tractor, fleet.Equipment.Cart, plan.toStand);
-            else fleet.Train.Continue(plan.toStand);
+            var initial=plan.initial ?? plan.toStand;
+            if (fleet.Train == null) fleet.Train = new BaggageTrain(fleet.Equipment.Tractor, fleet.Equipment.Cart, initial,fleet.Carts.Length);
+            else fleet.Train.Continue(initial);
             fleet.Job = job;
             return true;
         }
 
         public void Simulate(float seconds)
         {
+            if (parkingDirty) RefreshIdleParking();
+            foreach (var fleet in fleets.Values)
+                if (fleet.ParkingVersion != airport.LayoutVersion && fleet.Job?.Finished != false) fleet.ResetParking();
+            foreach (var fleet in containerFleets.Values)
+                if (fleet.ParkingVersion != airport.LayoutVersion && fleet.Job?.Finished != false) fleet.ResetParking();
             if (!BaggageLedger.Finite(seconds) || seconds < 0f) throw new ArgumentOutOfRangeException(nameof(seconds));
             accumulator += seconds;
             while (accumulator + 0.000001 >= 0.05)
@@ -295,9 +352,12 @@ namespace AirCity.Vehicles
                 if (fleet == job.Fleet)
                 {
                     if (type != fleet.Equipment.Loader && box.Overlaps(Box.Of(fleet.LoaderPose.position, fleet.LoaderPose.facing, fleet.Equipment.Loader.bounds, 0.2f))) return false;
-                    if (type == fleet.Equipment.Loader && fleet.Train != null &&
-                        (box.Overlaps(Box.Of(fleet.Train.Tractor.position, fleet.Train.Tractor.facing, fleet.Equipment.Tractor.bounds, 0.2f)) ||
-                         box.Overlaps(Box.Of(fleet.Train.Cart.position, fleet.Train.Cart.facing, fleet.Equipment.Cart.bounds, 0.2f)))) return false;
+                    if (type == fleet.Equipment.Loader && fleet.Train != null)
+                    {
+                        if (box.Overlaps(Box.Of(fleet.Train.Tractor.position,fleet.Train.Tractor.facing,fleet.Equipment.Tractor.bounds,.2f))) return false;
+                        for (int i = 0; i < fleet.Train.CartCount; i++)
+                        { var cart = fleet.Train.CartAt(i); if (box.Overlaps(Box.Of(cart.position,cart.facing,fleet.Equipment.Cart.bounds,.2f))) return false; }
+                    }
                     continue;
                 }
                 foreach (var other in Boxes(fleet)) if (box.Overlaps(other)) return false;
@@ -309,10 +369,12 @@ namespace AirCity.Vehicles
 
         static IEnumerable<Box> Boxes(BaggageFleet fleet)
         {
+            if (fleet.Train==null) yield break;
             if (fleet.Train != null)
             {
                 yield return Box.Of(fleet.Train.Tractor.position, fleet.Train.Tractor.facing, fleet.Equipment.Tractor.bounds, 0.3f);
-                yield return Box.Of(fleet.Train.Cart.position, fleet.Train.Cart.facing, fleet.Equipment.Cart.bounds, 0.3f);
+                for (int i = 0; i < fleet.Train.CartCount; i++)
+                { var cart = fleet.Train.CartAt(i); yield return Box.Of(cart.position,cart.facing,fleet.Equipment.Cart.bounds,.3f); }
             }
             yield return Box.Of(fleet.LoaderPose.position, fleet.LoaderPose.facing, fleet.Equipment.Loader.bounds, 0.3f);
         }

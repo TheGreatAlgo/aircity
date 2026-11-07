@@ -25,6 +25,7 @@ gotchas, and `README.md` / `ArtSource/README.md` are the human-facing guides.
 | [assets/Cessna172.md](assets/Cessna172.md), [assets/Narrowbody.md](assets/Narrowbody.md), [assets/Widebody.md](assets/Widebody.md), [assets/DoubleDeck.md](assets/DoubleDeck.md), [assets/Quadjet.md](assets/Quadjet.md) | one aircraft type |
 | [assets/SnowPlough.md](assets/SnowPlough.md), [assets/Mower.md](assets/Mower.md), [assets/Tugs.md](assets/Tugs.md), [assets/Depot.md](assets/Depot.md), [assets/ControlTowers.md](assets/ControlTowers.md), [assets/JetBridge.md](assets/JetBridge.md) | one vehicle / building |
 | [assets/BaggageEquipment.md](assets/BaggageEquipment.md) | baggage tractor, covered cart, belt loader, bag props, mechanical posing and the standalone review scene |
+| [assets/RampCrew.md](assets/RampCrew.md) | shared skinned workers, driving, boarding, bag handovers, hold poses and crew interlocks |
 | [assets/ContainerEquipment.md](assets/ContainerEquipment.md) | unbranded LD3, container dolly, dual-platform loader, interfaces, references and generation |
 | [assets/airfield-textures.md](assets/airfield-textures.md) | ground textures and airfield materials |
 

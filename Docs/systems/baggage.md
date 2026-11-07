@@ -1,6 +1,45 @@
 # Baggage handling: requirements and asset plan
 
-Status: **bulk and container handling available in the main sandbox, with automatic manifests and station controls**.
+Status: **one staffed baggage-depot example in the main Sandbox, with optional container handling in its review scene**.
+
+**Stand staging** places loaders and empty trains beside their assigned stand, separately from the baggage
+dispatch/arrivals endpoints. Parking follows the stand frame and the configured cargo-door side, including when the
+stand is turned or placed on the opposite side of a taxilane. Shared stations pack jointly, preserving arrival
+clearances, engine space, train entry/exit aisles and the other equipment's cargo working lanes. The layout uses
+generated vehicle bounds and hitch dimensions, including the complete cart count. If it cannot fit, handling
+waits with an explicit staging problem. Compact terminal/bridge stands may need a larger pad or manual parking.
+Correcting the layout clears its staging problem. Unchanged layouts, including failures, are cached; the joint
+placement search is bounded so a crowded stand cannot stall Play mode repeatedly.
+
+The station setup panel toggles stand staging and chooses an assigned stand as the equipment home. One equipment
+set may still serve several stands. Manual loader parking remains available when staging is switched off.
+Layout edits and idle station changes update both fleet poses and red-and-white shared equipment courts.
+Each home stand gets one large EQUIPMENT area enclosing its loader and train; bulk and ULD equipment on the
+same stand share it. Modest reserve space (1–1.5 m outboard/ahead and up to 0.5 m aft) keeps compact stands
+compact while allowing several items in the same area. The painted
+area is at least 50% larger than the summed individual parking envelopes and adapts to the available paved apron,
+while keeping clear of aircraft arrival envelopes, roads, buildings and neighbouring equipment. An L-shaped
+corner keeps the narrowbody nose clearance outside the court. Individual
+vehicle positions remain unpainted inside the court. Manual parking retains individual equipment bays. Dashed white
+BAGGAGE / ULD TRANSFER outlines mark the train's working area at each served cargo door. Setup is
+locked while either bulk or container handling is unfinished on the served stand. Loaders dock before the train
+enters the cargo working position; after handling, the loader returns before the empty train parks at the stand.
+The return planner tries longer final straights when a parked loader constrains the dolly's turning approach.
+The final whole-train parking footprint and all articulated movements still receive physical clearance checks.
+Tug approaches check parked equipment and move the crossing turn beyond the bays when needed, so a completed
+turnaround can depart while its equipment stays at the stand. See [airfield markings](airfield.md) and
+`StandStagingReview.FromCommandLine` for native Sandbox captures in `Captures/StandStaging/`.
+Verification (2026-11-06): **147 distinct Unity checks have passing latest results**, covering headless handling,
+stand/traffic/tug integration, road closures, native Sandbox Play startup, cancellation/retry and whole-train
+parking. Saved Sandbox reviews also complete both departures: 120 arriving / 180 departing narrowbody bags,
+and 2 incoming / 3 outgoing LD3s plus 20 incoming / 30 outgoing bulk bags (380 bags / 5,700 kg) for the widebody.
+Both equipment sets return before taxi. Parked vehicles stop their wheel/light motion, and finished visits
+expose transfer timing safely after releasing the crew. Results: `Logs/stand-staging-verification.json`.
+Compact shared-court verification (2026-11-06): **28 layout, route and paint checks pass**, including compact
+reserve space, the actual parked fleets, five headings and aircraft-clearance cutouts.
+Results: `Logs/shared-equipment-courts.xml`. The earlier native staging previews show shared equipment courts, working
+areas and both airport orientations in `Captures/StandStaging/`.
+
 Turnarounds unload to arrivals, load a departing hold, withdraw the loader and return the train, then close the
 animated cargo hatch before releasing departure. All five aircraft have operable cargo-door geometry.
 See [the equipment asset guide](../assets/BaggageEquipment.md).
@@ -17,6 +56,9 @@ The user subsequently authorised working cargo doors and animations on every air
 The next milestone adds close loading, with terminal facilities deferred. The user requested moving the
 narrowbody forward hatch toward the nose, as on a 737, and updating its hold; loaders must face square
 to the fuselage (2026-11-03).
+The user authorised ramp crew next (2026-11-03), retaining the terminal-facility deferral.
+The user authorised multi-cart bulk trains, more detailed hold packing and arrival marshallers next, with bag-tag
+scanning deferred (2026-11-03).
 Equipment must remain unbranded: do not bake the game's name or a handler logo into meshes/textures. Existing
 bulk equipment was regenerated to remove the previously baked name; functional IDs/capacity markings remain.
 
@@ -59,7 +101,7 @@ Cancellation completes a moving handover, recovers any unit on the platforms to 
 units to arrivals and returns undelivered outgoing units to dispatch. Equipment remains leased until the dolly
 returns, platforms lower, stabilisers retract and the loader parks. A cancelled manifest blocks departure;
 retry continues that same manifest without recreating units or bags. Blocked access, screening and full bays
-wait while retaining the current records and equipment. Crew, multiple dollies and AKH support remain later work.
+wait while retaining the current records and equipment. Multiple dollies and AKH support remain later work.
 
 Batch review (use an isolated project copy while the editor is open):
 
@@ -79,6 +121,65 @@ taxiing. Results are in `Logs/container-final-tests.xml` and `Logs/container-fin
 log is `Logs/container-setup.log`. The review scene, equipment prefabs and generated Unity metadata are present
 in the main project.
 
+## Baggage depots and hired crews
+
+The main Sandbox has one narrowbody baggage example and one Small baggage depot. The optional container
+review and its installer remain available separately; generating the normal airport no longer installs a
+second widebody example. The original isolated handling scenes remain test fixtures and are not loaded
+additively when entering Play.
+
+`BaggageDepot` is a shared destination and workforce owner. Its parametric warehouse has drive-through
+team bays off a shared service-road spine, labelled ground markings, collection/unloading conveyors and visible stored luggage. Each team
+uses the same physical bay for arrivals and departures: after unloading it collects the next load there,
+without a separate circulation lap between two invisible endpoints. Each bay has a forward entry and exit;
+parked tractors and every trailer stay outside the through lane. The trailer remains stationary during
+handovers. Bags move between carts, conveyors and shared ledger stores; the bounded visual pools do not
+change ownership or drop records. The depot footprint participates in aircraft/equipment clearance.
+
+| Depot size | Maximum tractor/cart teams | Maximum trailers | Maximum hired workers |
+|---|---:|---:|---:|
+| Small | 2 | 4 | 8 |
+| Medium | 4 | 12 | 20 |
+| Large | 8 | 24 | 40 |
+
+The Baggage sidebar offers **Hire worker**, **Dismiss worker**, **Crew per team**, **Depot size**, **Add team**
+and **Build depot**. Building needs paved ground, clear space beside a service road and enough straight road frontage for all
+bay entries and exits. **Build size** selects the next depot independently of the existing depot’s upgrade. Upgrades need
+space for the larger warehouse and sufficient paved coverage; downgrades refuse excess equipment, staff
+or stored luggage. This is headcount management; wages and hiring costs await the game's economy.
+
+A dispatched team leases 2–4 available workers: one cart handler and one hold handler, then a second cart
+handler and a second hold handler. Additional workers have separate animated roles and alternate bags.
+Cadence is the slower ground/hold workload divided by its assigned staff count, bounded by the configured
+belt/transfer interval. Conveyor travel and individual walking/lifting durations remain unchanged. Hiring
+can expand an active crew between batches; an ongoing bag handover keeps its assigned workers. Dismissal
+only removes idle staff, so an aircraft never loses its operator or a worker holding a bag. Assigned staff
+return to the available pool after equipment recovery, including cancellation. Idle workers appear at the
+depot; equipment without an assigned crew does not show permanently occupied driver seats.
+
+Teams at a depot share dispatch and arrivals stores, preserving capacity, screening, flight ownership and
+conservation. **Add team** creates a distinct bay, tractor/cart train, loader and lease, within the depot's
+limits. Bay roads are prepared when the depot is built, so buying a team does not rebuild airport geometry
+or cancel an ongoing turnaround. Stands can share the depot's teams; automatic manifests choose the least queued eligible team.
+The station registry is cached until stations change. Waiting visits do not construct service routes before
+dispatch. The 50-stand test checks queue distribution and bounded workforce, not 50 simultaneous completed
+turnarounds or a rendering frame-rate guarantee.
+
+The staging allocator now propagates a candidate's constraints to remaining items and caches pair
+compatibility. It preserves candidate order and the previous first valid parking arrangement. The measured
+shared widebody case fell from 5,860,081 checks / 6.7 s to 319,580 pair checks / 0.7 s. Its layout is cached
+until geometry or equipment inputs change. The normal Sandbox avoids this optional example entirely.
+
+`BaggageDepotReview.Run` verifies the actual default turnaround through depot unloading, collection,
+loading and departure, captures native frames in `Captures/BaggageDepot/`, and logs startup and mean
+simulation-step timing. `BaggageDepotTests` covers capacities, hiring/firing, shared stores, team bays,
+50-stand queueing, changing crew size between batches, throughput and conservation.
+Verification (2026-11-06): 49 depot/layout/crew/Sandbox checks and 82 turnaround regressions pass
+(one overlapping installer check). The 50-stand queue setup measured about 36 ms with four teams and
+eight leased workers. Buying a team during active handling preserves the layout version and the original
+turnaround completes with every bag conserved. Native Play startup and full default-depot captures are
+recorded separately in `Logs/baggage-depot-play.xml` and `Logs/baggage-depot-native.json`.
+
 ## Close docking and visible transfers
 
 The loader stops at a clearance staging point, the hatch opens, the belt/front platform rises to the sill,
@@ -97,16 +198,16 @@ whole-aircraft exclusion. Terminal/bridge, road, pavement and live vehicle check
 envelopes over their assigned docking/retraction paths, rather than a square covering every possible swing
 about the rotunda; the opposite aircraft side remains usable.
 
-`BaggageLoadPath` supplies both bag travel time and visible positions from cart to belt rear, along the belt
-and through the opening, or the reverse on unloading. `BaggageLoadVisuals` pools existing suitcase/duffel
+`BaggageLoadPath` supplies conveyor endpoints. `BaggageCrew` supplies handover timing and bag positions from
+cart to belt rear, along the belt and through the opening, or the reverse on unloading. `BaggageLoadVisuals` pools existing suitcase/duffel
 prefabs and displays cart/hold loads. Batch ownership transfers atomically after the last bag arrives; visuals
 do not own baggage. Blocked access pauses the timer. Cancelling a running aircraft handover finishes that
 batch before withdrawing, retaining all counts and weights.
 
 ULD hold endpoints now sit inside the real opening. Hold liners use a flat recessed back plane rather than
 following the curved exterior skin; `cargoDoors.holdDepth` describes their usable depth. Remote hold slots
-remain logical, and the visible bulk piles are bounded representations of stored baggage. Crew and detailed
-interior stowage are still future work. Terminal facilities are explicitly out of scope for this milestone.
+remain logical, and the visible bulk piles are bounded representations of stored baggage. Detailed interior
+load planning remains future work. Terminal facilities are explicitly out of scope for this milestone.
 
 `AirCity.EditorTools.Vehicles.BaggageDockingReview.FromCommandLine` assigns missing bag-art references in
 existing station scenes, then captures complete narrowbody bulk and widebody container operations into
@@ -120,6 +221,86 @@ for each of the 107 unique cases is Passed (`Logs/baggage-loading-verification.j
 bags and all 380 widebody/container/bulk bags (5700 kg), returning equipment and closing hatches. See
 `Logs/baggage-loading-captures-final.log`.
 
+
+## Multi-cart trains and hold packing
+
+Bulk stations expose **Carts per train** while idle. The saved narrowbody sandbox station and turnaround review
+use two carts; each has its own bag/count and weight capacity. Container dollies remain single-unit trains.
+The tractor and every cart keep their own axle/drawbar poses, with cart-to-cart hitches constrained continuously
+through turns. A blocked rear cart stops the entire chain before any link commits that movement. Route previews
+clone all cart poses, validate every trailer, include the complete parked train in loader clearance and reserve
+the longer service footprint. Long trains need adequate roads and apron space; a failed route leaves the job waiting.
+
+`BaggageFleet.Carts` owns the separate stores; `ActiveCart` selects the handler's current source/destination.
+`CartCount`/`CartWeight` report whole-train load. Hall collection fills available carts without exceeding either
+capacity. At the aircraft the tractor stays stopped while the handler walks between carts and carries each bag
+to/from the belt. Their return path leads back to the tractor before driving. Cancellation returns every
+undelivered batch from every cart, and retry resumes the same manifest. The original single-cart API remains
+the default for delivery and container routing.
+
+`BaggageHoldPacking` assigns stable positions in the generated hold envelope. It fills deeper rows and the far
+ends of each row first, building each stack from the floor upward while reserving an aisle and doorway work bay.
+Arriving loads unload in the reverse accessible order. A bag retains its model variant through the handover;
+stack heights use the generated suitcase/duffel dimensions. The hold worker travels through the aisle to the
+assigned position, places or collects the bag, then returns to the belt. The bag cadence includes the longest
+hold path in the active batch, so the worker is free before the next bag arrives.
+
+Aircraft data supplies `holdSideMin`, `holdSideMax`, `holdHeight`, `holdFloorStart` and `holdDepth`. The floor-start
+inset matters where the shell tapers. The narrowbody's existing full bay is used; the widebody bulk liner now
+extends between stations 48.2–52.2 m. The packing slots describe the modelled compartment, while the configured
+logical hold capacity can include additional unmodelled space. Baggage records beyond the visible slots remain
+conserved and undergo the same handling sequence. This is presentation packing, without a weight-and-balance model.
+
+`GroundHandlingReview.FromCommandLine` installs the saved station/crew references and captures two loaded carts,
+second-cart handling, the packed interior and a real guided arrival into `Captures/GroundHandling/`. It handles
+120 incoming and 150 outgoing bags with one train trip in each direction. See [traffic](traffic.md) for marshallers.
+
+Verification (2026-11-03): **157 unique checks have passing latest results**, covering multi-cart hitch motion,
+rear-cart blockage, individual payloads, reduced trip counts, cancellation/retry, generated packing envelopes,
+crew reach, live marshaller/wands, traffic and delivery. `Logs/ground-handling-verification.json` records the
+source run for every case. Earlier failures exposed the longer handling time, legacy single-cart trip assumptions,
+a terminal-side withdrawal, a rotated-bag reach and a wall-time-dependent Play-mode test; all were corrected.
+The final review conserves all **270 bags**, returns both carts and the loader, closes the hatch and guides a
+separate real arrival onto its configured stop. Six screenshots are in `Captures/GroundHandling/`.
+
+## Ramp crew
+
+The bulk fleet has two workers: the tractor driver gets out to handle bags beside the cart and belt, while
+the loader operator enters the hold after docking. Loading waits for both. The ground handler reaches,
+lifts, turns, carries and places one bag, then returns for the next. The hold handler kneels to receive and
+stow it; unloading reverses the sequence. A worker can hold at most one bag at once. Bags travel independently
+on the conveyor between handovers. A narrow clear lane beside the bounded hold display piles accommodates the worker.
+
+`BaggageCrew` belongs to `BaggageFleet`, advances through the turnaround's fixed game-time step, and works without
+character prefabs or rendered frames. Its boarding paths remain fixed while returning. The tractor cannot drive
+until its handler returns to the seat; loader withdrawal waits for the hold handler to exit and sit down.
+Cancellation finishes an active bag batch, recalls the workers and then withdraws. Blocked access freezes
+boarding and handovers. Pausing the airport freezes both crew and baggage.
+
+`TransferInterval` is the greater of `secondsPerBag` and either worker's complete handling cycle. `BagTravelSeconds`
+includes the pick/lift/carry/place phases, conveyor travel and destination handling. The ledger still transfers
+each batch atomically after its final visual handling cycle. Dispatch/arrivals remain logical endpoints with
+their existing timers while terminal work is deferred. Crew are assigned to their equipment set; a separately
+managed workforce, shifts, fatigue, staffing costs and scanner/reconciliation gameplay are future work.
+
+Container tractors have seated drivers; container loaders have standing operators at the controls. ULDs remain
+roller-transferred. The same shared worker uses three skinned LODs, a single material per LOD and four uniform/skin
+palettes. `RampCrewRig` solves limbs against palm targets; carried bags attach to a hand socket. The presentation
+uses simulation times, so culling or omitted visuals cannot advance a handover. Bone updates stop beyond 250 m.
+
+Generated vehicle `crew` metadata supplies the actual seat/platform position, palm and foot targets and occupied
+height. Service clearance includes that occupied height. `RampCrewType` imports the generated `.crew` timing and
+dimension profile. See [RampCrew](../assets/RampCrew.md) for source, generation, installation and capture commands.
+
+Crew verification (2026-11-03): **111 unique checks pass**, including the Play-mode sandbox and turnaround
+reviews, crew interlocks, paused/blocked work, cancellation/retry, suitcase grip/floor poses and regenerated
+equipment. `Logs/ramp-crew-verification.json` merges the latest result per case from `ramp-crew-final-tests.xml`,
+`ramp-crew-equipment-tests.xml` and `ramp-crew-equipment-final.xml`. The final equipment run updates the old
+loader length assertion to include the new rear stairs; the belt itself remains 7.8 m.
+Fourteen close-up captures in `Captures/RampCrew/` show driving, access, cart/belt handovers and kneeling in
+both the narrowbody and the widebody's low bulk hatch. The capture simulation returned both equipment sets,
+closed the hatches and conserved all **90 narrowbody bags** and **380 combined container/bulk bags**; see
+`Logs/ramp-crew-captures-final.log`.
 
 ## Aircraft cargo doors
 
@@ -180,7 +361,8 @@ handling has already completed. Container and bulk jobs share the existing route
 simulation; the coordinator sequences the companion bulk fleet independently of review-scene scripts.
 
 **AirCity > Vehicles > Enable Sandbox Containers** installs this layout into an existing sandbox while retaining
-the rest of the airport. Rebuilding through **Add Sandbox Airport** installs both baggage examples.
+the rest of the airport. Rebuilding through **Add Sandbox Airport** installs only the staffed narrowbody/depot
+example; container handling is optional.
 
 ```sh
 rtk proxy timeout 900 /Applications/Unity/Hub/Editor/6000.6.7f1/Unity.app/Contents/MacOS/Unity -batchmode -projectPath . -executeMethod AirCity.EditorTools.Vehicles.ContainerSandboxSetup.FromCommandLine -logFile Logs/container-sandbox-setup.log
@@ -204,7 +386,8 @@ The expanded station setup and scrolling sidebar also passed a focused Play-mode
 The main `Sandbox.unity` includes a remote narrowbody service stand, dispatch/arrivals loop, loader parking
 and a tug. In Play mode, expand **BAGGAGE** and choose **View station** to find it. Its station automatically
 creates a closed manifest for each compatible aircraft visit on its assigned stands: **120 arriving bags /
-1,800 kg** and **180 departing bags / 2,700 kg** by default. Each direction takes two cart trips. Aircraft from
+1,800 kg** and **180 departing bags / 2,700 kg** by default. Its two-cart train carries each default manifest in one trip; larger manifests use repeated trips.
+Aircraft from
 normal sandbox traffic use the same coordinator when parked on an assigned stand; unassigned stands retain
 their existing behaviour. Demand and hold capacities are explicit tuning values.
 
@@ -226,10 +409,10 @@ reduced further to fit cart payload, once per aircraft object/visit in the sandb
 dispatch bay wait before generating any part of a manifest. Reusing the same aircraft object for a later flight
 rotation still needs a visit/archive lifecycle; sandbox arrivals currently use new objects.
 
-Integrated turnarounds now repeat arrivals and dispatch trips until their manifests are handled. One cart and
+Integrated turnarounds repeat arrivals and dispatch trips until their manifests are handled. The complete train and
 one loader remain leased throughout. The complete manifest must fit its hold, and each atomic batch must fit
 the cart's count/weight limits. The standalone `BaggageDelivery` review retains its original single-load scope.
-Multiple-cart trains, multiple/parallel holds and dynamic route replanning remain future work.
+Multiple/parallel holds and dynamic route replanning remain future work.
 
 **AirCity > Vehicles > Enable Sandbox Baggage** installs this layout into an existing sandbox without rebuilding
 its airport; rerunning it reuses the installed station. The normal sandbox airport generator includes it too.
@@ -257,7 +440,8 @@ Open `Assets/AirCity/Scenes/BaggageTurnaround.unity` and enter Play mode, or reg
 Vehicles > Create Baggage Turnaround Review**. AC101 lands and taxis to a real stand; handling starts after
 parking. Its **30 incoming bags / 450 kg** go to arrivals, then **60 departing bags / 900 kg** are collected and
 loaded for AC102. Departure is requested early so its baggage wait is visible. The loader lowers and drives
-back to parking; the train returns to dispatch; only then can traffic send the tug and begin push-back.
+back to parking; the empty train returns to its stand bay (dispatch in manual mode); only then can traffic
+send the tug and begin push-back.
 The HUD has pause/speed, blocked-access and cancellation controls. The airport sandbox is a separate scene.
 The user authorised this milestone with logical holds and deferred aircraft art (2026-11-02).
 
@@ -295,8 +479,8 @@ departure blocked so partial handling cannot be mistaken for success.
 existing bridge requirement. Active service reservations also keep a stand out of arrivals allocation.
 `Airport.Simulate` interleaves active baggage, traffic, maintenance and bridges in 0.05-second increments.
 
-Current scope is one explicit bulk hold and a single cart making as many trips as needed. Manifests that exceed
-the hold, or individual batches that exceed the cart, are refused when sealing. Crew, multiple-cart trains,
+Current scope is one explicit bulk hold and a configurable cart train making as many trips as needed. Manifests that exceed
+the hold, or individual batches that exceed one cart, are refused when sealing. Shared crew staffing,
 transfer-flight reassignment, automatic route replanning, the full
 terminal interior remain later work. Close docking and visible bag/ULD transfers are implemented in the next section.
 
@@ -452,7 +636,8 @@ Supporting assets are part of a convincing operation:
   pushchairs, mobility aids and long sports bags when oversize handling is introduced.
 - Driver and ramp-agent characters with driving, scanning, lifting and belt-loading poses. Allow an initial
   static showcase, but include crew in the operational art scope.
-- Cones, wheel chocks, handheld scanner, equipment identification signs and cart/dolly parking markings.
+- Cones, wheel chocks, handheld scanner and equipment identification signs. Cart/dolly train parking markings
+  are implemented from the assigned station's saved parking and hitch geometry.
 - Empty and loaded cart arrangements; open and closed curtains. Use a few load arrangements at distance.
 - A baggage staging yard with marked equipment bays and a charging/service point for electric variants.
 

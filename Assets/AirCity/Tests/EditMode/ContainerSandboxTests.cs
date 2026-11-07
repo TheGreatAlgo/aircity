@@ -116,6 +116,7 @@ namespace AirCity.Tests
         [Test]
         public void ArrivingFlight_ReceivesItsContainerManifestOnlyAfterParking()
         {
+            Assert.That(Baggage.ContainerFleet(Station).Train, Is.Not.Null,"equipment is already staged before arrival");
             demo.aircraft.transform.position = new Vector3(0, 0, -5000);
             var arrival = demo.airport.Traffic.Arrive(demo.aircraft, out var why);
             Assert.That(arrival, Is.Not.Null, why);
@@ -227,6 +228,7 @@ namespace AirCity.Tests
             controls.AddStation(); var added = controls.Station;
             Assert.That(added, Is.Not.SameAs(Station)); Assert.That(added.automaticHandling, Is.False);
             Assert.That(added.standIds, Is.Empty); Assert.That(added.unitType, Is.SameAs(Station.unitType));
+            Assert.That(added.crewPrefab, Is.SameAs(Station.crewPrefab));
             Assert.That(added.automaticHold.aircraft, Is.SameAs(Station.automaticHold.aircraft));
             Assert.That(Baggage.ContainerFleet(added), Is.Null, "unfinished station setup must not create equipment at the airport origin");
         }
@@ -237,10 +239,11 @@ namespace AirCity.Tests
             EditorSceneManager.OpenScene(AirCity.EditorTools.Aircraft.AircraftSetup.SandboxScene, OpenSceneMode.Single);
             var airport = Object.FindFirstObjectByType<Airport>(); int stands = airport.Taxiways.stands.Count;
             int terminals = airport.terminals.Count, bulkStations = airport.Baggage.Stations.Length;
+            bool installed=airport.GetComponentsInChildren<ContainerStation>().Any(s=>s.name=="Sandbox container hall");
             var station = ContainerSandboxSetup.Install(airport);
             Assert.That(ContainerSandboxSetup.Install(airport), Is.SameAs(station));
-            Assert.That(airport.Taxiways.stands.Count, Is.EqualTo(stands));
-            Assert.That(airport.terminals.Count, Is.EqualTo(terminals)); Assert.That(airport.Baggage.Stations.Length, Is.EqualTo(bulkStations));
+            Assert.That(airport.Taxiways.stands.Count, Is.EqualTo(stands+(installed ? 0 : 1)));
+            Assert.That(airport.terminals.Count, Is.EqualTo(terminals)); Assert.That(airport.Baggage.Stations.Length, Is.EqualTo(bulkStations+(installed ? 0 : 1)));
             Assert.That(station.bulkStation.automaticHold.cargoPoint, Is.EqualTo("Cargo_Bulk"));
             Assert.That(station.standIds.Count, Is.EqualTo(1)); Assert.That(station.automaticHandling, Is.True);
         }
@@ -255,6 +258,7 @@ namespace AirCity.Tests
             try { EditorSceneManager.OpenScene(AirCity.EditorTools.Aircraft.AircraftSetup.SandboxScene, OpenSceneMode.Single); }
             finally { Application.logMessageReceived -= LoadingLog; }
             if (warned) LogAssert.Expect(LogType.Warning, warning);
+            ContainerSandboxSetup.Install(Object.FindAnyObjectByType<AirCity.Airfield.Airport>());
             yield return new EnterPlayMode(); yield return null;
             var controls = Object.FindFirstObjectByType<DevContainerControls>(); Assert.That(controls, Is.Not.Null);
             var airport = controls.Station.Airport; airport.timeScale = 30;

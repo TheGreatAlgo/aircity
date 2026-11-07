@@ -204,7 +204,7 @@ namespace AirCity.Dev
             if (!draft)
             {
                 var problem = Airport.Bridges.FirstProblem(Stand, b, out var type);
-                Status(problem == BridgeProblem.None ? "Ready for automatic docking" : (type != null ? type.displayName + ": " : "") + BridgeLayout.Describe(problem), problem != BridgeProblem.None);
+                Status(problem == BridgeProblem.None ? "Ready for automatic docking" : (type != null ? type.TypeName + ": " : "") + BridgeLayout.Describe(problem), problem != BridgeProblem.None);
                 Note("Click any bridge to select it. Drag its blue handles to move the base or connection.");
             }
         }
@@ -356,7 +356,7 @@ namespace AirCity.Dev
         {
             Section("Try an aircraft at this gate");
             if (Stand == null) { Notice("Select a stand to configure its aircraft parking."); return; }
-            Selector("Aircraft", types, Aircraft, x => x.displayName, SelectAircraft);
+            Selector("Aircraft", types, Aircraft, x => x.TypeName, SelectAircraft);
             if (Aircraft == null) return;
             Toggle("Preview at this stand", PreviewEnabled, value => SetPreview(value, PreviewProgress));
             if (PreviewEnabled)
@@ -372,7 +372,7 @@ namespace AirCity.Dev
             var config = Stand.ServiceFor(Aircraft);
             Toggle("Available for this aircraft", config?.allowed ?? true, value => Edit(st => Configuration(st).allowed = value));
             if (!Stand.DeIcing && Stand.exit == StandExit.PushBack)
-                Number("Parking stop offset (m)", "stop", config?.stopOffset ?? 0f, value => Edit(st => Configuration(st).stopOffset = value), 0.5f);
+                Number("Parking stop offset (m)", "stop", Airport.Taxiways.Layout(Stand).StopOffsetFor(Aircraft), value => Edit(st => Configuration(st).stopOffset = value), 0.5f);
             var check = Airport.Taxiways.CheckStand(Stand, Aircraft);
             if (check != StandProblem.None) Status("Parking: " + check, true);
             var plan = Airport.Bridges.ServicePlan(Stand, Aircraft);
@@ -388,7 +388,8 @@ namespace AirCity.Dev
         StandServiceConfiguration Configuration(Stand stand)
         {
             var c = stand.ServiceFor(Aircraft);
-            if (c == null) stand.serviceConfigurations.Add(c = new StandServiceConfiguration { aircraft = Aircraft });
+            if (c == null) stand.serviceConfigurations.Add(c = new StandServiceConfiguration { aircraft = Aircraft,
+                stopOffset = Airport.Taxiways.Layout(stand).StopOffsetFor(Aircraft) });
             return c;
         }
 

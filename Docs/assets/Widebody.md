@@ -1,8 +1,8 @@
-# Widebody — Widebody twinjet
+# Widebody — Starling E350 (Widebody twinjet)
 
 A long-haul twinjet with Airbus A350-900 proportions and A350-900 airport-planning performance. It has a long, full
 nose with a six-pane flight deck, curved blended winglets, Trent XWB-sized engines and four-wheel main bogies.
-`CATEGORY = "Airliner"`, `DISPLAY_NAME = "Widebody twinjet"`. ICAO aerodrome code **E**, paved runways only. The
+`CATEGORY = "Airliner"`, `SEATS = 350`, `DISPLAY_NAME = "Widebody twinjet"`. ICAO aerodrome code **E**, paved runways only. The
 pipeline is the shared one in `Docs/systems/aircraft.md`; this page covers only what is specific to this type.
 
 ## Key numbers

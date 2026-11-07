@@ -318,9 +318,9 @@ namespace AirCity.Airfield.Building
                 foreach (float sgn in new[] { -1f, 1f })
                 {
                     var off = Geo.Right(u) * (sgn * (hw - RoadEdgeInset));
-                    paint.Strip(new[] { ja.p + u * p0 + off, ja.p + u * p1 + off }, RoadLineHalfWidth, PaintBuilder.White);
+                    paint.Strip(new[] { ja.p + u * p0 + off, ja.p + u * p1 + off }, RoadLineHalfWidth, PaintBuilder.White, true);
                 }
-                paint.Dashes(ja.p + u * p0, ja.p + u * p1, RoadLineHalfWidth, 3f, 6f, PaintBuilder.White);
+                paint.Dashes(ja.p + u * p0, ja.p + u * p1, RoadLineHalfWidth, 3f, 6f, PaintBuilder.White, true);
             }
             RoadEnd(ja, armA, len - armB.cut, paint);
             RoadEnd(jb, armB, len - armA.cut, paint);
@@ -389,7 +389,7 @@ namespace AirCity.Airfield.Building
                 var kerb = new List<Vector2> { j.p + a.dir * a.cut + Geo.Left(a.dir) * a.hw };
                 kerb.AddRange(a.gap);
                 kerb.Add(j.p + b.dir * b.cut + Geo.Right(b.dir) * b.hw);
-                paint.Strip(Inside(kerb, RoadEdgeInset), RoadLineHalfWidth, PaintBuilder.White);
+                paint.Strip(Inside(kerb, RoadEdgeInset), RoadLineHalfWidth, PaintBuilder.White, true);
             }
             if (!MainRoad(j, out var m0, out var m1)) return;
             var p0 = j.p + m0.dir * m0.cut;
@@ -400,7 +400,7 @@ namespace AirCity.Airfield.Building
                 float t = s / 16f;
                 pts.Add((1 - t) * (1 - t) * p0 + 2 * (1 - t) * t * j.p + t * t * p1);
             }
-            paint.Dashes(pts, RoadLineHalfWidth, 3f, 6f, PaintBuilder.White);
+            paint.Dashes(pts, RoadLineHalfWidth, 3f, 6f, PaintBuilder.White, true);
         }
 
         /// <summary>A kerb line moved `inset` metres in onto the pavement (to the left of the way it runs: kerbs
@@ -506,8 +506,8 @@ namespace AirCity.Airfield.Building
             if (e.IsRoad)
             {
                 foreach (float sgn in new[] { -1f, 1f })
-                    paint.Strip(Offset(j.arc, sgn * (hw - RoadEdgeInset), d0, d1), RoadLineHalfWidth, PaintBuilder.White);
-                paint.Dashes(j.arc, RoadLineHalfWidth, 3f, 6f, PaintBuilder.White);
+                    paint.Strip(Offset(j.arc, sgn * (hw - RoadEdgeInset), d0, d1), RoadLineHalfWidth, PaintBuilder.White, true);
+                paint.Dashes(j.arc, RoadLineHalfWidth, 3f, 6f, PaintBuilder.White, true);
                 return;
             }
             paint.Strip(j.arc, CentrelineHalfWidth, PaintBuilder.Yellow);

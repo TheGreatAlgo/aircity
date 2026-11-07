@@ -36,7 +36,7 @@ namespace AirCity.Tests
         {
             for (float time = 0; time < 3500 && !condition(); time += step)
             { demo.airport.Simulate(step); demo.Observe(); }
-            Assert.That(condition(), Is.True, $"{job.State}: {job.Waiting}; bulk {demo.Bulk?.State}: {demo.Bulk?.Waiting}; {demo.Problem}");
+            Assert.That(condition(), Is.True, $"{job.State}: {job.Waiting}; bulk {demo.Bulk?.State}: {demo.Bulk?.Waiting}; {demo.Problem}; departure {demo.Departure?.Phase}: {demo.Departure?.Waiting}; tow {demo.airport.Maintenance.TowOf(demo.aircraft)?.State}: {demo.airport.Maintenance.TowOf(demo.aircraft)?.Tug?.Status} at {demo.airport.Maintenance.TowOf(demo.aircraft)?.Tug?.LeadPosition}");
             Conserved();
         }
         void Conserved()
@@ -162,6 +162,8 @@ namespace AirCity.Tests
             Assert.That(job.Fleet.EmptyYard.Count, Is.EqualTo(2)); Assert.That(job.Fleet.Job, Is.Null);
             Assert.That(job.Fleet.Dolly.Count + job.Fleet.Main.Count + job.Fleet.Front.Count, Is.Zero);
             Assert.That(job.Fleet.Stabilisers, Is.Zero); Assert.That(demo.airport.Baggage.Ledger.Count, Is.EqualTo(330));
+            StandEquipmentLayoutTests.AssertParked(job.Fleet.Train,StandEquipmentLayout.For(demo.station).trainBay);
+            Assert.That(job.Fleet.TrainSpeed,Is.Zero); Assert.That(job.Fleet.LoaderSpeed,Is.Zero);
         }
 
         [Test]
@@ -177,6 +179,7 @@ namespace AirCity.Tests
             demo.station.accessBlocked = false; Until(job, () => job.DepartureReady);
         }
 
+        [TestCase(ContainerTurnaroundState.ParkingTrain)]
         [TestCase(ContainerTurnaroundState.LoaderApproach)]
         [TestCase(ContainerTurnaroundState.ToStand)]
         [TestCase(ContainerTurnaroundState.FrontToMain)]
@@ -260,6 +263,7 @@ namespace AirCity.Tests
             for (int i = 0; i < 200 && !review.Job.Acquired; i++) yield return null;
             Assert.That(review.Job.Acquired, Is.True, review.Job.Waiting);
             Assert.That(Object.FindObjectsByType<ContainerEquipmentRig>(FindObjectsInactive.Exclude).Length, Is.GreaterThan(0));
+            Assert.That(Object.FindObjectsByType<AirCity.Characters.RampCrewRig>(FindObjectsSortMode.None).Length,Is.GreaterThanOrEqualTo(2));
             LogAssert.NoUnexpectedReceived(); yield return new ExitPlayMode();
         }
     }

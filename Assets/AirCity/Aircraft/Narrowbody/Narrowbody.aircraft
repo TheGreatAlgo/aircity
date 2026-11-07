@@ -1,6 +1,7 @@
 {
   "model": "Narrowbody",
   "displayName": "Narrowbody twinjet",
+  "seats": 180,
   "category": "Airliner",
   "bounds": {
     "min": [
@@ -1240,7 +1241,11 @@
       ],
       "openAngle": 145.0,
       "seconds": 8.0,
-      "holdDepth": 2.569909610312074
+      "holdDepth": 2.569909610312074,
+      "holdSideMin": -4.25,
+      "holdSideMax": 1.2500000000000009,
+      "holdHeight": 1.24,
+      "holdFloorStart": 0.08000582140969303
     },
     {
       "point": "Cargo_Aft",
@@ -1257,7 +1262,11 @@
       ],
       "openAngle": 145.0,
       "seconds": 8.0,
-      "holdDepth": 2.5563286575221236
+      "holdDepth": 2.5563286575221236,
+      "holdSideMin": -3.0,
+      "holdSideMax": 1.3999999999999986,
+      "holdHeight": 1.24,
+      "holdFloorStart": 0.09549490442314545
     }
   ],
   "lights": [

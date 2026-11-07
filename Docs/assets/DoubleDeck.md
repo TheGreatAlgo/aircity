@@ -1,9 +1,9 @@
-# DoubleDeck — Double-deck quadjet
+# DoubleDeck — Starling F550 (Double-deck quadjet)
 
 A generic long-haul four-engine airliner with a full-length double-deck fuselage: a tall oval section, a blunt
 rounded nose with the flight deck between the two decks, a large swept wing with small wingtip fences, four big
 turbofans, a huge fin, a nose gear, two four-wheel wing gears and two six-wheel body gears. It carries no real
-airline or manufacturer branding. `CATEGORY = "Airliner"`, `DISPLAY_NAME = "Double-deck quadjet"`. ICAO aerodrome
+airline or manufacturer branding. `CATEGORY = "Airliner"`, `SEATS = 550`, `DISPLAY_NAME = "Double-deck quadjet"`. ICAO aerodrome
 code **F**, paved runways only. The pipeline is the shared one in `Docs/systems/aircraft.md`; this page covers only
 what is specific to this type.
 

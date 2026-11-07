@@ -409,7 +409,7 @@ namespace AirCity.EditorTools.Airfield
             if (aircraft != null && stand.exit == StandExit.PushBack && !stand.DeIcing)
             {
                 var at = transform.TransformPoint(Plane.X0Z(sl.StopFor(aircraft)));
-                Handles.Label(at, aircraft.displayName + " nose-wheel stop");
+                Handles.Label(at, aircraft.TypeName + " nose-wheel stop");
                 var next = Handles.Slider(at, transform.TransformDirection(Plane.X0Z(sl.axis)));
                 if (next != at)
                 {

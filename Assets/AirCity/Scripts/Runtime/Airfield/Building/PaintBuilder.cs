@@ -32,12 +32,13 @@ namespace AirCity.Airfield.Building
         public static readonly Color Red = new Color(0.62f, 0.05f, 0.04f, 0.96f);
 
         // keep in sync with ArtSource/Airfield/textures.py (CHARS, CELL, PX_PER_M, ROWS)
-        const string GlyphChars = "0123456789LCRABDEF";
-        const float GlyphPxPerM = 24f, AtlasW = 1024f, AtlasH = 1024f, CellW = 128f, CellH = 256f;
+        const string GlyphChars = "0123456789LCRABDEFGHIJKMNOPQSTUVWXYZ/-";
+        const float GlyphPxPerM = 24f, AtlasW = 1024f, AtlasH = 2048f, CellW = 128f, CellH = 256f;
         /// <summary>Height of a glyph at its atlas scale (metres): runway designators.</summary>
         public const float GlyphHeight = 9f;
 
         public readonly MeshData mesh = new MeshData();
+        public IList<StandMarkings.EquipmentBay> parkingBays;
         public RunwayFrame frame = RunwayFrame.None;
         /// <summary>Owner state written into the next marks; SurfaceState keeps it current.</summary>
         public SurfaceValues state = SurfaceValues.Initial;
@@ -70,10 +71,15 @@ namespace AirCity.Airfield.Building
         static readonly (float, float)[] Corners = { (-1f, -1f), (-1f, 1f), (1f, 1f), (1f, -1f) };
 
         /// <summary>A line of constant width through points (straight runs or sampled curves).</summary>
-        public void Strip(IList<Vector2> points, float halfWidth, Color color)
+        public void Strip(IList<Vector2> points, float halfWidth, Color color, bool outsideParking = false)
         {
             int n = points.Count;
             if (n < 2) return;
+            if (outsideParking && parkingBays != null && parkingBays.Count > 0)
+            {
+                for (int i = 1; i < n; i++) RoadLine(points[i-1],points[i],halfWidth,color);
+                return;
+            }
             float total = 0f;
             for (int i = 1; i < n; i++) total += (points[i] - points[i - 1]).magnitude;
             if (total < 1e-3f) return;
@@ -101,7 +107,7 @@ namespace AirCity.Airfield.Building
         }
 
         /// <summary>Dashes along a straight line from a to b: dash, gap, dash... centred so both ends match.</summary>
-        public void Dashes(Vector2 a, Vector2 b, float halfWidth, float dash, float gap, Color color)
+        public void Dashes(Vector2 a, Vector2 b, float halfWidth, float dash, float gap, Color color, bool outsideParking = false)
         {
             var d = b - a;
             float len = d.magnitude;
@@ -111,11 +117,13 @@ namespace AirCity.Airfield.Building
             float used = count * (dash + gap) - gap;
             float s = (len - used) * 0.5f;
             for (int i = 0; i < count; i++, s += dash + gap)
-                Box(a + d * (s + dash * 0.5f), d, halfWidth, dash * 0.5f, color);
+                if (outsideParking && parkingBays != null && parkingBays.Count > 0)
+                    RoadLine(a+d*s,a+d*(s+dash),halfWidth,color);
+                else Box(a + d * (s + dash * 0.5f), d, halfWidth, dash * 0.5f, color);
         }
 
         /// <summary>Dashes along a polyline (a sampled curve), laid out like Dashes; each dash bends with the line.</summary>
-        public void Dashes(IList<Vector2> points, float halfWidth, float dash, float gap, Color color)
+        public void Dashes(IList<Vector2> points, float halfWidth, float dash, float gap, Color color, bool outsideParking = false)
         {
             int n = points.Count;
             if (n < 2) return;
@@ -140,14 +148,20 @@ namespace AirCity.Airfield.Building
                 for (int i = 1; i < n - 1; i++)
                     if (at[i] > s && at[i] < s + dash) piece.Add(points[i]);
                 piece.Add(Point(s + dash));
-                Strip(piece, halfWidth, color);
+                Strip(piece, halfWidth, color, outsideParking);
             }
+        }
+
+        void RoadLine(Vector2 a, Vector2 b, float halfWidth, Color color)
+        {
+            foreach (var segment in StandMarkings.RoadSegments(a,b,parkingBays,halfWidth+.15f))
+                Line(segment.a,segment.b,halfWidth,color);
         }
 
         /// <summary>A character `height` metres tall (runway designators: 9 m), read facing "up".</summary>
         public void Glyph(Vector2 centre, Vector2 up, char c, Color color, float height = GlyphHeight)
         {
-            int index = GlyphChars.IndexOf(c);
+            int index = GlyphChars.IndexOf(char.ToUpperInvariant(c));
             if (index < 0) return;
             up = up.normalized;
             var right = Geo.Right(up);

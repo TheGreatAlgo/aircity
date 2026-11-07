@@ -1,6 +1,7 @@
 {
   "model": "Cessna172",
   "displayName": "Light single",
+  "seats": 4,
   "category": "GeneralAviation",
   "bounds": {
     "min": [
@@ -866,7 +867,11 @@
       ],
       "openAngle": 105.0,
       "seconds": 2.5,
-      "holdDepth": 0.8386163334885306
+      "holdDepth": 0.8386163334885306,
+      "holdSideMin": -0.19,
+      "holdSideMax": 0.19,
+      "holdHeight": 0.36,
+      "holdFloorStart": 0.05
     }
   ],
   "lights": [

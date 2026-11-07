@@ -242,7 +242,60 @@ A taxiway may run along a stand's front line but not across its pad (`Fits`, `St
 
 - **Lead-in lines** (yellow): push-back stands get a curve of `StandTurnRadius` off the taxiway centreline, from both
   directions when within 15° of square. Taxi-out stands get the hairpin, the stop bar, then on as the lead-out turn.
-- **Stop bar** for the nose gear.
+- **Aircraft stop bars** at `StopFor(type)`, labelled with the type designator (`AircraftType.Designator`: "C180",
+  "F450 / F550" when two types stop together) on the captain's side, never the internal model name.
+  Coincident stops share one bar and a combined label; nearby bars retain their exact positions with leaders
+  separating their labels. Ineligible aircraft and stops outside the pad receive no aircraft label. Taxi-out
+  stands use their actual approach direction. De-icing bays retain their single generic stop bar.
+  A smaller size-code aircraft on a larger push-back stand defaults to the design nose line, calculated from
+  its generated nose overhang and wheelbase. Explicit `StandServiceConfiguration.stopOffset` values (including
+  zero) override this. The gate designer edits the effective offset and preserves it when changing eligibility.
+- **Shared equipment storage courts** (`StandMarkings.Equipment`, `EquipmentParkingBuilder`): one shared outline
+  with a red line inset in a white border per equipment home stand, labelled EQUIPMENT and its stand number.
+  A court encloses the complete loader and tractor/cart set, including both bulk and ULD fleets when they share
+  a stand. It adds modest reserve space (1–1.5 m outboard/ahead, up to 0.5 m aft) rather than painting a
+  vehicle-sized box around each item. A court can have an L-shaped corner cut out to preserve nose clearance.
+  Courts retain at least 50% more area than the summed individual parking
+  envelopes. The extension adapts to paved coverage and nearby infrastructure; no court is painted where a
+  sufficiently large clear area cannot fit. Courts follow the stand frame and cargo-door side, and may use
+  the adjoining paved apron. Compact-layout checks bound the extra area around the group to 35% in the
+  saved examples and tested headings. All stands' aircraft arrival envelopes, roads, terminals, bridges and neighbouring
+  equipment constrain the entire court. Individual unpainted parking poses remain the actual idle positions.
+  With **Stand staging** enabled, `StandEquipmentLayout` places those poses jointly in the stand's frame.
+  Manual parking keeps its individual equipment labels and direction arrows.
+  Generated hitch geometry and cart count determine length. Compatible aircraft arrival sweeps, engine clearance,
+  terminal/bridge footprints, roads, cargo working lanes and train entry/exit space constrain placement. Loaders
+  and trains can use different orientations. The allocator considers alternative placements for shared equipment.
+  Constraint propagation and cached candidate-pair compatibility reject impossible combinations early,
+  preserving the first valid arrangement without repeating the full brute-force search. Layout results are
+  cached until stand, equipment or airport geometry changes. Placement checks have a bounded
+  search budget, so an overfilled stand reports no clear arrangement without repeatedly stalling Play mode.
+  Separate dashed white **BAGGAGE** / **ULD TRANSFER**
+  rectangles show the working train footprint beside the configured cargo door on every assigned stand.
+  Working areas follow the same generated door, loader and hitch geometry as handling, with room for cart swing.
+  Stand boundary strokes and working-area dashes stop at storage bays, keeping the paint readable. Dispatch and arrivals
+  remain separate hall endpoints. All areas require an active assigned station and complete paved coverage.
+  `TaxiwayNetwork.RefreshEquipmentPaint` updates this separate batched mesh without bumping `LayoutVersion`, so
+  moving idle equipment or editing its assignment cannot invalidate other turnarounds. Inspector edits, enable/
+  disable, runtime station controls and layout rebuilds refresh it. No saved paint objects or per-frame rebuilds.
+  Road edge strokes and centre dashes stop outside the bays, preserving their phase beyond the gap; moving or
+  removing a bay repaints these strokes without changing pavement, routing or the layout version.
+  `BaggageWorkLayout` shares cargo docking geometry with routing and staging exclusions. `BaggageApronRoute`
+  connects staging to service-road circulation and can lengthen the final straight to clear a parked loader.
+  `ApronPathfinder` checks articulated trains and loader manoeuvres against the same physical clearances.
+  Clearance uses indexed nearby road corridors and the stand's own paved pad; taxiway/closed-road exclusions
+  retain their exact footprint checks. An aircraft envelope rejects distant samples before testing generated
+  part polygons. Coarse tractor screening precedes complete 5 cm trailer validation. Parked fleet poses refresh after a stand layout edit, preserving the
+  airport-local coordinate convention. Colour reference: [CAA CAP 637, apron markings](https://www.caa.co.uk/publication/download/12192).
+  Initial staging verification (2026-11-06): 147 distinct Unity checks pass; saved Sandbox bulk and container/bulk departures both
+  complete with conserved bags and returned equipment. Results: `Logs/stand-staging-verification.json`.
+  Compact shared-court verification (2026-11-06): 28 layout, route and paint checks pass, including both
+  Sandbox stands, all parked vehicle corners, five stand headings, spare space, aircraft clearances and
+  clearance-corner paint clipping. Results: `Logs/shared-equipment-courts.xml`.
+  `StandStagingReview.FromCommandLine` captures the actual fleets, cargo working areas and both orientations.
+  `StandMarkingsReview.FromCommandLine` upgrades missing review-scene assignments and captures occupied/empty
+  aircraft stops and the Sandbox equipment courts into `Captures/StandMarkings/`. Only aircraft exactly on a
+  former shared stop are migrated; manually positioned aircraft and explicit stop configurations are preserved.
 - **Red boundary** round the parked design aircraft (half span + clearance/4), so neighbours' boxes don't touch.
 - **Labels:** at the entrance the number (yellow, on the reader's left) and the code letter (white, right), 2.4 m
   (A) to 7 m (F) tall.

@@ -132,6 +132,7 @@ namespace AirCity.EditorTools.Airfield
         /// <summary>Give an Airport the shared materials.</summary>
         public static void AssignMaterials(Airport a)
         {
+            Characters.RampCrewSetup.Assign(a);
             a.concrete = Material("Concrete");
             a.asphalt = Material("Asphalt");
             a.dirt = Material("Dirt");
@@ -194,7 +195,6 @@ namespace AirCity.EditorTools.Airfield
                 tool.largeTugPrefab = VehicleSetup.Prefab("TugLarge");
             }
             AirCity.EditorTools.Vehicles.BaggageSandboxSetup.Install(airport);
-            AirCity.EditorTools.Vehicles.ContainerSandboxSetup.Install(airport);
             EditorSceneManager.SaveScene(scene);
             Debug.Log("AirfieldSetup: sandbox airport added");
         }

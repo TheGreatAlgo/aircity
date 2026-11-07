@@ -12,10 +12,12 @@ from parts import P, Y, Fuselage, S_REF  # noqa: F401  (Fuselage / S_REF are rea
 from pipeline import Mover
 
 NAME = "Widebody"
+CARGO_HOLDS = {"Cargo_Bulk": (48.2,52.2)}
 CARGO_FORWARD_STATION = 10.8  # Keep the square loader and its side-feeding dolly train ahead of the engine.
 CARGO_HINGES = {"Cargo_Fwd": ("Top", 145.0, 10.0), "Cargo_Aft": ("Top", 145.0, 10.0),
                 "Cargo_Bulk": ("Top", -100.0, 3.5)}
 DISPLAY_NAME = "Widebody twinjet"
+SEATS = 350  # typical layout; the player sees "Starling {code}350"
 CATEGORY = "Airliner"
 AO_DISTANCE = 4.0
 
