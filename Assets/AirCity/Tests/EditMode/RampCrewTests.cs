@@ -26,7 +26,7 @@ namespace AirCity.Tests
         }
         void Until(Func<bool> ready)
         {
-            for (int i = 0; i < 8000 && !ready(); i++) demo.airport.Simulate(.25f);
+            for (int i = 0; i < 40000 && !ready(); i++) demo.airport.Simulate(.05f);
             Assert.That(ready(),Is.True,$"{demo.Job.State}: {demo.Job.Waiting}");
         }
 
@@ -112,7 +112,7 @@ namespace AirCity.Tests
         public void BlockedAccess_FreezesBoardingAndActiveHandovers(bool boarding)
         {
             Load(); var crew = demo.Job.Fleet.Crew;
-            Until(()=>boarding ? crew.HoldProgress > 2f : demo.Job.TransferSeconds > 3f);
+            Until(()=>boarding ? crew.HoldProgress > .001f && !crew.HoldReady : demo.Job.TransferSeconds > demo.Job.TransferInterval);
             float ground = crew.GroundProgress, hold = crew.HoldProgress, transfer = demo.Job.TransferSeconds;
             var pose = boarding ? crew.HoldPose : crew.GroundPose;
             demo.airport.Simulate(0); demo.station.accessBlocked = true; demo.airport.Simulate(20);
@@ -127,7 +127,7 @@ namespace AirCity.Tests
         public void Cancellation_RecallsWorkersBeforeWithdrawingAndCanRetry(bool boarding)
         {
             Load(); var crew = demo.Job.Fleet.Crew;
-            Until(()=>boarding ? crew.HoldProgress > 2f : crew.GroundProgress > 2f);
+            Until(()=>boarding ? crew.HoldProgress > .001f && !crew.HoldReady : crew.GroundProgress > .001f && !crew.GroundReady);
             demo.Job.Cancel(); Until(()=>demo.Job.Finished);
             Assert.That(crew.GroundSeated && crew.HoldSeated,Is.True);
             Assert.That(demo.aircraft.CargoDoors.AllClosed,Is.True);

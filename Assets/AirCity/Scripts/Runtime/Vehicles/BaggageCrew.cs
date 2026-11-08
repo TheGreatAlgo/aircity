@@ -18,19 +18,19 @@ namespace AirCity.Vehicles
         public float GroundProgress => groundTime;
         public float HoldProgress => holdTime;
         RampCrewType Type => fleet.Station.crewType;
-        float WalkSpeed => Type != null ? Type.walkSpeed : 1.2f;
-        float ReturnSpeed => Type != null ? Type.returnSpeed : 1.4f;
-        float Pick => Type != null ? Type.pickSeconds : .65f;
-        float Lift => Type != null ? Type.liftSeconds : .45f;
-        float Turn => Type != null ? Type.turnSeconds : .7f;
-        float Place => Type != null ? Type.placeSeconds : .65f;
-        float TurnBack => Type != null ? Type.turnBackSeconds : .5f;
-        float Settle => Type != null ? Type.settleSeconds : .3f;
-        float HoldPick => Type != null ? Type.holdPickSeconds : .55f;
-        float HoldLift => Type != null ? Type.holdLiftSeconds : .4f;
-        float HoldStow => Type != null ? Type.holdStowSeconds : .75f;
-        float HoldReset => Type != null ? Type.holdResetSeconds : .55f;
-        const float KneelSpeed = .8f;
+        float WalkSpeed => (Type != null ? Type.walkSpeed : 1.2f)*BaggagePacing.WorkRate;
+        float ReturnSpeed => (Type != null ? Type.returnSpeed : 1.4f)*BaggagePacing.WorkRate;
+        float Pick => (Type != null ? Type.pickSeconds : .65f)/BaggagePacing.WorkRate;
+        float Lift => (Type != null ? Type.liftSeconds : .45f)/BaggagePacing.WorkRate;
+        float Turn => (Type != null ? Type.turnSeconds : .7f)/BaggagePacing.WorkRate;
+        float Place => (Type != null ? Type.placeSeconds : .65f)/BaggagePacing.WorkRate;
+        float TurnBack => (Type != null ? Type.turnBackSeconds : .5f)/BaggagePacing.WorkRate;
+        float Settle => (Type != null ? Type.settleSeconds : .3f)/BaggagePacing.WorkRate;
+        float HoldPick => (Type != null ? Type.holdPickSeconds : .55f)/BaggagePacing.WorkRate;
+        float HoldLift => (Type != null ? Type.holdLiftSeconds : .4f)/BaggagePacing.WorkRate;
+        float HoldStow => (Type != null ? Type.holdStowSeconds : .75f)/BaggagePacing.WorkRate;
+        float HoldReset => (Type != null ? Type.holdResetSeconds : .55f)/BaggagePacing.WorkRate;
+        const float KneelSpeed = .8f*BaggagePacing.WorkRate;
         BaggageBatch cachedHoldBatch;
         float cachedHoldWalk;
         float HoldWalk
@@ -52,7 +52,7 @@ namespace AirCity.Vehicles
         float ConveyorSeconds => (Vector3.Distance(Belt, Front) + Vector3.Distance(Front, HoldPickup)) / BaggageLoadPath.BeltSpeed;
         public int GroundWorkers => fleet.Workers>=3 ? 2 : 1;
         public int HoldWorkers => fleet.Workers>=4 ? 2 : 1;
-        public float Interval => Mathf.Max(fleet.Station.secondsPerBag, GroundCycle/GroundWorkers, HoldCycle/HoldWorkers);
+        public float Interval => Mathf.Max(fleet.Station.secondsPerBag/BaggagePacing.WorkRate, GroundCycle/GroundWorkers, HoldCycle/HoldWorkers);
         public float Travel(bool load) => load ? GroundOutbound + ConveyorSeconds + HoldCycle :
             HoldOutbound + ConveyorSeconds + GroundCycle;
         BaggageTurnaround Job => fleet.Job;
@@ -195,8 +195,8 @@ namespace AirCity.Vehicles
             return done;
         }
 
-        float Segment(RampCrewPose a, RampCrewPose b) => Mathf.Max(.35f, Vector3.Distance(a.position,b.position) /
-            (Type != null ? Type.boardingSpeed : .9f)) + Quaternion.Angle(a.rotation,b.rotation) / 180f * .3f;
+        float Segment(RampCrewPose a, RampCrewPose b) => (Mathf.Max(.35f, Vector3.Distance(a.position,b.position) /
+            (Type != null ? Type.boardingSpeed : .9f)) + Quaternion.Angle(a.rotation,b.rotation) / 180f * .3f)/BaggagePacing.WorkRate;
         float Duration(List<RampCrewPose> route)
         { float t = 0; for (int i = 1; i < route.Count; i++) t += Segment(route[i-1],route[i]); return t; }
         RampCrewPose Route(List<RampCrewPose> points, float time, bool reverse)
@@ -209,7 +209,7 @@ namespace AirCity.Vehicles
                 var p = b; p.position = Vector3.Lerp(a.position,b.position,t); p.rotation = Quaternion.Slerp(a.rotation,b.rotation,t);
                 p.hipHeight = Mathf.Lerp(a.hipHeight,b.hipHeight,t); p.lean = Mathf.Lerp(a.lean,b.lean,t);
                 p.stride = Vector3.Distance(a.position,b.position) > .5f && !p.kneeling ? .7f : .15f;
-                p.phase = (reverse ? -1 : 1) * time * 1.5f;
+                p.phase = (reverse ? -1 : 1) * time * 1.5f*BaggagePacing.WorkRate;
                 if (reverse && i > 1 && !p.kneeling) p.rotation *= Quaternion.Euler(0,180,0);
                 if (i == 1) { p.hands = true; p.leftHand = Vector3.Lerp(a.leftHand,new Vector3(-.27f,.9f,.05f),t);
                     p.rightHand = Vector3.Lerp(a.rightHand,new Vector3(.27f,.9f,.05f),t); }
@@ -263,10 +263,10 @@ namespace AirCity.Vehicles
             float elapsed=Job.TransferSeconds-offset;
             int bag=Mathf.Min(Job.TransferBatch.Count-1,Mathf.FloorToInt(elapsed/Job.TransferInterval));
             while (bag>=0 && bag%GroundWorkers!=worker) bag--;
-            if (bag<0 || elapsed-bag*Job.TransferInterval>3.6f) return pose;
+            if (bag<0 || elapsed-bag*Job.TransferInterval>depot.HandSeconds) return pose;
             var current=depot.BagAt(fleet,elapsed-bag*Job.TransferInterval+offset,bag);
             pose.hipHeight=.83f; pose.lean=12f;
-            float progress=Mathf.Clamp01((elapsed-bag*Job.TransferInterval)/3.6f);
+            float progress=Mathf.Clamp01((elapsed-bag*Job.TransferInterval)/depot.HandSeconds);
             pose.rotation=Quaternion.Slerp(pose.rotation,Quaternion.LookRotation(new Vector3(depot.Right.x,0,depot.Right.y)),Mathf.Sin(progress*Mathf.PI));
             pose.position=Vector3.Lerp(at,Flat(feed)-new Vector3(depot.Right.x,0,depot.Right.y)*.65f,Mathf.Sin(progress*Mathf.PI));
             Hands(ref pose,current.bottom,current.rotation); return pose;
@@ -313,7 +313,7 @@ namespace AirCity.Vehicles
             else if ((e -= Pick) < Lift) { float t = Ease(e/Lift); pose.hipHeight = Mathf.Lerp(.69f,.94f,t); pose.lean = Mathf.Lerp(28,0,t); bag = Vector3.Lerp(from,Carry(pose),t); }
             else if ((e -= Lift) < Turn) { pose.rotation = Quaternion.Slerp(startRotation,travelRotation,Ease(e/Turn)); bag = Carry(pose); }
             else if ((e -= Turn) < Distance/WalkSpeed)
-            { float t = e/(Distance/WalkSpeed); pose.position = Vector3.Lerp(source,target,t); pose.rotation = Quaternion.Slerp(travelRotation,endRotation,Ease((t-.75f)*4)); pose.stride = .65f; pose.phase = e*1.5f; bag = Carry(pose); }
+            { float t = e/(Distance/WalkSpeed); pose.position = Vector3.Lerp(source,target,t); pose.rotation = Quaternion.Slerp(travelRotation,endRotation,Ease((t-.75f)*4)); pose.stride = .65f; pose.phase = e*1.5f*BaggagePacing.WorkRate; bag = Carry(pose); }
             else if ((e -= Distance/WalkSpeed) < Place)
             { pose.position = target; pose.rotation = endRotation; float t = Ease(e/Place); pose.hipHeight = Mathf.Lerp(.94f,.74f,t); pose.lean = 22*t; bag = Vector3.Lerp(Carry(pose),to,t); }
             else
@@ -321,7 +321,7 @@ namespace AirCity.Vehicles
                 bag = to; pose.position = target; pose.rotation = endRotation;
                 if ((e -= Place) < TurnBack) pose.rotation = Quaternion.Slerp(endRotation,travelRotation * Quaternion.Euler(0,180,0),Ease(e/TurnBack));
                 else if ((e -= TurnBack) < Distance/ReturnSpeed)
-                { float t = e/(Distance/ReturnSpeed); pose.position = Vector3.Lerp(target,source,t); pose.rotation = Quaternion.Slerp(travelRotation * Quaternion.Euler(0,180,0),startRotation,Ease((t-.75f)*4)); pose.stride = .8f; pose.phase = e*1.5f; }
+                { float t = e/(Distance/ReturnSpeed); pose.position = Vector3.Lerp(target,source,t); pose.rotation = Quaternion.Slerp(travelRotation * Quaternion.Euler(0,180,0),startRotation,Ease((t-.75f)*4)); pose.stride = .8f; pose.phase = e*1.5f*BaggagePacing.WorkRate; }
                 else pose = GroundReadyPose(load,worker);
                 return;
             }

@@ -18,13 +18,15 @@ gotchas, and `README.md` / `ArtSource/README.md` are the human-facing guides.
 | [systems/airfield.md](systems/airfield.md) | runways, taxiways, service roads, stands and de-icing bays, aprons, verges, runway rules, weather (snow, rain, grass), airfield shaders |
 | [systems/gates.md](systems/gates.md) | gate/building designer, grounded concourse heads, terminal storeys/facades, bridge families, aircraft stops and automatic door assignment |
 | [systems/baggage.md](systems/baggage.md) | sandbox automation and station controls, repeated cart trips, bulk/container turnarounds, departure clearance, manifests and planned terminal expansion |
+| [systems/terminal-baggage.md](systems/terminal-baggage.md) | abstract terminal check-in/reclaim, timed underground/covered links, queue limits and connection controls |
 | [systems/maintenance.md](systems/maintenance.md) | depots, snow ploughs, mowers, tugs and push-back, teams, jobs and dispatch, turning round, keeping clear, the ploughing / mowing pass pattern |
 | [systems/traffic.md](systems/traffic.md) | flights: taxi route planning, holds and clearances, takeoffs, landings, go-arounds, the wind, the sandbox's traffic controls |
 | [taxi-todo.md](taxi-todo.md) | what's left in ground traffic: the jams the soak test still finds, ideas, tuning |
 | [systems/dev-tools.md](systems/dev-tools.md) | batch commands, tests, captures, the sandbox controls |
-| [assets/Cessna172.md](assets/Cessna172.md), [assets/Narrowbody.md](assets/Narrowbody.md), [assets/Widebody.md](assets/Widebody.md), [assets/DoubleDeck.md](assets/DoubleDeck.md), [assets/Quadjet.md](assets/Quadjet.md) | one aircraft type |
+| [assets/Cessna172.md](assets/Cessna172.md), [assets/Narrowbody.md](assets/Narrowbody.md), [assets/Widebody.md](assets/Widebody.md), [assets/DoubleDeck.md](assets/DoubleDeck.md), [assets/Quadjet.md](assets/Quadjet.md), [assets/Turboprop.md](assets/Turboprop.md), [assets/Trijet.md](assets/Trijet.md) | one aircraft type |
 | [assets/SnowPlough.md](assets/SnowPlough.md), [assets/Mower.md](assets/Mower.md), [assets/Tugs.md](assets/Tugs.md), [assets/Depot.md](assets/Depot.md), [assets/ControlTowers.md](assets/ControlTowers.md), [assets/JetBridge.md](assets/JetBridge.md) | one vehicle / building |
 | [assets/BaggageEquipment.md](assets/BaggageEquipment.md) | baggage tractor, covered cart, belt loader, bag props, mechanical posing and the standalone review scene |
+| [assets/BaggageDepot.md](assets/BaggageDepot.md) | Small/Medium/Large depot shells, shared drive-through positions, roof inspection and equipment upgrades |
 | [assets/RampCrew.md](assets/RampCrew.md) | shared skinned workers, driving, boarding, bag handovers, hold poses and crew interlocks |
 | [assets/ContainerEquipment.md](assets/ContainerEquipment.md) | unbranded LD3, container dolly, dual-platform loader, interfaces, references and generation |
 | [assets/airfield-textures.md](assets/airfield-textures.md) | ground textures and airfield materials |
@@ -95,7 +97,7 @@ Tests/EditMode   AircraftTypeTests, AircraftLiveryTests, AirfieldTests, StandTes
 
 | Area | Status |
 |---|---|
-| Aircraft | Done: Cessna 172 (code A) and an A320-class twinjet (code C), with liveries, lights, LODs |
+| Aircraft | Done: seven Starling types, one per size code A–F (A4 light single, B50 turboprop, C180 narrowbody, D250 trijet, E350 widebody, F450 quadjet, F550 double-deck), with liveries, lights, LODs |
 | Airfield | Done: four surfaces, runway rules, ICAO markings and lights, taxiway graph and routing, service roads, mown verges, wear, rain, snow, grass |
 | Stands | Started 2026-10-24: parking stands (codes A–F, 90/60/45/30°, push-back or taxi-out, grass for A/B) and drive-through de-icing bays, snapped onto taxiways with automatic paint; next: hangars, jet bridges, aircraft parking at stands |
 | Maintenance | Done: several depots (vehicles parked inside, roller doors), plough teams in echelon, mowers (strips and verges), taxiway runs turned on the pavement, automatic dispatch to the nearest team, keeping clear of aircraft and each other, night lights |

@@ -22,7 +22,7 @@ namespace AirCity.EditorTools.Vehicles
                     if (existing.bayLayoutVersion==0) existing.firstBay+=existing.Facing*8f;
                     ExtendFrontage(station,existing); existing.ConnectBay(station);
                 }
-                existing.Rebuild(); return existing;
+                existing.Rebuild(); ConnectTerminal(existing); return existing;
             }
             var airport=station.Airport;
             var go=new GameObject("Baggage depot"); go.transform.SetParent(airport.transform,false);
@@ -30,7 +30,15 @@ namespace AirCity.EditorTools.Vehicles
             depot.bearing=station.dispatchBearing; depot.firstBay=airport.Taxiways.At(station.dispatchNode)+depot.Facing*8f;
             station.depot=depot; station.depotBay=0; station.workersPerTeam=4;
             airport.Baggage.ParkingChanged();
-            ExtendFrontage(station,depot); depot.ConnectBay(station); depot.Rebuild(); return depot;
+            ExtendFrontage(station,depot); depot.ConnectBay(station); depot.Rebuild(); ConnectTerminal(depot); return depot;
+        }
+
+        static void ConnectTerminal(BaggageDepot depot)
+        {
+            if (depot.connection.enabled || depot.Airport.terminals.Count==0) return;
+            var at=depot.Point(depot.Layout.Right,depot.Layout.WorkZ-6);
+            var terminal=depot.Airport.terminals.OrderBy(t=>t.ClosestOnWall(at,.8f,out _,out _)).First();
+            depot.Airport.Baggage.ConnectTerminal(depot,terminal,BaggageConnectionKind.Underground,out _);
         }
 
         static void ExtendFrontage(BaggageStation station,BaggageDepot depot)

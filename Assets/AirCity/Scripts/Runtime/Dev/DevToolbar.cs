@@ -91,8 +91,8 @@ namespace AirCity.Dev
 
         static readonly string[] CodeTips =
         {
-            "Code A: wingspan under 15 m (Starling A4)", "Code B: under 24 m (commuter turboprops and small regional jets)",
-            "Code C: under 36 m (Starling C180)", "Code D: under 52 m (mid-size widebodies)",
+            "Code A: wingspan under 15 m (Starling A4)", "Code B: under 24 m (Starling B50)",
+            "Code C: under 36 m (Starling C180)", "Code D: under 52 m (Starling D250)",
             "Code E: under 65 m (Starling E350)", "Code F: under 80 m (Starling F450, F550)",
         };
 
@@ -959,6 +959,7 @@ namespace AirCity.Dev
                 Title(airfield.SelectionName);
                 Floors(airfield.TerminalFloors);
                 Buttons(B("Design building", () => OpenTerminalDesigner(airfield.SelectedTerminal), "Edit storey heights, facades and wall angles"));
+                TerminalBaggageInspector(airfield.airport,airfield.SelectedTerminal);
                 Space();
                 Buttons(B("Delete terminal", () => airfield.DeleteSelection(), "Remove the terminal", hint: "Del", danger: true));
                 if (airfield.ApronProblemText != null) Danger(airfield.ApronProblemText);
@@ -1156,14 +1157,13 @@ namespace AirCity.Dev
             AircraftBaggage(a);
             AircraftContainers(a);
             var flight = traffic != null ? traffic.SelectedFlight : null;
-            if (a.type != null && a.type.cargoDoors.Length > 0)
+            if (ShowMore && a.type != null && a.type.cargoDoors.Length > 0)
                 Buttons(B("Open cargo", () => a.CargoDoors.SetOpen(true), "Open the cargo hatches for inspection", enabled: !a.Moving && flight == null && sandbox.SelectedTow == null),
                     B("Close cargo", () => a.CargoDoors.SetOpen(false), "Close the cargo hatches; active baggage service controls its own door"));
             if (flight != null)
             {
                 Note(flight.Status);
-                Space();
-                Buttons(B("Delete aircraft", () => sandbox.DeleteSelected(), "Remove the aircraft", hint: "Del", danger: true));
+                if (ShowMore) { Space(); Buttons(B("Delete aircraft", () => sandbox.DeleteSelected(), "Remove the aircraft", hint: "Del", danger: true)); }
                 return;
             }
             var tow = sandbox.SelectedTow;
@@ -1178,12 +1178,15 @@ namespace AirCity.Dev
                 else
                     Buttons(B("Push back", () => sandbox.PushBack(Shifted),
                         "A tug comes and pushes it back off its stand onto the taxiway (Shift: to face the other way)", hint: "Enter"));
-                Buttons(B("Park", sandbox.Park, "Put it on the nearest free stand that takes it"),
-                    B("Taxi", () => sandbox.Taxiing = !sandbox.Taxiing, "Taxi it round in a slow weave", sandbox.Taxiing, "T"));
+                Buttons(B("Park", sandbox.Park, "Put it on the nearest free stand that takes it"));
+                if (ShowMore) Buttons(B("Taxi", () => sandbox.Taxiing = !sandbox.Taxiing, "Taxi it round in a slow weave", sandbox.Taxiing, "T"));
             }
-            Buttons(B("Dirt", sandbox.AddDirt, "A quarter more dirt (clean again after full)", hint: "G"));
-            Space();
-            Buttons(B("Delete aircraft", () => sandbox.DeleteSelected(), "Remove the aircraft", hint: "Del", danger: true));
+            if (ShowMore)
+            {
+                Buttons(B("Dirt", sandbox.AddDirt, "A quarter more dirt (clean again after full)", hint: "G"));
+                Space();
+                Buttons(B("Delete aircraft", () => sandbox.DeleteSelected(), "Remove the aircraft", hint: "Del", danger: true));
+            }
             string message = traffic != null && traffic.Message != null ? traffic.Message
                 : sandbox.Message ?? (traffic != null && traffic.PreviewProblem != null ? "Can't depart: " + traffic.PreviewProblem : null);
             if (tow == null) Note(message);
@@ -1192,7 +1195,9 @@ namespace AirCity.Dev
         // ------------------------------------------------------------------ world, maintenance, traffic, aircraft (sidebar)
 
         /// <summary>Sidebar sections folded shut (their caption clicked).</summary>
-        static readonly HashSet<string> folded = new HashSet<string> { "baggage-setup", "container-setup" };
+        static readonly HashSet<string> folded = new HashSet<string> { "baggage-setup", "container-setup", "diagnostics" };
+        /// <summary>Extra debug controls are opt-in; ordinary play starts with the compact menu.</summary>
+        public bool ShowMore { get; set; }
 
         /// <summary>A section's caption, clicked to fold it shut or open; true if it's open.</summary>
         bool Fold(string key, string caption)
@@ -1211,6 +1216,10 @@ namespace AirCity.Dev
 
         void Sidebar()
         {
+            Buttons(B(ShowMore ? "Show less" : "Show more", () =>
+            {
+                ShowMore=!ShowMore; sidebarScroll=Vector2.zero; openPop=null;
+            }, "Extra controls, station setup and diagnostics",on:ShowMore));
             var airport = airfield != null ? airfield.airport : null;
             if (airport != null)
             {
@@ -1226,19 +1235,20 @@ namespace AirCity.Dev
                     }
                     Buttons(speeds);
                     if (sandbox != null) Buttons(B("Night", () => sandbox.Night = !sandbox.Night, "Day / night (+ / - for dusk)", sandbox.Night, "N"));
-                    Buttons(B("Snowfall", airfield.Snowfall, "2 cm of snow at once", hint: "O"),
-                        B("Grass", airfield.GrowGrass, "Grass strips and verges grow 6 cm at once", hint: "U"));
+                    if (ShowMore)
+                        Buttons(B("Snowfall", airfield.Snowfall, "2 cm of snow at once", hint: "O"),
+                            B("Grass", airfield.GrowGrass, "Grass strips and verges grow 6 cm at once", hint: "U"));
                 }
-                if (Fold("maintenance", "MAINTENANCE"))
+                BaggageSidebar(airport);
+                ContainerSidebar(airport);
+                if (ShowMore && Fold("maintenance", "MAINTENANCE"))
                 {
                     Buttons(B("Plough all", airfield.PloughAll, "Ploughs to every runway, taxiway and road with snow on it"),
                         B("Mow all", airfield.MowAll, "Mowers to every grass strip and grown verge"));
                     Buttons(B("Auto dispatch", () => airfield.AutoDispatch = !airfield.AutoDispatch,
                         "The depots send ploughs and mowers by themselves when snow lies or grass grows", airfield.AutoDispatch));
                 }
-                BaggageSidebar(airport);
-                ContainerSidebar(airport);
-                if (traffic != null && Fold("traffic", $"TRAFFIC   wind from {traffic.Wind:000}°"))
+                if (ShowMore && traffic != null && Fold("traffic", $"TRAFFIC   wind from {traffic.Wind:000}°"))
                 {
                     var lands = new List<Btn>();
                     foreach (var t in traffic.Types)
@@ -1256,7 +1266,7 @@ namespace AirCity.Dev
             }
             else if (sandbox != null && Fold("world", "WORLD"))
                 Buttons(B("Night", () => sandbox.Night = !sandbox.Night, "Day / night (+ / - for dusk)", sandbox.Night, "N"));
-            if (sandbox != null && Fold("aircraft", "AIRCRAFT"))
+            if (ShowMore && sandbox != null && Fold("aircraft", "AIRCRAFT"))
             {
                 Buttons(B("Engines", () => sandbox.Engines = !sandbox.Engines, "Engines on: props and fans spin, beacons on", sandbox.Engines, "R"),
                     B("Beacons", () => sandbox.Beacons = !sandbox.Beacons, "Red anti-collision beacons", sandbox.Beacons, "1"));
@@ -1264,7 +1274,8 @@ namespace AirCity.Dev
                     B("Landing", () => sandbox.Landing = !sandbox.Landing, "Landing and taxi lights", sandbox.Landing, "3"));
                 Buttons(B("Logo", () => sandbox.Logos = !sandbox.Logos, "Tail logo floodlights", sandbox.Logos, "4"));
             }
-            Add(U(16f), r => GUI.Label(r, "H hides the HUD   click a caption to fold it", DevGui.Small));
+            if (ShowMore && airport!=null && Fold("diagnostics","DIAGNOSTICS")) Note(airfield.DiagnosticsText());
+            Add(U(16f), r => GUI.Label(r, "H hides the menu", DevGui.Small));
         }
 
         Btn Weather(SurfaceCondition c) =>

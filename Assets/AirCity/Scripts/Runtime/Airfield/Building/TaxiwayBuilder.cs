@@ -440,14 +440,14 @@ namespace AirCity.Airfield.Building
             for (int k = 0; k < 2; k++)
             {
                 var c = j.p + u * (g + k * 0.6f);
-                paint.Dashes(c, c + lane * (hw - RoadEdgeInset), 0.15f, 0.6f, 0.3f, PaintBuilder.White);
+                paint.Dashes(c, c + lane * (hw - RoadEdgeInset), 0.15f, 0.6f, 0.3f, PaintBuilder.White, true);
             }
             // the give-way triangle in the approach lane, its point towards the oncoming driver
             var mid = j.p + lane * (hw * 0.5f);
             var b0 = mid + u * (g + 3f) + lane * 0.9f;
             var b1 = mid + u * (g + 3f) - lane * 0.9f;
             var apex = mid + u * (g + 7.5f);
-            paint.Strip(new[] { b0, b1, apex, b0 }, 0.12f, PaintBuilder.White);
+            paint.Strip(new[] { b0, b1, apex, b0 }, 0.12f, PaintBuilder.White, true);
         }
 
         /// <summary>Where an edge's straight centreline paint stops at a node, in metres from that node.</summary>

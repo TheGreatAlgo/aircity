@@ -30,7 +30,7 @@ namespace AirCity.EditorTools.Vehicles
         {
             VehicleSetup.CreateMissing();
             var existing = airport.GetComponentsInChildren<BaggageStation>().FirstOrDefault(s => s.name == "Sandbox baggage hall");
-            if (existing != null) { BaggageDepotSetup.Attach(existing); WireCamera(existing); return existing; }
+            if (existing != null) { ConfigureStandStops(existing); BaggageDepotSetup.Attach(existing); WireCamera(existing); return existing; }
             var type = AssetDatabase.LoadAssetAtPath<AirCity.Aircraft.AircraftType>("Assets/AirCity/Aircraft/Narrowbody/Narrowbody.aircraft");
             var net = airport.Taxiways;
             int Node(float x, float z) => net.AddNode(new Vector3(x, 0f, z));
@@ -59,6 +59,7 @@ namespace AirCity.EditorTools.Vehicles
             station.transform.SetParent(airport.transform, false);
             station.tractorType = VehicleSetup.Type("BaggageTractor"); station.cartType = VehicleSetup.Type("BaggageCart"); station.loaderType = VehicleSetup.Type("BeltLoader");
             station.bagPrefabs = VehicleSetup.BagPrefabs();
+            station.bagPropType = VehicleSetup.Type("BaggageProps");
             station.cartCount = 2;
             Characters.RampCrewSetup.Assign(station);
             station.tractorPrefab = VehicleSetup.Prefab("BaggageTractor"); station.cartPrefab = VehicleSetup.Prefab("BaggageCart"); station.loaderPrefab = VehicleSetup.Prefab("BeltLoader");
@@ -73,9 +74,20 @@ namespace AirCity.EditorTools.Vehicles
                 Quaternion.LookRotation(airport.transform.TransformDirection(new Vector3(layout.nose.x, 0f, layout.nose.y))));
             var depot = airport.AddDepot(park + new Vector2(65f, -63f), Vector2.up);
             VehicleSetup.Assign(depot); depot.autoDispatch = false; depot.SetFleet(0, 0); depot.SetTugs(1, 0);
+            ConfigureStandStops(station);
             BaggageDepotSetup.Attach(station);
             airport.BuildGround(); net.Rebuild(); WireCamera(station);
             return station;
+        }
+
+        static void ConfigureStandStops(BaggageStation station)
+        {
+            var airport=station.Airport;
+            foreach (var stand in airport.Taxiways.stands.Where(s=>station.standIds.Contains(s.id)))
+                foreach (var type in airport.Bridges.TypesFor(stand))
+                    if (type.SizeCode<station.automaticHold.aircraft.SizeCode && stand.ServiceFor(type)==null)
+                        // Keep smaller aircraft at the base stop, clear of this example's compact equipment court.
+                        stand.serviceConfigurations.Add(new StandServiceConfiguration { aircraft=type,stopOffset=0 });
         }
 
         static void WireCamera(BaggageStation station)

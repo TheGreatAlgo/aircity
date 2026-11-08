@@ -68,6 +68,7 @@ namespace AirCity.EditorTools.Vehicles
             bulk.transform.SetParent(airport.transform, false);
             bulk.tractorType = VehicleSetup.Type("BaggageTractor"); bulk.cartType = VehicleSetup.Type("BaggageCart"); bulk.loaderType = VehicleSetup.Type("BeltLoader");
             bulk.bagPrefabs = VehicleSetup.BagPrefabs();
+            bulk.bagPropType = VehicleSetup.Type("BaggageProps");
             Characters.RampCrewSetup.Assign(bulk);
             bulk.tractorPrefab = VehicleSetup.Prefab("BaggageTractor"); bulk.cartPrefab = VehicleSetup.Prefab("BaggageCart"); bulk.loaderPrefab = VehicleSetup.Prefab("BeltLoader");
             int bulkHome = Node(x + 50, park.y + 5), bulkNorth = Node(x + 50, park.y + 70);

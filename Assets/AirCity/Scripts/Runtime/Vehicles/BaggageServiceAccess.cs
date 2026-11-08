@@ -12,6 +12,8 @@ namespace AirCity.Vehicles
         public int cartCount = 1;
         public StandEquipmentLayout.Parking parking;
         public Component owner;
+        public BaggageDepot depot;
+        public int homeNode;
         public BaggageServiceAccess(BaggageStation station)
         {
             owner=station;
@@ -21,6 +23,8 @@ namespace AirCity.Vehicles
             dispatchNode = station.dispatchNode; arrivalsNode = station.arrivalsNode;
             dispatchBearing = station.dispatchBearing; arrivalsBearing = station.arrivalsBearing;
             loaderParking = station.loaderParking; loaderParkingBearing = station.loaderParkingBearing;
+            depot=station.depot; homeNode=station.dispatchNode;
+            if (depot!=null) dispatchNode=arrivalsNode=depot.WorkNode(station.depotBay);
             if (parking?.Valid == true) { loaderParking=parking.loader.position; loaderParkingBearing=BaggageTrain.Bearing(parking.loader.facing); }
         }
         public BaggageServiceAccess(ContainerStation station)

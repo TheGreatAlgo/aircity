@@ -232,6 +232,20 @@ namespace AirCity.Aircraft
         /// off stands that turn small aircraft away (Stand.noSmallAircraft).</summary>
         public bool Light => maxTakeoffMass < 5700f;
 
+        /// <summary>Boards by its own stairs, never a jet bridge: a light aircraft, or one whose passenger doors are all
+        /// under StairsBelow (a regional turboprop's sills are about a metre up). Bridges leave such a type alone.</summary>
+        public bool BoardsByStairs
+        {
+            get
+            {
+                if (Light) return true;
+                float highest = 0f;
+                foreach (var p in PointsOfType(ServicePointType.PassengerDoor)) highest = Mathf.Max(highest, p.position.y);
+                return highest < StairsBelow;
+            }
+        }
+        public const float StairsBelow = 1.6f;
+
         // flight figures, with fallbacks for types imported before they existed (light aircraft / jets)
         public float TaxiSpeed => taxiSpeed > 0f ? taxiSpeed : Light ? 7f : 10f;
         public float RotateSpeed => rotateSpeed > 0f ? rotateSpeed : Light ? 28f : 72f;

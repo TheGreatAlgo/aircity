@@ -5,7 +5,7 @@ namespace AirCity.Vehicles
     /// <summary>The same cart, conveyor and hold path supplies simulation travel time and visual positions.</summary>
     public static class BaggageLoadPath
     {
-        public const float BeltSpeed = 0.8f;
+        public const float BeltSpeed = 0.8f*BaggagePacing.WorkRate;
         public static float HoldDepth(BaggageTurnaround job)
         {
             foreach (var door in job.HoldConfiguration.aircraft.cargoDoors)

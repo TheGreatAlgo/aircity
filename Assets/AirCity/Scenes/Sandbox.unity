@@ -689,6 +689,11 @@ MonoBehaviour:
     - 38
     floors: 2
     storeyHeights: []
+    baggageId: 7cf35be5184047aa9de324d3731f87e6
+    baggage:
+      checkInFloor: 1
+      reclaimFloor: 0
+      checkInCapacity: 2400
     exterior:
       facade:
         lean: 0
@@ -716,6 +721,8 @@ MonoBehaviour:
   - {fileID: -3326733738379100494, guid: f940e90c224414fddb9e6ebe23fdef9b, type: 3}
   - {fileID: -3326733738379100494, guid: 0bae5a7660a4042d98cbd19b958218e5, type: 3}
   - {fileID: -3326733738379100494, guid: 6dbd08986c1de4110ae8a80d4d6db2b4, type: 3}
+  - {fileID: -3326733738379100494, guid: f5bc0cc00a7544541abbcb386391563c, type: 3}
+  - {fileID: -3326733738379100494, guid: 2d18c72a9d2c14fc096df707f4474355, type: 3}
   condition: 0
   groundSnow: 0
   timeScale: 1
@@ -4382,7 +4389,11 @@ MonoBehaviour:
       supportColumns: []
       linkSupportColumns: []
     additionalHeads: []
-    serviceConfigurations: []
+    serviceConfigurations:
+    - aircraft: {fileID: -3326733738379100494, guid: f5bc0cc00a7544541abbcb386391563c, type: 3}
+      allowed: 1
+      stopOffset: 0
+      unusedBridges: []
     baggageEntryNode: 137
     baggageExitNode: 138
     framed: 1
@@ -5209,6 +5220,15 @@ MonoBehaviour:
   firstBay: {x: 1456.2129, y: -355.54}
   bearing: 0
   bayLayoutVersion: 3
+  connection:
+    enabled: 1
+    terminalId: 7cf35be5184047aa9de324d3731f87e6
+    kind: 0
+    capacity: 144
+    bagsPerMinute: 300
+    beltSpeed: 3
+    depth: 5
+  showConnection: 0
 --- !u!1 &2115154156
 GameObject:
   m_ObjectHideFlags: 0

@@ -427,7 +427,51 @@ namespace AirCity.EditorTools.Airfield
             ParkAircraft(airport, new List<Stand> { contact[4] }, "Widebody");
             ParkAircraft(airport, new List<Stand> { contact[5] }, "DoubleDeck");
             ParkAircraft(airport, new List<Stand> { contact[6] }, "Quadjet");
+            // the regional turboprop on the last fan stand (code B on a code C stand: its nose comes to the design nose
+            // line). The trijet needs a code D stand or larger and there is none free: it shows on the display ramp
+            ParkAircraft(airport, new List<Stand> { fanStands[2] }, "Turboprop");
             return airport;
+        }
+
+        /// <summary>
+        /// Bring the saved sandbox up to date with the aircraft types: every type in Airport.aircraftTypes, showcase rows
+        /// on the display ramp for the types it has none of, and the turboprop parked on a free fan stand (as
+        /// BuildSandboxAirport parks it). Batch: -executeMethod AirCity.EditorTools.Airfield.AirfieldSetup.RefreshSandboxAircraft -quit
+        /// </summary>
+        [MenuItem("AirCity/Airfield/Refresh Sandbox Aircraft")]
+        public static void RefreshSandboxAircraft()
+        {
+            var scene = EditorSceneManager.OpenScene(AircraftSetup.SandboxScene, OpenSceneMode.Single);
+            var airport = Object.FindAnyObjectByType<Airport>();
+            if (airport == null) { Debug.LogError("AirfieldSetup: no Airport in the sandbox"); return; }
+            int listed = 0;
+            foreach (var t in AircraftSetup.AllTypes())
+                if (!airport.aircraftTypes.Contains(t)) { airport.aircraftTypes.Add(t); listed++; }
+            int rows = AircraftSetup.AddMissingShowcaseRows();
+            var net = airport.Taxiways;
+            var parked = airport.GetComponentsInChildren<AirCity.Aircraft.Aircraft>().Select(a => a.transform.position).ToList();
+            bool Free(Stand s)
+            {
+                var l = net.Layout(s);
+                if (l == null) return false;
+                var at = airport.transform.TransformPoint(new Vector3(l.stop.x, 0f, l.stop.y));
+                return parked.All(p => Vector3.Distance(p, at) > 25f);
+            }
+            int parkedNow = 0;
+            var turboprop = AircraftSetup.AllTypes().FirstOrDefault(t => t.model == "Turboprop");
+            if (turboprop != null && !airport.GetComponentsInChildren<AirCity.Aircraft.Aircraft>().Any(a => a.type == turboprop))
+            {
+                // the fan stands: code C parking stands not facing south like the contact stands; the last one first
+                var fan = net.stands.Where(s => s != null && s.kind == StandKind.Parking && s.code == SizeCode.C &&
+                                                Mathf.Abs(Mathf.DeltaAngle(s.heading, 180f)) > 1f && Free(s))
+                    .OrderByDescending(s => s.heading).FirstOrDefault();
+                if (fan != null) { ParkAircraft(airport, new List<Stand> { fan }, "Turboprop"); parkedNow = 1; }
+            }
+            airport.BuildGround();
+            net.Rebuild();
+            EditorSceneManager.SaveScene(scene);
+            AssetDatabase.SaveAssets();
+            Debug.Log($"AirfieldSetup: sandbox aircraft refreshed: {listed} types listed, showcase rows for {rows} types, {parkedNow} parked");
         }
 
         /// <summary>Where the aircraft showcase stands, off every taxiway (AddSandboxAirport moves it there).</summary>

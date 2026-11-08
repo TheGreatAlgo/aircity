@@ -14,6 +14,7 @@ namespace AirCity.Vehicles
         public readonly BaggageEquipmentSet Equipment;
         public readonly BaggageStore Dispatch, Arrivals;
         readonly BaggageLedger ledger;
+        public BaggageCartPacking CartPacking { get; }
         public BaggageStore[] Carts { get; private set; }
         public int ActiveCart { get; private set; }
         public BaggageStore Cart => Carts[ActiveCart];
@@ -37,6 +38,7 @@ namespace AirCity.Vehicles
         internal BaggageFleet(BaggageStation station, BaggageLedger ledger)
         {
             Station = station; this.ledger = ledger;
+            CartPacking=new BaggageCartPacking(station.cartType,station.bagPropType);
             Equipment = new BaggageEquipmentSet(station.tractorType, station.cartType, station.loaderType);
             Dispatch = station.depot!=null ? station.depot.Dispatch(ledger) : ledger.Store(station.name + " dispatch", station.dispatchCapacity, station.dispatchWeight);
             Arrivals = station.depot!=null ? station.depot.Arrivals(ledger) : ledger.Store(station.name + " arrivals", station.arrivalsCapacity, station.arrivalsWeight);
@@ -52,7 +54,7 @@ namespace AirCity.Vehicles
             {
                 if (Carts != null && CartCount != 0) return;
                 Carts = new BaggageStore[Mathf.Max(1,Station.cartCount)];
-                for (int i = 0; i < Carts.Length; i++) Carts[i] = ledger.Store(Station.name + " cart " + (i+1),100,Station.cartType.baggage.payload);
+                for (int i = 0; i < Carts.Length; i++) Carts[i] = ledger.Store(Station.name + " cart " + (i+1),CartPacking.Capacity,Station.cartType.baggage.payload);
             }
             var parking=StandEquipmentLayout.For(Station);
             if (Station.Problem==parkingProblem) Station.Problem=null;
@@ -87,7 +89,7 @@ namespace AirCity.Vehicles
         BaggageStation[] cachedStations;
         ContainerStation[] cachedContainerStations;
         public BaggageStation[] Stations => cachedStations ??= airport.GetComponentsInChildren<BaggageStation>().Where(s=>s.isActiveAndEnabled).ToArray();
-        public bool NeedsSimulation => Active || Array.Exists(Stations, s => s.automaticHandling) || Array.Exists(ContainerStations, s => s.automaticHandling);
+        public bool NeedsSimulation => Active || TerminalLinksActive || Array.Exists(Stations, s => s.automaticHandling) || Array.Exists(ContainerStations, s => s.automaticHandling);
         public AirportBaggage(Airport airport)
         {
             this.airport = airport;
@@ -170,10 +172,12 @@ namespace AirCity.Vehicles
             { station.Problem = reason ?? "bag demand exceeds the configured hold"; return; }
             var fleet = Fleet(station);
             if (fleet == null) { station.Problem = "no compatible baggage equipment"; return; }
-            if (fleet.Dispatch.Count + station.outgoingBags > fleet.Dispatch.Capacity ||
-                fleet.Dispatch.Weight + station.outgoingBags * station.kilogramsPerBag > fleet.Dispatch.WeightCapacity)
-            { station.Problem = "dispatch is full; waiting to prepare the next manifest"; return; }
-            int batchSize = Mathf.Min(10, fleet.Cart.Capacity, Mathf.FloorToInt(fleet.Cart.WeightCapacity / station.kilogramsPerBag));
+            if (!DepartureSupply(fleet,out var supply,out reason)) { station.Problem=reason; return; }
+            if (supply.Count + station.outgoingBags > supply.Capacity ||
+                supply.Weight + station.outgoingBags * station.kilogramsPerBag > supply.WeightCapacity)
+            { station.Problem = supply==fleet.Dispatch ? "dispatch is full; waiting to prepare the next manifest" : "terminal check-in queue is full"; return; }
+            int batchSize = Mathf.Min(fleet.Cart.Capacity, Mathf.FloorToInt(fleet.Cart.WeightCapacity / station.kilogramsPerBag));
+            if (station.depot?.connection?.enabled==true) batchSize=Mathf.Min(batchSize,Mathf.Max(36,station.depot.connection.capacity));
             if (batchSize < 1) { station.Problem = "a bag exceeds cart payload"; return; }
             string visit = "BG" + (++nextManifest).ToString("0000");
             var containerJob = containerStation != null ? ContainerJobOf(aircraft) : null;
@@ -186,11 +190,11 @@ namespace AirCity.Vehicles
                 for (int n = 0; n < count; n += batchSize)
                 {
                     int bags = Mathf.Min(batchSize, count - n);
-                    Ledger.Add(flight + "-" + n, flight, bags, bags * station.kilogramsPerBag, true, store);
+                    var batch=Ledger.Add(flight + "-" + n.ToString("D6"), flight, bags, bags * station.kilogramsPerBag, true, store);
                 }
             }
             Add(station.incomingBags, arrivalFlight, job.Hold);
-            Add(station.outgoingBags, departureFlight, fleet.Dispatch);
+            Add(station.outgoingBags, departureFlight, supply);
             if (!job.Seal(out reason)) throw new InvalidOperationException(reason);
             station.Problem = null;
         }
@@ -205,6 +209,7 @@ namespace AirCity.Vehicles
         {
             var fleet = Fleet(station);
             if (fleet == null) return;
+            if (station.depot?.connection?.enabled==true) return; // Connected arrivals must travel through their conveyor.
             foreach (var batch in Ledger.Batches)
                 if (batch.Location == fleet.Arrivals) Ledger.Transfer(batch, fleet.Arrivals, Reclaim, out _);
         }
@@ -213,6 +218,7 @@ namespace AirCity.Vehicles
         {
             if (station == null || station.Airport != airport) return null;
             if (fleets.TryGetValue(station, out var fleet)) return fleet;
+            station.depot?.EnsureBuilt();
             if (station.tractorType == null || station.cartType == null || station.loaderType == null ||
                 station.tractorType.baggage == null || station.cartType.baggage == null || station.loaderType.baggage == null) return null;
             var equipment = new BaggageEquipmentSet(station.tractorType, station.cartType, station.loaderType);
@@ -245,6 +251,7 @@ namespace AirCity.Vehicles
             var fleet = Fleet(station);
             if (reason == null && fleet == null) reason = "no compatible baggage station equipment";
             if (reason == null && !hold.Resolve(station.loaderType, out _, out reason)) return null;
+            if (reason==null && !DepartureSupply(fleet,out _,out reason)) return null;
             if (reason != null) return null;
             var job = new BaggageTurnaround(this, airport, aircraft, stand, hold, fleet, arrivalFlight, departureFlight);
             jobs.Add(job);
@@ -300,6 +307,8 @@ namespace AirCity.Vehicles
             if (fleet.Equipment.Owner != null) { reason = "waiting for baggage equipment"; return false; }
             if (fleet.CartCount != 0) { reason = "baggage cart is occupied"; return false; }
             var depot=fleet.Station.depot;
+            if (depot!=null && fleet.Station.cartCount>depot.Layout.CartsPerTrain)
+            { reason="shorten the baggage train to fit this depot's working lanes"; return false; }
             if (depot!=null && !depot.TryAssignCrew(fleet,out reason)) return false;
             if (fleet.Carts.Length != Mathf.Max(1,fleet.Station.cartCount)) fleet.ResetParking();
             if (!BaggageServicePlan.Build(airport, job, fleet.Station, out var plan, out reason)) { depot?.ReleaseCrew(fleet); return false; }
@@ -334,6 +343,7 @@ namespace AirCity.Vehicles
                 var stations = Stations; var containerStations = ContainerStations;
                 if (Array.Exists(stations, s => s.automaticHandling) || Array.Exists(containerStations, s => s.automaticHandling))
                     foreach (var aircraft in Aircraft.Aircraft.All) PrepareAutomatic(aircraft, stations, containerStations);
+                StepTerminalLinks(.05f);
                 liveObstacles.Clear();
                 liveObstacles.AddRange(airport.Maintenance.VehicleBoxes(null));
                 foreach (var job in jobs) if (!job.Finished) job.Step(0.05f);

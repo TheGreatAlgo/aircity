@@ -131,10 +131,15 @@ An IMGUI HUD, dev only (not game UI):
 - **Pop-outs:** non-gate settings with many choices (such as Surface) open beside the inspector. Gates use one
   dedicated workspace: Stand/Bridge open placement, and clicking a stand or bridge opens editing. The same panel
   contains model/sections, finishes, parking and removal; there is no separate stand-owned bridge menu.
-- **Sidebar, under the inspector** (beside it, to its left, when the two won't fit one above the other): weather,
-  time speed, day / night, snowfall, grass growth, plough / mow everything, auto-dispatch, traffic, and the aircraft
-  lights and engines. Click a section's caption to fold it.
-- **Top left:** the airfield panel (`DevAirfieldTool`).
+- **Sidebar, under the inspector** (beside it, to its left, when the two won't fit one above the other): starts
+  compact, with weather, time speed, day/night, worker hiring and the current handling status. **Show more**
+  reveals maintenance, traffic, aircraft switches, station configuration and detailed counts; **Show less**
+  returns to the compact view. Setup sections remain folded until clicked. Selection-specific editing still
+  works in either mode; aircraft inspection-only actions also follow Show more.
+- **Diagnostics:** inside **Show more > Diagnostics**, folded by default. The old independent top-left airfield
+  overlay is removed. Its full snow/closure, maintenance-team and selection readout is built only on request,
+  wrapped and clipped inside the same scrolling sidebar. Baggage waiting/error messages remain visible in
+  the compact menu. Bridge placement's temporary aircraft label remains over the world.
 
 Buttons show their keys where available, and hovering shows a tip. Keyboard shortcuts are suspended while typing
 in a gate designer text field.
@@ -145,6 +150,12 @@ How it's built:
   sharp on Retina.
 - Panels mark their rects. While the pointer is over one (`DevGui.PointerOverHud`), clicks and scrolls don't reach
   the world tools or the camera.
+- Shared label/button styles clip to their bounds, so long debug strings cannot paint over neighbouring controls.
+  `AirCity.EditorTools.Dev.DevHudReview.Run` enters native Play mode and captures the actual IMGUI Game view in
+  `Captures/DevHud/{compact,expanded,diagnostics}.png`; a camera-only scene capture omits this HUD.
+  Both bulk and expanded-container Play checks pass with the compact menu. The direct bridge-picking check
+  also passes; the separate bridge-family placement check reports "door out of reach" with both the updated
+  and original HUD code (`Logs/dev-hud-final.xml`, `Logs/dev-hud-baseline-gate.xml`).
 
 | Keys | What |
 |---|---|
@@ -241,7 +252,17 @@ saved scene transforms unchanged. `StandMarkingsReview.InstallFromCommandLine` o
 station staging fields and review aircraft metadata.
 
 `BaggageDepotSetup.InstallSandbox` migrates the main Sandbox to one baggage example and a Small depot.
+The installed hall is connected to its nearest terminal. `TerminalBaggageReview.Run` verifies underground
+and covered terminal links end-to-end and creates `Scenes/TerminalBaggage.unity`; its captures are in
+`Captures/TerminalBaggage/`. The terminal selection panel and expanded Baggage connection controls expose
+check-in/reclaim floors, queues, route travel time and capacity without rendering terminal interiors.
 `BaggageDepotReview.Run` captures its real collection/unloading cycle and verifies departure and conservation;
 results and animation frames are under `Logs/baggage-depot-*` and `Captures/BaggageDepot/`. Run these in an
 isolated project copy while the editor is open. The depot tests include a 50-stand queue/workforce test; this
 does not claim 50 simultaneous turnarounds or a rendering benchmark.
+
+The expanded Baggage panel also provides **View interior** and installation/removal of lifting aids,
+powered belts, automatic sorting and buffer storage. Depot working-bay occupancy is displayed separately
+from hired teams. **AirCity > Vehicles > Create Baggage Depot Family Review** opens a separate three-size
+asset comparison. `BaggageDepotFamilyReview.Run` verifies real handling for all three sizes and captures
+exterior/interior views in `Captures/BaggageDepotFamily/`; see [the asset brief](../assets/BaggageDepot.md).

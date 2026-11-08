@@ -5,6 +5,7 @@ using System.Linq;
 using AirCity.Aircraft;
 using AirCity.Airfield;
 using AirCity.Airfield.Building;
+using AirCity.Vehicles;
 using UnityEngine;
 using UnityEngine.InputSystem;
 using Object = UnityEngine.Object;
@@ -350,6 +351,34 @@ namespace AirCity.Dev
             else Notice("Add a storey to give corridors a floor to board at.");
             Notice("Choose Appearance for facade styles, wall angles and shaped roofs.");
             if (Button("Edit facade appearance")) Queue(() => { tab = 2; scroll = Vector2.zero; });
+            Section("Baggage connection");
+            var facility=Airport.Baggage.TerminalFacility(terminal);
+            Note($"Check-in queue {facility.CheckIn.Count} · Reclaimed {facility.Delivered}");
+            var levels=Enumerable.Range(0,terminal.floors).ToList();
+            string FloorName(int f) => f==0 ? "Ground" : "Floor "+(f+1);
+            Selector("Check-in floor",levels,facility.CheckInFloor,FloorName,
+                f=>Airport.Baggage.SetTerminalBaggageFloors(terminal,f,facility.ReclaimFloor,out _));
+            Selector("Reclaim floor",levels,facility.ReclaimFloor,FloorName,
+                f=>Airport.Baggage.SetTerminalBaggageFloors(terminal,facility.CheckInFloor,f,out _));
+            var halls=Airport.GetComponentsInChildren<BaggageDepot>().Where(d=>d.isActiveAndEnabled).ToList();
+            foreach (var hall in halls)
+            {
+                Label(hall.name);
+                bool idle=Airport.Baggage.CanChangeTerminalLink(hall,out var why);
+                if (idle)
+                {
+                    if (Button("Connect underground")) Queue(()=>Airport.Baggage.ConnectTerminal(hall,terminal,BaggageConnectionKind.Underground,out _));
+                    if (Button("Connect covered")) Queue(()=>Airport.Baggage.ConnectTerminal(hall,terminal,BaggageConnectionKind.Covered,out _));
+                }
+                else Note(why);
+                var link=Airport.Baggage.TerminalLink(hall);
+                if (link?.Facility.Terminal==terminal)
+                {
+                    Note($"{hall.connection.kind} · {link.InTransit} in transit · {link.QueuedDepartures} departures waiting");
+                    Toggle("Show baggage route",hall.showConnection,hall.ShowConnection);
+                }
+            }
+            if (Airport.Baggage.TerminalMessage!=null) Notice(Airport.Baggage.TerminalMessage);
         }
 
         void AircraftPanel()

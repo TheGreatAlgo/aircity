@@ -43,6 +43,7 @@ namespace AirCity.Tests.Aircraft
             var expected = new Dictionary<string, string>
             {
                 { "Cessna172", "A4" }, { "Narrowbody", "C180" }, { "Widebody", "E350" }, { "Quadjet", "F450" }, { "DoubleDeck", "F550" },
+                { "Turboprop", "B50" }, { "Trijet", "D250" },
             };
             foreach (var t in AircraftSetup.AllTypes())
             {
@@ -103,8 +104,26 @@ namespace AirCity.Tests.Aircraft
             Assert.That(qj.Wheelbase, Is.InRange(28f, 30.5f));          // nose gear to the turn centre, ~28.9 m
             Assert.LessOrEqual(RunwayRules.RequiredLength(qj, PavementSurface.Asphalt, SurfaceCondition.Dry), 3400f,
                 "fits the sandbox's 3,400 x 60 m main runway when dry");
+            var tp = Type("Turboprop");
+            Debug.Log($"Turboprop: {tp.Wingspan:F2} x {tp.Length:F2} x {tp.Height:F2} m, code {tp.SizeCode}, wheelbase {tp.Wheelbase:F2}, " +
+                      $"min turn {tp.MinTurnRadius:F1} m, runway {tp.RunwayLength:F0} m");
+            Assert.That(tp.Wingspan, Is.InRange(23f, 24f));            // code B: under 24 m
+            Assert.That(tp.Length, Is.InRange(25f, 26.5f));
+            Assert.That(tp.Height, Is.InRange(7.2f, 8f));
+            Assert.AreEqual('B', tp.SizeCode);
+            Assert.IsTrue(tp.unpavedRunways, "a turboprop takes grass and dirt strips");
+            var tj = Type("Trijet");
+            Debug.Log($"Trijet: {tj.Wingspan:F2} x {tj.Length:F2} x {tj.Height:F2} m, code {tj.SizeCode}, wheelbase {tj.Wheelbase:F2}, " +
+                      $"min turn {tj.MinTurnRadius:F1} m, runway {tj.RunwayLength:F0} m");
+            Assert.That(tj.Wingspan, Is.InRange(49.5f, 51.9f));        // code D: under 52 m
+            Assert.That(tj.Length, Is.InRange(57f, 59f));
+            Assert.That(tj.Height, Is.InRange(15.5f, 16.5f));
+            Assert.AreEqual('D', tj.SizeCode);
+            Assert.That(tj.Wheelbase, Is.InRange(21.5f, 22.5f));
+            Assert.LessOrEqual(RunwayRules.RequiredLength(tj, PavementSurface.Asphalt, SurfaceCondition.Dry), 3400f,
+                "fits the sandbox's 3,400 m main runway when dry");
             // origin under the main gear, nose forwards (+Z), on the ground
-            foreach (var t in new[] { cessna, jet, wide, dd, qj })
+            foreach (var t in new[] { cessna, jet, wide, dd, qj, tp, tj })
             {
                 Assert.Greater(t.bounds.max.z, t.Wheelbase, $"{t.model}: the nose should be ahead of the nose gear");
                 Assert.That(t.bounds.min.y, Is.InRange(-0.05f, 0.05f), $"{t.model}: tyres should touch y = 0");
@@ -116,7 +135,7 @@ namespace AirCity.Tests.Aircraft
         {
             // the gameplay data (wheels, doors, lights) and the imported mesh must agree on the axes:
             // a model that faces -Z would put landing lights at the tail and wingtip lights metres off the wing
-            foreach (var model in new[] { "Cessna172", "Narrowbody", "Widebody", "DoubleDeck", "Quadjet" })
+            foreach (var model in new[] { "Cessna172", "Narrowbody", "Widebody", "DoubleDeck", "Quadjet", "Turboprop", "Trijet" })
             {
                 var type = Type(model);
                 var go = Spawn(type);
@@ -136,7 +155,7 @@ namespace AirCity.Tests.Aircraft
         [Test]
         public void WingOutline_IsTheLeftWingFromTheFuselageToTheTip()
         {
-            foreach (var model in new[] { "Cessna172", "Narrowbody", "Widebody", "DoubleDeck", "Quadjet" })
+            foreach (var model in new[] { "Cessna172", "Narrowbody", "Widebody", "DoubleDeck", "Quadjet", "Turboprop", "Trijet" })
             {
                 var t = Type(model);
                 var o = t.wingOutline;
@@ -214,7 +233,7 @@ namespace AirCity.Tests.Aircraft
         [Test]
         public void NavigationLights_RedOnTheLeft()
         {
-            foreach (var t in new[] { Type("Cessna172"), Type("Narrowbody"), Type("Widebody"), Type("DoubleDeck"), Type("Quadjet") })
+            foreach (var t in new[] { Type("Cessna172"), Type("Narrowbody"), Type("Widebody"), Type("DoubleDeck"), Type("Quadjet"), Type("Turboprop"), Type("Trijet") })
             {
                 var red = t.lights.Single(l => l.type == AircraftLightType.Navigation && l.color.r > 0.9f && l.color.g < 0.2f);
                 var green = t.lights.Single(l => l.type == AircraftLightType.Navigation && l.color.g > 0.9f && l.color.r < 0.2f);
@@ -248,7 +267,7 @@ namespace AirCity.Tests.Aircraft
         [Test]
         public void Prefab_HasEveryGameplayComponent()
         {
-            foreach (var model in new[] { "Cessna172", "Narrowbody", "Widebody", "DoubleDeck", "Quadjet" })
+            foreach (var model in new[] { "Cessna172", "Narrowbody", "Widebody", "DoubleDeck", "Quadjet", "Turboprop", "Trijet" })
             {
                 var type = Type(model);
                 var go = Spawn(type);
@@ -278,7 +297,7 @@ namespace AirCity.Tests.Aircraft
         [Test]
         public void Picking_HitsTheAircraft()
         {
-            foreach (var model in new[] { "Cessna172", "Narrowbody", "Widebody", "DoubleDeck", "Quadjet" })
+            foreach (var model in new[] { "Cessna172", "Narrowbody", "Widebody", "DoubleDeck", "Quadjet", "Turboprop", "Trijet" })
             {
                 var type = Type(model);
                 var go = Spawn(type);
@@ -311,7 +330,7 @@ namespace AirCity.Tests.Aircraft
         [Test]
         public void Logo_IsPaintedOnTheFin()
         {
-            foreach (var model in new[] { "Cessna172", "Narrowbody", "Widebody", "DoubleDeck", "Quadjet" })
+            foreach (var model in new[] { "Cessna172", "Narrowbody", "Widebody", "DoubleDeck", "Quadjet", "Turboprop", "Trijet" })
             {
                 var type = Type(model);
                 var example = type.examples.First(e => e.logo != null);

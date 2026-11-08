@@ -21,7 +21,9 @@ and its seat count, so the letter painted at a stand's entrance tells straight a
 | Model (internal, `AircraftType.model`) | `Designator` | `TypeName` | `displayName` (its kind) |
 |---|---|---|---|
 | `Cessna172` | A4 | Starling A4 | Light single |
+| `Turboprop` | B50 | Starling B50 | Regional turboprop |
 | `Narrowbody` | C180 | Starling C180 | Narrowbody twinjet |
+| `Trijet` | D250 | Starling D250 | Long-range trijet |
 | `Widebody` | E350 | Starling E350 | Widebody twinjet |
 | `Quadjet` | F450 | Starling F450 | Long-haul quadjet |
 | `DoubleDeck` | F550 | Starling F550 | Double-deck quadjet |
@@ -371,8 +373,11 @@ editor must not be open on the project while batchmode runs. CLAUDE.md suggests 
    $U -batchmode -quit -projectPath . -executeMethod AirCity.EditorTools.Aircraft.AircraftSetup.Bootstrap -logFile Logs/bootstrap.log
    $U -batchmode -projectPath . -runTests -testPlatform EditMode -testResults "$PWD/Logs/editmode.xml" -logFile Logs/tests.log
    ```
-6. Add the model to the tests: `[TestFixture("<Model>")]` in `AircraftLiveryTests` and the `new[] { "Cessna172",
-   "Narrowbody", "Widebody" }` lists in `AircraftTypeTests`. Add a dimension check against the real aircraft.
+6. Add the model to the tests: `[TestFixture("<Model>")]` in `AircraftLiveryTests`, the `new[] { "Cessna172", ... }`
+   lists and the designator table in `AircraftTypeTests`, a `[TestCase]` in `BaggageDockingTests`, and the list in
+   `ArtSource/Aircraft/hold_profiles.py`. Add a dimension check against its size code. Run **AirCity ▸ Airfield ▸ Refresh Sandbox Aircraft**
+   (`AirfieldSetup.RefreshSandboxAircraft`): the saved sandbox lists its types and showcase rows in the scene, so it
+   doesn't see a new type by itself.
 7. Sandbox: `Bootstrap` creates `Sandbox.unity` only if it is missing. To add the new type to an existing sandbox, use
    **AirCity ▸ Dev ▸ Rebuild Sandbox Scene**, which overwrites the scene, then rerun
    `AirCity.EditorTools.Airfield.AirfieldSetup.Bootstrap` to put the airport back. Update the README aircraft and

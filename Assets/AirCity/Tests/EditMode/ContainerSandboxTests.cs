@@ -265,6 +265,7 @@ namespace AirCity.Tests
             for (int i = 0; i < 100 && airport.Baggage.ContainerJobs.Count == 0; i++) yield return null;
             Assert.That(airport.Baggage.ContainerJobs.Count, Is.GreaterThan(0));
             Assert.That(Object.FindObjectsByType<ContainerEquipmentRig>(FindObjectsInactive.Exclude).Length, Is.GreaterThan(0));
+            Object.FindAnyObjectByType<DevToolbar>().ShowMore=true;
             var folds = (HashSet<string>)typeof(DevToolbar).GetField("folded", BindingFlags.Static | BindingFlags.NonPublic).GetValue(null);
             bool wasFolded = folds.Remove("container-setup");
             yield return null; yield return null; // Draw the complete station setup, including its scroll viewport.

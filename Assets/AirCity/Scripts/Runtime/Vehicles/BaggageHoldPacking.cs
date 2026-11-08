@@ -12,7 +12,7 @@ namespace AirCity.Vehicles
         readonly Dictionary<BaggageBatch,int[]> allocations = new Dictionary<BaggageBatch,int[]>();
         readonly bool[] occupied;
         readonly float[] heights, bottoms;
-        static readonly string[] Shapes = { "Bag_HardSmall","Bag_Soft","Bag_Duffel" };
+        internal static readonly string[] Shapes = { "Bag_HardSmall","Bag_Soft","Bag_Duffel" };
         public static int Variant(BaggageBatch batch,int bag)
         { unchecked { int hash = 17; foreach (char c in batch.Id) hash = hash*31+c; return (hash+bag*7)&int.MaxValue; } }
         float BagHeight(int variant)

@@ -63,7 +63,7 @@ namespace AirCity.Tests
             Initialize(); Until(BaggageTurnaroundState.LoadingHold);
             Assert.That(demo.aircraft.CargoDoors.IsOpen(demo.Job.HoldConfiguration.cargoPoint), Is.True);
             Assert.That(demo.Job.Fleet.Arrivals.Count, Is.EqualTo(30));
-            Assert.That(demo.Job.Fleet.Cart.Count, Is.EqualTo(60));
+            Assert.That(demo.Job.Fleet.Cart.Count, Is.EqualTo(30),"the next load waits at dispatch until the cart returns");
             Assert.That(demo.airport.Baggage.Reserved(demo.Job.Stand), Is.True);
             Assert.That(demo.Job.DepartureReady, Is.False);
             Until(() => demo.Job.Finished);

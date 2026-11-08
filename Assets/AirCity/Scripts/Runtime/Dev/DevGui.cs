@@ -80,7 +80,7 @@ namespace AirCity.Dev
                 {
                     fontSize = Mathf.RoundToInt(size * Scale), fontStyle = font, alignment = align, richText = true, wordWrap = false,
                     normal = { textColor = color }, hover = { textColor = color }, active = { textColor = color },
-                    clipping = TextClipping.Overflow,
+                    clipping = TextClipping.Clip,
                 };
             Label = Style(13f, Text);
             Bold = Style(13f, Text, FontStyle.Bold);

@@ -5,7 +5,9 @@ Status: **one staffed baggage-depot example in the main Sandbox, with optional c
 **Stand staging** places loaders and empty trains beside their assigned stand, separately from the baggage
 dispatch/arrivals endpoints. Parking follows the stand frame and the configured cargo-door side, including when the
 stand is turned or placed on the opposite side of a taxilane. Shared stations pack jointly, preserving arrival
-clearances, engine space, train entry/exit aisles and the other equipment's cargo working lanes. The layout uses
+clearances, engine space, train entry/exit aisles and the other equipment's cargo working lanes. Aircraft parts
+above `AircraftServiceClearance.EquipmentHeadroom` (3.1 m: a high wing, a tail) cast no ground obstacle, as the
+service clearance check already lets equipment drive under them. The layout uses
 generated vehicle bounds and hitch dimensions, including the complete cart count. If it cannot fit, handling
 waits with an explicit staging problem. Compact terminal/bridge stands may need a larger pad or manual parking.
 Correcting the layout clears its staging problem. Unchanged layouts, including failures, are cached; the joint
@@ -123,24 +125,51 @@ in the main project.
 
 ## Baggage depots and hired crews
 
+The main Sandbox now supplies departing bags from its terminal's abstract check-in queue through a timed
+underground link. Arrivals travel back from the hall to that terminal's reclaim. Both directions have capacity
+and admission limits; visible crews and vehicles still handle the apron operation. Terminal interiors remain
+hidden. Select a terminal, or expand the hall's **Terminal connection** controls, to manage underground/covered
+links, queues and floor references. See [terminal baggage connections](terminal-baggage.md).
+
 The main Sandbox has one narrowbody baggage example and one Small baggage depot. The optional container
 review and its installer remain available separately; generating the normal airport no longer installs a
 second widebody example. The original isolated handling scenes remain test fixtures and are not loaded
 additively when entering Play.
 
-`BaggageDepot` is a shared destination and workforce owner. Its parametric warehouse has drive-through
-team bays off a shared service-road spine, labelled ground markings, collection/unloading conveyors and visible stored luggage. Each team
-uses the same physical bay for arrivals and departures: after unloading it collects the next load there,
-without a separate circulation lap between two invisible endpoints. Each bay has a forward entry and exit;
-parked tractors and every trailer stay outside the through lane. The trailer remains stationary during
-handovers. Bags move between carts, conveyors and shared ledger stores; the bounded visual pools do not
-change ownership or drop records. The depot footprint participates in aircraft/equipment clearance.
+To watch the saved example, press Play and use the Game view. **BAGGAGE > Auto handling** must be on;
+the panel shows the current job or its waiting reason. The default complete
+120-arrival/180-departure cycle targets about five to six minutes at **1x**, including terminal transport; **WORLD** offers optional fast-forward.
+The team works at the aircraft before bringing arrivals back to the depot; available depot workers wait
+until assigned. **View station** focuses the depot, rather than the aircraft.
 
-| Depot size | Maximum tractor/cart teams | Maximum trailers | Maximum hired workers |
-|---|---:|---:|---:|
-| Small | 2 | 4 | 8 |
-| Medium | 4 | 12 | 20 |
-| Large | 8 | 24 | 40 |
+Stand 16 gives smaller compatible aircraft an explicit base nose-wheel stop. The regional turboprop's
+automatic nose-aligned stop would otherwise block this stand's compact equipment court and leave the
+narrowbody job waiting for staging. The installer adds missing smaller-aircraft configurations while
+preserving authored overrides; both traffic and painted markers use the same stop. No larger stand is needed.
+The Sandbox Play test waits for an actual incoming bag handover with four assigned workers, rather than
+passing as soon as a job exists.
+Verification: the saved-court clearance, installer/full turnaround, live bag continuity and native Play
+handover checks pass (`Logs/sandbox-baggage-startup-fixed.xml`, four checks).
+
+`BaggageDepot` is a shared destination and workforce owner. The [depot asset family](../assets/BaggageDepot.md)
+provides a Small pull-up shed, Medium two-lane drive-through hall and Large four-lane centre. Each team has
+separate equipment parking; pairs of teams share a working position, with a fair reservation queue. A team
+waits at the aircraft until its position is available, then uses the same stop for arrivals unloading and
+outgoing collection. Every cart remains stationary during handovers. Reservations release after the entire
+train clears the working lane or recovery finishes. Medium/Large shells have real entry/exit openings and
+fit a complete three-cart train inside. The footprint includes the yard; route clearance uses the actual
+walls and machinery, allowing vehicles through the openings. **View interior** removes the roof.
+
+Bags move between carts, conveyors and shared ledger stores; bounded visual pools preserve their identities.
+Lifting aids, powered belts, automatic sorting (Medium/Large) and buffer storage are installable equipment
+upgrades with separate effects on handover time, belt travel, outgoing sorting cadence and storage capacity.
+Changes wait until crews return. Removing storage refuses excess baggage; upgrades do not discard records.
+
+| Depot size | Working positions | Maximum tractor/cart teams | Maximum trailers | Carts per train | Maximum hired workers |
+|---|---:|---:|---:|---:|---:|
+| Small | 1 | 2 | 4 | 2 | 8 |
+| Medium | 2 | 4 | 12 | 3 | 20 |
+| Large | 4 | 8 | 24 | 3 | 40 |
 
 The Baggage sidebar offers **Hire worker**, **Dismiss worker**, **Crew per team**, **Depot size**, **Add team**
 and **Build depot**. Building needs paved ground, clear space beside a service road and enough straight road frontage for all
@@ -170,6 +199,36 @@ compatibility. It preserves candidate order and the previous first valid parking
 shared widebody case fell from 5,860,081 checks / 6.7 s to 319,580 pair checks / 0.7 s. Its layout is cached
 until geometry or equipment inputs change. The normal Sandbox avoids this optional example entirely.
 
+Stored bag art uses `BaggageStorageLayout`: each bag retains the variant derived from its batch ID and
+bag index, plus its existing cart/depot slot. Moving bags cannot shift the remaining load's colours, shapes
+or positions. Storage visibility follows individual handovers until the atomic ledger transfer completes;
+incoming/outgoing depot piles use separate layouts and shared per-variant art pools. Store-local batch
+indexes avoid scanning all airport baggage during presentation. Hold/depot piles remain bounded displays;
+cart contents are now represented one suitcase per stored bag.
+
+`BaggageCartPacking` derives both cart capacity and visible slots from the generated usable load volume and
+the three operational bag shapes. Duffels turn sideways to fit. The current cart holds **36 bags** in three
+columns, four rows and three layers; the count limit and the weight limit both apply. Full carts stop accepting
+bags, then the team uses another cart or makes another trip. Automatic manifests use full-cart batches with
+the partial batch last, avoiding repeated empty-pipeline delays between small batches. The default two-cart
+example makes two arrival trips and three departure trips, preserving all 300 bags.
+
+`BaggagePacing` compresses crew/boarding/handovers/conveyors together (`WorkRate=18`) and vehicle travel
+(`TravelRate=4`) independently of the airport clock. Both simulation and art use these times. The last two
+metres of loader docking and the first two metres withdrawing keep their original slow speed; collision
+sampling, worker-seat interlocks and hired-worker throughput remain in force. Generated art timing data
+is unchanged. `BaggageGameplayTests` checks the full cycle's 240–300 game-second budget, actual rendered
+bag bounds, one visible prop per cart bag and rejection of an extra bag in a full cart.
+Verification: **104 checks pass** across gameplay, Sandbox Play, cart/hold continuity, crews, depots,
+bulk/container handling, cancellation and marshalling (`Logs/baggage-gameplay-final.xml`). The native
+300-bag review completes baggage service in **289.85 game seconds** at 1x with the default four workers,
+conserves every bag and returns the crew; the updated unloading clip has 78 normal-speed frames
+(`Logs/baggage-gameplay-native-final.log`, `Logs/baggage-depot-native.json`, `Captures/BaggageDepot/`).
+
+The depot forecourt suppresses generic road-edge and centreline paint for its short routing connectors.
+Simple bay rectangles, labels and forward arrows show where teams work and circulate. Routing, pavement,
+node/edge counts, physical clearance and the layout version are unaffected by paint refreshes.
+
 `BaggageDepotReview.Run` verifies the actual default turnaround through depot unloading, collection,
 loading and departure, captures native frames in `Captures/BaggageDepot/`, and logs startup and mean
 simulation-step timing. `BaggageDepotTests` covers capacities, hiring/firing, shared stores, team bays,
@@ -179,6 +238,10 @@ Verification (2026-11-06): 49 depot/layout/crew/Sandbox checks and 82 turnaround
 eight leased workers. Buying a team during active handling preserves the layout version and the original
 turnaround completes with every bag conserved. Native Play startup and full default-depot captures are
 recorded separately in `Logs/baggage-depot-play.xml` and `Logs/baggage-depot-native.json`.
+The appearance/paint correction adds six `BaggageVisualContinuityTests`, including live handovers,
+independent cart/depot loads and unchanged road topology. Together with depot, stand-marking and
+bulk/container turnaround regressions, 75 distinct EditMode checks pass. The synchronous native review
+explicitly flushes queued road paint before capture because it does not run normal `Update` callbacks.
 
 ## Close docking and visible transfers
 
@@ -277,7 +340,8 @@ until its handler returns to the seat; loader withdrawal waits for the hold hand
 Cancellation finishes an active bag batch, recalls the workers and then withdraws. Blocked access freezes
 boarding and handovers. Pausing the airport freezes both crew and baggage.
 
-`TransferInterval` is the greater of `secondsPerBag` and either worker's complete handling cycle. `BagTravelSeconds`
+`TransferInterval` is the greater of the paced `secondsPerBag` and each side's complete handling cycle divided
+by its assigned workers. `BagTravelSeconds`
 includes the pick/lift/carry/place phases, conveyor travel and destination handling. The ledger still transfers
 each batch atomically after its final visual handling cycle. Dispatch/arrivals remain logical endpoints with
 their existing timers while terminal work is deferred. Crew are assigned to their equipment set; a separately
@@ -404,8 +468,9 @@ it frees bay capacity without removing records or revoking a completed departure
 logical pending the terminal expansion. Direct **Push back** also checks baggage readiness.
 
 `BaggageStation.automaticHandling`, `automaticHold`, `standIds`, `incomingBags`, `outgoingBags` and
-`kilogramsPerBag` are the saved configuration. `AirportBaggage` generates screened batches of at most ten bags,
-reduced further to fit cart payload, once per aircraft object/visit in the sandbox. Invalid demand and a full
+`kilogramsPerBag` are the saved configuration. `AirportBaggage` generates screened batches sized to one physical
+cart, reduced further to fit payload, once per aircraft object/visit in the sandbox. Padded sequence IDs keep
+full batches before the final partial batch. Invalid demand and a full
 dispatch bay wait before generating any part of a manifest. Reusing the same aircraft object for a later flight
 rotation still needs a visit/archive lifecycle; sandbox arrivals currently use new objects.
 
@@ -647,6 +712,10 @@ warehouses belong to a later cargo expansion; the current passenger fleet does n
 Passenger luggage trolleys belong to terminal passenger facilities.
 
 ## Terminal facilities
+
+The abstract check-in/reclaim stores and timed hall connections are implemented; see
+[terminal baggage](terminal-baggage.md). The physical passenger-facing rooms and internal machinery below
+remain future interior assets. Ground vehicle operations continue to use the visible baggage halls.
 
 | Facility / asset family | Minimum useful representation |
 |---|---|

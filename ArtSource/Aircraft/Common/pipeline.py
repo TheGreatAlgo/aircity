@@ -895,7 +895,7 @@ def service_footprints(objs):
     Closed fuselage, wings/engines, tail and gear remain obstacles. No runtime mesh reads or type-specific sizes.
     """
     groups = [("Fuselage", ("fus", "cockpit", "radome")),
-              ("Tail", ("htail", "elevator", "vtail", "rudder", "dorsal"))]
+              ("Tail", ("htail", "elevator", "vtail", "rudder", "dorsal", "tailnacelle", "tailexhaust"))]
     result = []
     for name, tags in groups:
         points = []

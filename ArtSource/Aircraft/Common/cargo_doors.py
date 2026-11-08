@@ -85,17 +85,26 @@ def _read(mesh):
 
 def _write(name, records, materials, layers):
     mesh = bpy.data.meshes.new(name)
-    verts, faces, normals, shared = [], [], [], {}
-    for poly, _, _ in records:
-        face = []
+    verts, faces, normals, shared, kept = [], [], [], {}, []
+    for poly, mat, tag in records:
+        # Clipping leaves slivers whose corners round onto each other. A face with repeated or fewer than three
+        # distinct corners makes Blender's custom-normal call crash, so keep one row per distinct corner.
+        face, rows = [], []
         for v in poly:
             key = tuple(round(float(c), 6) for c in v[:3])
             if key not in shared:
                 shared[key] = len(verts)
                 verts.append(tuple(v[:3]))
+            if shared[key] in face:
+                continue
             face.append(shared[key])
+            rows.append(v)
+        if len(face) < 3:
+            continue
         faces.append(tuple(face))
-        normals.extend(tuple(v[3:6] / max(np.linalg.norm(v[3:6]), 1e-12)) for v in poly)
+        normals.extend(tuple(v[3:6] / max(np.linalg.norm(v[3:6]), 1e-12)) for v in rows)
+        kept.append((rows, mat, tag))
+    records = kept
     mesh.from_pydata(verts, [], faces)
     used = sorted({mat for _, mat, _ in records})
     for index in used:

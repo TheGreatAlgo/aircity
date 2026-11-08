@@ -74,7 +74,7 @@ namespace AirCity.Tests
         {
             Configure(); var job = Job();
             Until(job, () => job.DepartureReady, step);
-            Assert.That(job.ArrivalTrips, Is.EqualTo(3)); Assert.That(job.DepartureTrips, Is.EqualTo(3));
+            Assert.That(job.ArrivalTrips, Is.EqualTo(7)); Assert.That(job.DepartureTrips, Is.EqualTo(7));
             Assert.That(job.Fleet.Arrivals.Count, Is.EqualTo(230)); Assert.That(job.Hold.Count, Is.EqualTo(240));
             Assert.That(job.Fleet.Cart.Count, Is.Zero); Assert.That(job.Fleet.Equipment.Owner, Is.Null);
             demo.airport.Simulate(30f);
@@ -101,10 +101,11 @@ namespace AirCity.Tests
         [Test]
         public void AutomaticHandling_RespectsCartWeightAsWellAsBagCount()
         {
-            Configure(150, 150); demo.station.kilogramsPerBag = 30f;
+            Configure(180, 180); demo.station.kilogramsPerBag = 60f;
+            demo.station.automaticHold.weightCapacity=12000;
             var job = Job(); Until(job, () => job.DepartureReady);
-            Assert.That(job.ArrivalTrips, Is.EqualTo(3)); Assert.That(job.DepartureTrips, Is.EqualTo(3));
-            Assert.That(job.Hold.Weight, Is.EqualTo(4500f));
+            Assert.That(job.ArrivalTrips, Is.EqualTo(6)); Assert.That(job.DepartureTrips, Is.EqualTo(6));
+            Assert.That(job.Hold.Weight, Is.EqualTo(10800f));
         }
 
         [TestCase(BaggageTurnaroundState.UnloadingHold)]
@@ -172,7 +173,7 @@ namespace AirCity.Tests
             demo.airport.Simulate(2f);
             Assert.That(job.Plan, Is.Not.Null, $"{job.Waiting}; plane {demo.aircraft.transform.position} / {demo.aircraft.transform.forward}; loader {job.Fleet.LoaderPose.position}; train {job.Fleet.Train.Tractor.position}; stand {job.Stand.id}");
             Until(job, () => job.DepartureReady);
-            Assert.That(job.Fleet.Arrivals.Count, Is.EqualTo(120)); Assert.That(job.Hold.Count, Is.EqualTo(180));
+            Assert.That(job.DeliveredArrivals, Is.EqualTo(120)); Assert.That(job.Hold.Count, Is.EqualTo(180));
         }
 
         [Test]
@@ -236,7 +237,7 @@ namespace AirCity.Tests
             Assert.That(job, Is.Not.Null, station.Problem);
             Until(job, () => job.DepartureReady);
             Assert.That(station.cartCount,Is.EqualTo(2));
-            Assert.That(job.ArrivalTrips, Is.EqualTo(1)); Assert.That(job.DepartureTrips, Is.EqualTo(1));
+            Assert.That(job.ArrivalTrips, Is.EqualTo(2)); Assert.That(job.DepartureTrips, Is.EqualTo(3));
         }
 
         [UnityTest]
@@ -263,6 +264,12 @@ namespace AirCity.Tests
             Assert.That(airport.Baggage.ContainerStations.Length,Is.Zero,"the default world has one baggage example");
             for (int i = 0; i < 100 && !airport.Baggage.Active; i++) yield return null;
             Assert.That(airport.Baggage.Active, Is.True);
+            var job=airport.Baggage.Jobs.Single();
+            float deadline=Time.realtimeSinceStartup+45f;
+            while (job.TransferBatch==null && !job.Finished && Time.realtimeSinceStartup<deadline) yield return null;
+            Assert.That(job.TransferBatch,Is.Not.Null,job.State+": "+job.Waiting);
+            Assert.That(job.State,Is.EqualTo(BaggageTurnaroundState.UnloadingHold));
+            Assert.That(job.Fleet.Workers,Is.EqualTo(4),"the default team has an assigned crew doing actual baggage work");
             LogAssert.NoUnexpectedReceived();
             yield return new ExitPlayMode();
         }

@@ -110,6 +110,12 @@ other bridges, heads, neighbours, its own fixed corridor and staged movement. Br
 previews, scene seeding and simulation consume the same checked plans. `Dock()` is the geometric candidate solver,
 not permission to operate.
 
+Types that board by their own stairs (`AircraftType.BoardsByStairs`: light aircraft, and any type whose passenger
+doors are all under `StairsBelow` = 1.6 m, like the Starling B50 turboprop's airstair) are left alone by every
+bridge: they never pick a design type, a door or a parking aim, and report `SmallAircraft`. A bridge the stand's
+configuration leaves unused for a type is ignored when the others' docking paths to that type are gathered
+(`BridgeLayout.Clear`), so it parks clear of them instead of in their way.
+
 Bridges swing retracted, then telescope out (`BridgePose.Move`), reversing those stages to retract. The stand
 synchronizes its bridges to the longest family movement duration, matching the checked motion. Departures still
 wait for all attached bridges to retract before requesting a tug.

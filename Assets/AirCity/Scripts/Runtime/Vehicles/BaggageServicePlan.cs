@@ -152,9 +152,35 @@ namespace AirCity.Vehicles
                 float radius = Mathf.Max(containerDolly ? 0f : 6f, station.tractorType.turnRadius, station.cartType.turnRadius);
                 float speed = Mathf.Min(station.tractorType.transitSpeed, station.cartType.transitSpeed);
                 float width = Mathf.Max(station.tractorType.Width, station.cartType.Width) + 1f;
+                var roadChecks=new Dictionary<int,bool>();
+                bool RoadClear(TaxiwayEdge e)
+                {
+                    if (roadChecks.TryGetValue(e.id,out bool valid)) return valid;
+                    var a=net.At(e.a); var b=net.At(e.b); var f=(b-a).normalized;
+                    var box=Box.Of((a+b)*.5f,f,new Bounds(Vector3.zero,new Vector3(width,1,Vector2.Distance(a,b))),.1f);
+                    valid=!p.obstacles.Exists(o=>o.Overlaps(box)); roadChecks[e.id]=valid; return valid;
+                }
                 VehiclePath Road(int from, int to, Vector2? start = null, Vector2? end = null)
                 {
-                    if (!BaggageRoute.Plan(net, from, to, radius, speed, width, out var path, out var why, start, end))
+                    bool Available(TaxiwayEdge edge)
+                    {
+                        if (!RoadClear(edge)) return false;
+                        if (station.depot==null) return true;
+                        var depot=station.depot; var geometry=depot.Layout;
+                        var a=net.At(edge.a); var b=net.At(edge.b);
+                        var segment=Box.Of((a+b)*.5f,(b-a).normalized,
+                            new Bounds(Vector3.zero,new Vector3(.05f,1,Vector2.Distance(a,b))),0);
+                        for (int lane=0;lane<geometry.Lanes;lane++)
+                        {
+                            var gate=Box.Of(depot.Point(geometry.LaneX(lane),(geometry.WorkEntryZ+geometry.ExitZ)*.5f),depot.Facing,
+                                new Bounds(Vector3.zero,new Vector3(5,1,geometry.ExitZ-geometry.WorkEntryZ-2)),0);
+                            if (!segment.Overlaps(gate)) continue;
+                            var working=depot.WorkingBay(lane);
+                            if (Vector2.Distance(net.At(from),working)>.1f && Vector2.Distance(net.At(to),working)>.1f) return false;
+                        }
+                        return true;
+                    }
+                    if (!BaggageRoute.Plan(net, from, to, radius, speed, width, out var path, out var why, start, end,Available))
                         throw new ArgumentException(why);
                     return path;
                 }
@@ -270,6 +296,13 @@ namespace AirCity.Vehicles
                     Road(station.arrivalsNode, station.dispatchNode, Facing(station.arrivalsBearing), Facing(station.dispatchBearing));
                 p.outbound = new VehiclePath(); p.outbound.Append(p.toStand);
                 p.home = Return(station.dispatchNode, station.dispatchBearing);
+                if (station.depot!=null && station.parking==null)
+                {
+                    p.trainParking=new BaggageVehiclePose(net.At(station.homeNode),Facing(station.dispatchBearing));
+                    p.initial=Approach(station.homeNode,station.dispatchBearing);
+                    p.dispatchPark=Road(station.dispatchNode,station.homeNode,Facing(station.dispatchBearing),Facing(station.dispatchBearing));
+                    p.park=Return(station.homeNode,station.dispatchBearing);
+                }
                 if (station.parking?.Valid == true)
                 {
                     p.trainParking=station.parking.train;
@@ -290,17 +323,25 @@ namespace AirCity.Vehicles
                         return true;
                     }
                     var dispatch=new BaggageVehiclePose(net.At(station.dispatchNode),Facing(station.dispatchBearing));
+                    var home=station.depot!=null ? new BaggageVehiclePose(net.At(station.homeNode),Facing(station.dispatchBearing)) : dispatch;
                     try
                     {
-                        var leave=BaggageApronRoute.Connect(station.parking.train,dispatch,station,normal,forward,(q,type)=>TrainClear(q,type,true),detail:()=>trainObstacle);
-                        p.initial=new VehiclePath(); p.initial.Append(leave); p.initial.Append(p.toStand);
+                        var leave=BaggageApronRoute.Connect(station.parking.train,home,station,normal,forward,(q,type)=>TrainClear(q,type,true),detail:()=>trainObstacle);
+                        p.initial=new VehiclePath(); p.initial.Append(leave);
+                        p.initial.Append(station.depot!=null ? Approach(station.homeNode,station.dispatchBearing) : p.toStand);
                         var initialTrain=new BaggageTrain(station.tractorType,station.cartType,p.initial,station.cartCount);
                         if (!BaggageRoute.Validate(initialTrain,(q,type)=>TrainClear(q,type,true),out var why)) throw new ArgumentException(why+"; "+trainObstacle);
                     }
                     catch (ArgumentException e) { throw new ArgumentException("Initial staging route: "+e.Message); }
                     try { p.dispatchPark=BaggageApronRoute.Connect(dispatch,station.parking.train,station,normal,forward,(q,type)=>TrainClear(q,type,false)); }
                     catch (ArgumentException e) { throw new ArgumentException("Dispatch staging route: "+e.Message); }
-                    p.park=new VehiclePath(); p.park.Append(p.home); p.park.Append(p.dispatchPark);
+                    p.park=new VehiclePath();
+                    if (station.depot!=null)
+                    {
+                        p.park.Append(Return(station.homeNode,station.dispatchBearing));
+                        p.park.Append(BaggageApronRoute.Connect(home,station.parking.train,station,normal,forward,(q,type)=>TrainClear(q,type,false)));
+                    }
+                    else { p.park.Append(p.home); p.park.Append(p.dispatchPark); }
                 }
                 VehiclePath Loader(BaggageVehiclePose from, BaggageVehiclePose to)
                 {
@@ -374,7 +415,9 @@ namespace AirCity.Vehicles
                     min = Vector2.Min(min, net.At(node) - Vector2.one * 8f);
                     max = Vector2.Max(max, net.At(node) + Vector2.one * 8f);
                 }
-                foreach (var leg in new[] { p.loaderIn, p.loaderOut, p.loaderDock, p.loaderUndock })
+                // Reserve the stand workspace. Transit routes are protected by live vehicle clearance, so
+                // different teams can share a depot without reserving the entire rectangle back to its yard.
+                foreach (var leg in new[] { p.loaderDock, p.loaderUndock })
                     for (float d = 0f; d <= leg.Length; d += 1f)
                     {
                         var q = leg.Sample(d);
@@ -390,7 +433,7 @@ namespace AirCity.Vehicles
 
         void Obstacles()
         {
-            foreach (var depot in airport.GetComponentsInChildren<BaggageDepot>()) obstacles.Add(depot.BuildingBox);
+            foreach (var depot in airport.GetComponentsInChildren<BaggageDepot>()) obstacles.AddRange(depot.SolidBoxes());
             if (stationOwner != null)
                 foreach (var parking in StandEquipmentLayout.All(airport))
                     if (parking.Valid && parking.station != stationOwner)

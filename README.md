@@ -8,9 +8,12 @@ An airport-building game for PC and Mac (Unity 6, URP).
 2. `git lfs install && git clone https://github.com/TheGreatAlgo/aircity.git`
 3. Open the folder in Unity Hub, then open `Assets/AirCity/Scenes/Sandbox.unity` and press Play.
    - The Sandbox contains one working baggage turnaround with a Small depot. The Baggage sidebar manages hired staff, teams, trailers and depot size. Container handling remains available in its separate review scene.
+   - Baggage depots have three distinct layouts: a Small covered pull-up shed, Medium two-lane drive-through hall and Large four-lane centre. **Show more** in Baggage exposes roof inspection and equipment upgrades. **AirCity > Vehicles > Create Baggage Depot Family Review** opens all three for comparison; see [the depot assets](Docs/assets/BaggageDepot.md).
+   - The Sandbox hall connects to the terminal through an abstract underground baggage link. Select a terminal to connect halls and choose check-in/reclaim floors; **Baggage > Show more > Terminal connection** shows queues, travel and capacity. **AirCity > Vehicles > Create Terminal Baggage Review** creates a nearby terminal with a covered link. Terminal interiors remain hidden; see [terminal baggage](Docs/systems/terminal-baggage.md).
    - **Toolbar:** the tools are along the bottom (Select, Runway, Taxiway, Road, Depot, Stand, De-ice, Delete), with a strip above
      them for the tool's settings or the selection's actions. The world, maintenance and aircraft toggles are on the
-     right. Every button shows its key, and the keys below all still work. **H** hides the HUD.
+     right. **Show more** reveals maintenance, traffic, station setup and optional diagnostics; the menu starts compact.
+     Every button shows its key, and the keys below all still work. **H** hides the HUD.
    - **Right-drag:** orbit · **Middle-drag / WASD:** pan · **Scroll:** zoom (towards the cursor) · **Q / E:** rotate ·
      **F:** re-centre
    - **Click:** select an aircraft, runway, taxiway / road section, depot, stand or apron · **Delete / Backspace:** remove the
@@ -56,13 +59,18 @@ ArtSource/                 scripts that generate the art (Blender); see ArtSourc
 
 ## Aircraft
 
-Aircraft are generated from code (`ArtSource/Aircraft`), never hand-edited in Unity. Three types so far:
+Aircraft are generated from code (`ArtSource/Aircraft`), never hand-edited in Unity. Seven types, one per ICAO size
+code, all from the fictional manufacturer Starling (real type names are trademarks and never reach the player):
 
-| Type | Real-world class | Span × length | ICAO code |
-|---|---|---|---|
-| `Cessna172` | light single (Cessna 172) | 11.1 × 8.3 m | A |
-| `Narrowbody` | twinjet (A320 family) | 35.8 × 37.6 m | C |
-| `Widebody` | long-haul twinjet (A350-900) | 64.7 × 66.9 m | E |
+| Model (internal) | Player name | Class | Span × length | ICAO code |
+|---|---|---|---|---|
+| `Cessna172` | Starling A4 | light single | 11.1 × 8.3 m | A |
+| `Turboprop` | Starling B50 | regional turboprop, high wing, T-tail; takes grass | 23.4 × 25.6 m | B |
+| `Narrowbody` | Starling C180 | narrowbody twinjet | 35.8 × 37.6 m | C |
+| `Trijet` | Starling D250 | long-range trijet, S-duct tail engine | 50.1 × 58.5 m | D |
+| `Widebody` | Starling E350 | widebody twinjet | 64.7 × 66.9 m | E |
+| `Quadjet` | Starling F450 | long-haul quadjet | 68.4 × 76.3 m | F |
+| `DoubleDeck` | Starling F550 | double-deck quadjet | 79.7 × 72.7 m | F |
 
 Each comes with an `AircraftType` asset (imported from `<Model>.aircraft`) holding what gameplay needs, in the
 aircraft's local space (origin on the ground under the main gear, +Z = nose, +X = right):

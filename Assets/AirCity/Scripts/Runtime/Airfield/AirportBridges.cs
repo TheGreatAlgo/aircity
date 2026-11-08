@@ -232,7 +232,7 @@ namespace AirCity.Airfield
             var list = new List<BridgeShape> { l.Shape(Parked(l)) };
             foreach (var t in TypesFor(l.stand.stand))
             {
-                if (t.Light) continue;
+                if (t.BoardsByStairs) continue;
                 foreach (var side in new[] { DoorSide.Left, DoorSide.Right })
                     foreach (bool upper in new[] { false, true })
                         for (int n = 1; n <= 6; n++)
@@ -324,7 +324,7 @@ namespace AirCity.Airfield
         {
             AircraftType largest = null;
             foreach (var t in TypesFor(stand))
-                if (!t.Light && (largest == null || t.Wingspan > largest.Wingspan)) largest = t;
+                if (!t.BoardsByStairs && (largest == null || t.Wingspan > largest.Wingspan)) largest = t;
             var doors = new List<JetBridge>();
             count = Mathf.Clamp(count, 0, JetBridgeRules.MaxPerStand);
             bool upper = largest != null && BridgeLayout.HasUpperDeck(largest);
@@ -600,7 +600,7 @@ namespace AirCity.Airfield
         {
             AircraftType design = null;
             foreach (var t in types)
-                if (t != null && !t.Light && BridgeLayout.TryDoor(t, door, out _) && (design == null || t.Wingspan > design.Wingspan)) design = t;
+                if (t != null && !t.BoardsByStairs && BridgeLayout.TryDoor(t, door, out _) && (design == null || t.Wingspan > design.Wingspan)) design = t;
             if (design == null || !BridgeLayout.TryDoor(design, door, out var sp)) return float.MaxValue;
             var sill = BridgeLayout.Sill(sl, design, sp);
             var park = sl.ParkPosition(design);
@@ -620,7 +620,7 @@ namespace AirCity.Airfield
                     {
                         bool any = false;
                         foreach (var t in types)
-                            any |= t != null && !t.Light && BridgeLayout.TryDoor(t, side, upper, n, out _);
+                            any |= t != null && !t.BoardsByStairs && BridgeLayout.TryDoor(t, side, upper, n, out _);
                         bool served = stand.bridges.Exists(b => b != null && b.side == side && b.upper == upper && b.door == n);
                         if (any && !served) list.Add(new JetBridge { side = side, upper = upper, door = n });
                     }

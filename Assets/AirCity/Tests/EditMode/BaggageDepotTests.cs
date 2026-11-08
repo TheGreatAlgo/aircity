@@ -26,10 +26,10 @@ namespace AirCity.Tests
             AirfieldSetup.AssignMaterials(airport);
             airport.aprons.Add(ApronArea.Rect(Vector2.zero,new Vector2(12000,2000),0,PavementSurface.Concrete)); root.SetActive(true);
             var net=airport.Taxiways;
-            int a=net.AddNode(new Vector3(-150,0,-50)),b=net.AddNode(new Vector3(-150,0,100));
+            int a=net.AddNode(new Vector3(-150,0,-200)),b=net.AddNode(new Vector3(-150,0,200));
             net.Connect(a,b,12,PavementSurface.Concrete,false,RoadClass.Service);
             var depotGo=new GameObject("Baggage depot"); depotGo.transform.SetParent(root.transform,false);
-            var depot=depotGo.AddComponent<BaggageDepot>(); depot.size=size; depot.firstBay=net.At(a);
+            var depot=depotGo.AddComponent<BaggageDepot>(); depot.size=size; depot.firstBay=new Vector2(-150,0);
             var stationGo=new GameObject("Team 1"); stationGo.SetActive(false); stationGo.transform.SetParent(root.transform,false);
             var station=stationGo.AddComponent<BaggageStation>(); station.depot=depot; station.cartCount=2; station.parkAtStand=false;
             station.tractorType=VehicleSetup.Type("BaggageTractor"); station.cartType=VehicleSetup.Type("BaggageCart"); station.loaderType=VehicleSetup.Type("BeltLoader");
@@ -197,8 +197,96 @@ namespace AirCity.Tests
                 airport.Simulate(.1f);
             }
             Until(()=>job.DepartureReady);
-            Assert.AreEqual(20,job.Fleet.Arrivals.Count); Assert.AreEqual(20,job.Hold.Count);
+            Assert.AreEqual(20,job.DeliveredArrivals); Assert.AreEqual(20,job.Hold.Count);
             Assert.AreEqual(40,airport.Baggage.Ledger.Count); Assert.AreEqual(0,depot.Working);
+        }
+
+        [TestCase(BaggageDepotSize.Small,1)]
+        [TestCase(BaggageDepotSize.Medium,2)]
+        [TestCase(BaggageDepotSize.Large,4)]
+        public void ProcessingBays_AreSharedFairlyAndReleasedWithTheCrew(BaggageDepotSize size,int lanes)
+        {
+            var (airport,depot,first)=Create(size); Assert.AreEqual(lanes,depot.ProcessingBays);
+            var second=depot.AddTeam(first,out var why); Assert.IsNotNull(second,why);
+            var a=airport.Baggage.Fleet(first); var b=airport.Baggage.Fleet(second);
+            Assert.IsTrue(depot.TryEnterBay(a,out why),why);
+            Assert.IsFalse(depot.TryEnterBay(b,out why)); Assert.That(why,Does.Contain("working bay"));
+            Assert.IsTrue(depot.TryEnterBay(a,out _),"the bay lease is idempotent");
+            Assert.AreEqual(1,depot.BusyBays);
+            depot.ReleaseCrew(a); Assert.IsTrue(depot.TryEnterBay(b,out why),why);
+            depot.ReleaseCrew(b); Assert.AreEqual(0,depot.BusyBays);
+        }
+
+        [TestCase(BaggageDepotSize.Medium)]
+        [TestCase(BaggageDepotSize.Large)]
+        public void EnclosedHalls_FitThreeCartTrainsAndKeepTheWallsSolid(BaggageDepotSize size)
+        {
+            var (_,depot,team)=Create(size); var layout=depot.Layout;
+            for (int lane=0;lane<depot.ProcessingBays;lane++)
+            {
+                var path=new VehiclePath(); var at=depot.WorkingBay(lane);
+                path.Start(at,1); path.LineTo(at+depot.Facing,1);
+                var train=new BaggageTrain(team.tractorType,team.cartType,path,3);
+                var obstacles=depot.SolidBoxes().ToArray();
+                void Fits(BaggageVehiclePose p,VehicleType type)
+                {
+                    var b=AirportMaintenance.Box.Of(p.position,p.facing,type.bounds,.2f);
+                    Assert.IsFalse(obstacles.Any(o=>o.Overlaps(b)),"the train must clear the shell and machinery");
+                    var local=p.position-depot.firstBay; float z=Vector2.Dot(local,depot.Facing);
+                    Assert.GreaterOrEqual(z+type.bounds.min.z,layout.WallBottom);
+                    Assert.LessOrEqual(z+type.bounds.max.z,layout.WallTop);
+                }
+                Fits(train.Tractor,team.tractorType);
+                for (int i=0;i<train.CartCount;i++) Fits(train.CartAt(i),team.cartType);
+            }
+            Assert.IsTrue(depot.SolidBoxes().Any(o=>o.Contains(depot.Point(layout.Left,(layout.WallBottom+layout.WallTop)*.5f))));
+            Assert.IsTrue(depot.SolidBoxes().Any(o=>o.Contains(depot.Point(layout.Right-3.5f,layout.WallTop-3.7f))),"the staff office also blocks vehicle routes");
+        }
+
+        [Test]
+        public void EquipmentUpgrades_ChangeTheirOwnBottlenecksAndPreserveStoredBags()
+        {
+            var (airport,depot,team)=Create(BaggageDepotSize.Medium); var fleet=airport.Baggage.Fleet(team);
+            float hand=depot.HandSeconds,belt=depot.ConveyorSeconds,sort=depot.SortingSeconds;
+            int capacity=fleet.Dispatch.Capacity;
+            Assert.IsTrue(depot.SetUpgrade(BaggageDepotUpgrade.HandlingAssist,true,out var why),why);
+            Assert.Less(depot.HandSeconds,hand); Assert.AreEqual(belt,depot.ConveyorSeconds);
+            Assert.IsTrue(depot.SetUpgrade(BaggageDepotUpgrade.PoweredBelts,true,out why),why);
+            Assert.Less(depot.ConveyorSeconds,belt);
+            Assert.IsTrue(depot.SetUpgrade(BaggageDepotUpgrade.AutomaticSorting,true,out why),why);
+            Assert.Less(depot.SortingSeconds,sort);
+            Assert.IsTrue(depot.SetUpgrade(BaggageDepotUpgrade.BufferStorage,true,out why),why);
+            Assert.AreEqual(capacity*2,fleet.Dispatch.Capacity);
+            airport.Baggage.Ledger.Add("Stored bags","TEST",capacity+1,capacity+1,true,fleet.Dispatch);
+            Assert.IsFalse(depot.SetUpgrade(BaggageDepotUpgrade.BufferStorage,false,out why));
+            Assert.AreEqual(capacity+1,fleet.Dispatch.Count); Assert.IsTrue(depot.Has(BaggageDepotUpgrade.BufferStorage));
+            Assert.IsTrue(depot.TryAssignCrew(fleet,out why),why);
+            Assert.IsFalse(depot.SetUpgrade(BaggageDepotUpgrade.PoweredBelts,false,out why));
+        }
+
+        [Test]
+        public void TrailerPurchases_RespectTheTrainLengthThatFitsTheHall()
+        {
+            var (_,depot,team)=Create(BaggageDepotSize.Medium);
+            Assert.IsTrue(depot.CanAddTrailer(team,out _)); team.cartCount=3;
+            Assert.IsFalse(depot.CanAddTrailer(team,out var why)); Assert.That(why,Does.Contain("longer train"));
+            Assert.IsFalse(depot.Resize(BaggageDepotSize.Small,out _));
+        }
+
+        [Test]
+        public void CancelAtTheDepot_RecoversEquipmentAndReleasesTheSharedWorkingBay()
+        {
+            EditorSceneManager.OpenScene("Assets/AirCity/Scenes/Sandbox.unity");
+            var depot=Object.FindAnyObjectByType<BaggageDepot>(); var airport=depot.Airport;
+            var station=depot.Teams.Single(); station.incomingBags=station.outgoingBags=20;
+            airport.Simulate(.2f); var job=airport.Baggage.Jobs.Single();
+            for (int i=0;i<16000 && !job.DepotTransfer;i++) airport.Simulate(.25f);
+            Assert.IsTrue(job.DepotTransfer,job.State+": "+job.Waiting); Assert.AreEqual(1,depot.BusyBays);
+            job.Cancel();
+            for (int i=0;i<16000 && !job.Finished;i++) airport.Simulate(.25f);
+            Assert.AreEqual(BaggageTurnaroundState.Cancelled,job.State,job.Waiting);
+            Assert.AreEqual(40,airport.Baggage.Ledger.Count); Assert.AreEqual(0,depot.Working); Assert.AreEqual(0,depot.BusyBays);
+            Assert.Less(Vector2.Distance(job.Fleet.Train.Tractor.position,job.Plan.trainParking.Value.position),.05f);
         }
     }
 }

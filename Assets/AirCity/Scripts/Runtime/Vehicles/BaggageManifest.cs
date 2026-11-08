@@ -21,6 +21,8 @@ namespace AirCity.Vehicles
 
     public sealed class BaggageStore
     {
+        readonly List<BaggageBatch> batches=new List<BaggageBatch>();
+        public IReadOnlyList<BaggageBatch> Batches => batches;
         public string Name { get; }
         public string Flight { get; private set; }
         public int Capacity { get; private set; }
@@ -63,6 +65,8 @@ namespace AirCity.Vehicles
             if (capacity<Count || weightCapacity<Weight) throw new ArgumentException("A baggage store cannot shrink below its contents.");
             Capacity=capacity; WeightCapacity=weightCapacity;
         }
+        internal void AddBatch(BaggageBatch batch) => batches.Add(batch);
+        internal void RemoveBatch(BaggageBatch batch) => batches.Remove(batch);
     }
 
     /// <summary>Atomic transfers of immutable counts/weights. Duplicate IDs and stale handovers are refused.</summary>
@@ -122,8 +126,9 @@ namespace AirCity.Vehicles
         static void Move(BaggageBatch batch, BaggageStore to)
         {
             if (batch.Location != null)
-            { batch.Location.Count -= batch.Count; batch.Location.Weight -= batch.Weight; }
+            { batch.Location.Count -= batch.Count; batch.Location.Weight -= batch.Weight; batch.Location.RemoveBatch(batch); }
             batch.Location = to;
+            to.AddBatch(batch);
             to.Count += batch.Count; to.Weight += batch.Weight;
         }
 

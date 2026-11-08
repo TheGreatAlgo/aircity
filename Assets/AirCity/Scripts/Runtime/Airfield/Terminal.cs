@@ -24,6 +24,8 @@ namespace AirCity.Airfield
         [Range(1, MaxFloors)] public int floors = 2;
         [Tooltip("Individual storey heights, bottom to top. Missing entries use the standard height.")]
         public List<float> storeyHeights = new List<float>();
+        [HideInInspector] public string baggageId=Guid.NewGuid().ToString("N");
+        public AirCity.Vehicles.TerminalBaggageSettings baggage=new AirCity.Vehicles.TerminalBaggageSettings();
         public BuildingExterior exterior = new BuildingExterior();
         [Tooltip("Boarding corridors connect at the floor nearest this height, metres above the apron (BoardingLevel).")]
         [Min(0.5f)] public float boardingHeight = 4f;
@@ -294,6 +296,7 @@ namespace AirCity.Airfield
         /// <summary>A copy (for editing a terminal and putting it back if the change won't do).</summary>
         public Terminal Clone() => new Terminal
             { corners = new List<Vector2>(corners), bulge = new List<float>(bulge), floors = floors, boardingHeight = boardingHeight,
-                storeyHeights = new List<float>(storeyHeights), exterior = exterior.Clone() };
+                storeyHeights = new List<float>(storeyHeights), exterior = exterior.Clone(), baggageId=baggageId,
+                baggage=(baggage ?? new AirCity.Vehicles.TerminalBaggageSettings()).Clone() };
     }
 }

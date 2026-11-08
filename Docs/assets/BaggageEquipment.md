@@ -6,7 +6,8 @@ stand for arrivals unloading, departing baggage loading and departure clearance.
 Aircraft hatches animate with the turnaround; the container fleet is documented in [ContainerEquipment](ContainerEquipment.md).
 Close sill docking, individual conveyor bags, bounded loads and reverse withdrawal are implemented. [Ramp crew](RampCrew.md)
 drive the equipment, handle bags beside the cart and belt, and work inside the hold. See [the baggage system](../systems/baggage.md).
-Terminal facilities remain deferred.
+Terminal interiors remain deferred. [Abstract terminal connections](../systems/terminal-baggage.md) now supply
+the baggage halls and carry arriving bags back to reclaim, with timed links and bounded queues.
 
 These are reusable, realistically proportioned, unbranded mesh assets in blue/white. They
 share the existing generated vehicle pipeline, metallic/smoothness atlases, restrained grime and separate
@@ -45,6 +46,10 @@ The generated `.vehicle` has a `baggage` block, imported into `VehicleType.bagga
 Unity local metres (+Z forward, +X right, +Y up). Cart `frontHitch` is the drawbar eye's lowered, straight-ahead
 position; `FrontHitchWorld` follows its articulation. `loadMin` / `loadMax` describe the usable cart volume;
 `payload` is the proposed 1,800 kg cart payload. Loader lift `centre` is a forward distance from the rear axle.
+Operational cart loads use `BaggageCartPacking` rather than the showroom's static display load. Generated
+bag dimensions and load bounds give 36 slots, shared by the manifest capacity and individual visible props;
+the duffel rotates sideways and every bag stays below the roof. `BaggagePacing` shortens service operations
+for gameplay while retaining slow final sill docking and physical movement checks.
 
 `BaggageTractor` is a separate `VehicleKind` from the aircraft push-back tugs. Equipment is not assigned to
 maintenance depots or dispatched as plough/mower teams by this change.

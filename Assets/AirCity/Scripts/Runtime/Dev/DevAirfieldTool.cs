@@ -217,7 +217,6 @@ namespace AirCity.Dev
         AircraftType[] types = new AircraftType[0];
         readonly DevOutlines outlines = new DevOutlines();
         readonly List<Vector3> loop = new List<Vector3>();
-        GUIContent panel = GUIContent.none;
 
         // ------------------------------------------------------------------ for the toolbar
 
@@ -2428,6 +2427,7 @@ namespace AirCity.Dev
                     airport.Taxiways.Rebuild();
                     break;
                 case Kind.Terminal:
+                    if (!airport.Baggage.CanRemoveTerminal(p.terminal,out apronProblem)) return;
                     airport.RemoveTerminal(p.terminal);
                     break;
             }
@@ -2787,18 +2787,11 @@ namespace AirCity.Dev
         static string Good => DevGui.Tag(new Color(0.49f, 0.99f, 0f));
         static string Bad => DevGui.Tag(new Color(1f, 0.5f, 0.31f));
 
-        /// <summary>The airfield's state (top left): weather, snow, the depots and their teams, and the selection.</summary>
+        /// <summary>Only placement labels live over the world; diagnostics belong to the toolbar.</summary>
         void OnGUI()
         {
             if (airport == null || !DevGui.Visible || DevGui.GateDesignerOpen) return;
             bridgeAircraftPreview.DrawLabel(cam);
-            DevGui.Begin();
-            if (Event.current.type == EventType.Layout) panel = new GUIContent(PanelText());
-            var size = DevGui.Label.CalcSize(panel);
-            float pad = DevGui.U(12f);
-            var rect = new Rect(DevGui.U(12f), DevGui.U(12f), size.x + pad * 2f, size.y + pad * 1.5f);
-            DevGui.Panel(rect);
-            GUI.Label(new Rect(rect.x + pad, rect.y + pad * 0.75f, size.x, size.y), panel, DevGui.Label);
         }
 
         static string StandProblemText(StandProblem p) => p switch
@@ -2814,7 +2807,8 @@ namespace AirCity.Dev
             _ => "OK",
         };
 
-        string PanelText()
+        /// <summary>Detailed airfield/team readout, built only when explicitly expanded in the debug menu.</summary>
+        public string DiagnosticsText()
         {
             var sb = new StringBuilder();
             sb.Append($"<b>Airfield</b>   {WeatherName(airport.Condition)}, {(Airport.IsNight ? "night" : "day")}, time x{airport.timeScale:0}\n");

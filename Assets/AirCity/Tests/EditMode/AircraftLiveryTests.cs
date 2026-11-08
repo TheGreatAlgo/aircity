@@ -17,6 +17,8 @@ namespace AirCity.Tests.Aircraft
     [TestFixture("Widebody")]
     [TestFixture("DoubleDeck")]
     [TestFixture("Quadjet")]
+    [TestFixture("Turboprop")]
+    [TestFixture("Trijet")]
     public class AircraftLiveryTests
     {
         readonly string model;
@@ -176,7 +178,10 @@ namespace AirCity.Tests.Aircraft
             // Cargo doors retain painted skin + trim at close/medium range; the far mesh merges them.
             int doorDraws = profile.cargoDoors.Length * 2;
             // Close panels crossing the registration patch also retain its separate material.
-            int[] maxDraws = { 24 + profile.cargoDoors.Length * 3, 4 + doorDraws, 2 };   // submeshes = draw calls per pass
+            // LOD1 keeps low-poly spinning parts (LOD1_KEEP: a propeller or two) as their own renderers, Body + Trim each.
+            int keptDraws = Mathf.Max(0, lods[1].renderers.Length - 1 - profile.cargoDoors.Length) * 2;
+            Assert.LessOrEqual(keptDraws, 4, "LOD1 keeps at most two spinning parts");
+            int[] maxDraws = { 24 + profile.cargoDoors.Length * 3, 2 + doorDraws + keptDraws, 2 };   // submeshes = draw calls per pass
             var tris = new int[lods.Length];
             var draws = new int[lods.Length];
             var report = new System.Text.StringBuilder("LODs:");

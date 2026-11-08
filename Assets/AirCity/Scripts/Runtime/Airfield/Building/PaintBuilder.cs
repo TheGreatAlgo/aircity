@@ -39,6 +39,8 @@ namespace AirCity.Airfield.Building
 
         public readonly MeshData mesh = new MeshData();
         public IList<StandMarkings.EquipmentBay> parkingBays;
+        public IList<StandMarkings.EquipmentBay> roadExclusions;
+        bool ClipRoadPaint => (parkingBays!=null && parkingBays.Count>0) || (roadExclusions!=null && roadExclusions.Count>0);
         public RunwayFrame frame = RunwayFrame.None;
         /// <summary>Owner state written into the next marks; SurfaceState keeps it current.</summary>
         public SurfaceValues state = SurfaceValues.Initial;
@@ -75,7 +77,7 @@ namespace AirCity.Airfield.Building
         {
             int n = points.Count;
             if (n < 2) return;
-            if (outsideParking && parkingBays != null && parkingBays.Count > 0)
+            if (outsideParking && ClipRoadPaint)
             {
                 for (int i = 1; i < n; i++) RoadLine(points[i-1],points[i],halfWidth,color);
                 return;
@@ -117,7 +119,7 @@ namespace AirCity.Airfield.Building
             float used = count * (dash + gap) - gap;
             float s = (len - used) * 0.5f;
             for (int i = 0; i < count; i++, s += dash + gap)
-                if (outsideParking && parkingBays != null && parkingBays.Count > 0)
+                if (outsideParking && ClipRoadPaint)
                     RoadLine(a+d*s,a+d*(s+dash),halfWidth,color);
                 else Box(a + d * (s + dash * 0.5f), d, halfWidth, dash * 0.5f, color);
         }
@@ -154,8 +156,13 @@ namespace AirCity.Airfield.Building
 
         void RoadLine(Vector2 a, Vector2 b, float halfWidth, Color color)
         {
-            foreach (var segment in StandMarkings.RoadSegments(a,b,parkingBays,halfWidth+.15f))
-                Line(segment.a,segment.b,halfWidth,color);
+            foreach (var segment in StandMarkings.RoadSegments(a,b,parkingBays ?? System.Array.Empty<StandMarkings.EquipmentBay>(),halfWidth+.15f))
+                if (roadExclusions!=null && roadExclusions.Count>0)
+                {
+                    foreach (var visible in StandMarkings.RoadSegments(segment.a,segment.b,roadExclusions,halfWidth+.15f))
+                        Line(visible.a,visible.b,halfWidth,color);
+                }
+                else Line(segment.a,segment.b,halfWidth,color);
         }
 
         /// <summary>A character `height` metres tall (runway designators: 9 m), read facing "up".</summary>

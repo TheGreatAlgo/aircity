@@ -60,6 +60,7 @@ namespace AirCity.EditorTools.Vehicles
             var station = new GameObject("Baggage hall").AddComponent<BaggageStation>(); station.transform.SetParent(root.transform, false);
             station.tractorType = VehicleSetup.Type("BaggageTractor"); station.cartType = VehicleSetup.Type("BaggageCart"); station.loaderType = VehicleSetup.Type("BeltLoader");
             station.bagPrefabs = VehicleSetup.BagPrefabs();
+            station.bagPropType = VehicleSetup.Type("BaggageProps");
             station.cartCount = 2;
             station.automaticHold.aircraft=aircraftType;
             station.standIds.Add(stand.id);

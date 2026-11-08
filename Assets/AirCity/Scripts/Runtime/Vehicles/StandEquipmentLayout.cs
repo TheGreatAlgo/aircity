@@ -167,7 +167,9 @@ namespace AirCity.Vehicles
                                     var turnSide = lateral ? layout.nose : GeoRight(layout.nose) * side;
                                     var turning = loader ? request.loader.bounds : request.tractor.bounds;
                                     turning.Expand(new Vector3(radius,0,radius));
-                                    exit = Box.Of(pose.position + facing * (2f + radius * .5f) + turnSide * (radius * .5f),facing,turning,.5f);
+                                    // the turn claim already spans the full radius: a bigger margin had a lateral bag train grazing the
+                                    // design nose line (where types smaller than the stand's design aircraft stop) of a code C stand
+                                    exit = Box.Of(pose.position + facing * (2f + radius * .5f) + turnSide * (radius * .5f),facing,turning,.25f);
                                     if (obstacles.Any(o=>o.Overlaps(exit))) continue;
                                     slot.candidates.Add(new Candidate { id=candidateId++,loader=loader,bay = bay, pose = pose, box = box,
                                         parked=BayBox(bay,.5f),close=BayBox(bay,.3f),entrance = entrance, exit = exit });
@@ -253,6 +255,8 @@ namespace AirCity.Vehicles
                 boxes.Add(Box.Of(r.center,Vector2.up,new Bounds(Vector3.zero,new Vector3(r.width,1,r.height)),.75f));
             foreach (var e in airport.Taxiways.edges)
             {
+                // A depot owns a service-road yard. Its internal links and adjoining frontage belong in its footprint.
+                if (except!=null && e.road==RoadClass.Service) continue;
                 var a=airport.Taxiways.At(e.a); var b=airport.Taxiways.At(e.b);
                 boxes.Add(Box.Of((a+b)*.5f,(b-a).normalized,new Bounds(Vector3.zero,new Vector3(e.width,1,Vector2.Distance(a,b))),.5f));
             }
@@ -298,6 +302,9 @@ namespace AirCity.Vehicles
                 foreach (var part in type.serviceFootprints)
                 {
                     if (part.outline.Length == 0) continue;
+                    // Ground equipment drives under a part this high up (a high wing, a tail), as the service clearance
+                    // check lets it: only parts it could hit keep it off the ground beneath them.
+                    if (part.bottom >= AircraftServiceClearance.EquipmentHeadroom) continue;
                     float minX = float.MaxValue, maxX = float.MinValue, maxZ = float.MinValue;
                     foreach (var p in part.outline) { minX = Mathf.Min(minX, p.x); maxX = Mathf.Max(maxX, p.x); maxZ = Mathf.Max(maxZ, p.y); }
                     if (part.name.ToLowerInvariant().Contains("engine")) maxZ += 5f;

@@ -626,7 +626,7 @@ namespace AirCity.Airfield
             problem = BridgeProblem.None;
             if (!bridge.ValidDefinition) { problem = BridgeProblem.InvalidDefinition; return pose; }
             if (inactive) { problem = BridgeProblem.NotInService; return pose; }
-            if (type.Light)
+            if (type.BoardsByStairs)
             {
                 problem = BridgeProblem.SmallAircraft;
                 return pose;
@@ -731,7 +731,7 @@ namespace AirCity.Airfield
             var aim = stand.axis;
             AircraftType largest = null;
             foreach (var t in types)
-                if (t != null && !t.Light && TryDoor(t, bridge, out _) && (largest == null || t.Wingspan > largest.Wingspan)) largest = t;
+                if (t != null && !t.BoardsByStairs && TryDoor(t, bridge, out _) && (largest == null || t.Wingspan > largest.Wingspan)) largest = t;
             if (largest != null) aim = Dock(largest, out _).heading;
             pose = bridge.ParkedPose(aim);
             if (clearOf != null && clearOf.Count > 0 && Swing(ref pose, aim, 72, types, avoid, clearOf)) return true;
@@ -767,7 +767,10 @@ namespace AirCity.Airfield
                 can[i] = new HashSet<AircraftType>();
                 foreach (var t in types)
                 {
-                    if (t == null || t.Light) continue;
+                    if (t == null || t.BoardsByStairs) continue;
+                    // a bridge the stand's configuration leaves unused for a type stays parked while the others dock it,
+                    // so it must park clear of their way to that type too
+                    if (list[i].stand.stand.ServiceFor(t)?.unusedBridges.Contains(list[i].bridge.id) == true) continue;
                     var pose = list[i].Dock(t, out var p);
                     if (p != BridgeProblem.None) continue;
                     var swung = list[i].bridge.ParkedPose(pose.heading);
@@ -1198,7 +1201,7 @@ namespace AirCity.Airfield
             var terminals = site.terminals;
             AircraftType design = null;
             foreach (var t in types)
-                if (t != null && !t.Light && TryDoor(t, door, out _) && (design == null || t.Wingspan > design.Wingspan)) design = t;
+                if (t != null && !t.BoardsByStairs && TryDoor(t, door, out _) && (design == null || t.Wingspan > design.Wingspan)) design = t;
             if (design == null || stand.TaxiOut || stand.stand.DeIcing) return null;
             const float step = 1.5f;
             float target = door.tunnel == TunnelSize.Short ? 14f : 22f;

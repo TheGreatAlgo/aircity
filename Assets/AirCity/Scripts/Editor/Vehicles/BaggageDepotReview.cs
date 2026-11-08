@@ -30,6 +30,8 @@ namespace AirCity.EditorTools.Vehicles
                 if (depot==null || airport.Baggage.ContainerStations.Length!=0 || depot.Teams.Length!=1)
                     throw new Exception("Expected one baggage depot and one example team.");
                 var station=depot.Teams[0]; depot.Rebuild();
+                // This synchronous review bypasses Update, which normally applies queued depot paint masks.
+                airport.Taxiways.RefreshEquipmentPaint();
                 var plane=airport.GetComponentsInChildren<AirCity.Aircraft.Aircraft>().Single(a=>a.name=="Narrowbody baggage turnaround");
                 for (int i=0;i<4;i++) { clock.Restart(); airport.Simulate(.05f); Debug.Log($"DEPOT STARTUP tick {i} {clock.Elapsed.TotalSeconds:F3}s"); }
                 var job=airport.Baggage.JobOf(plane);
@@ -37,18 +39,21 @@ namespace AirCity.EditorTools.Vehicles
                 if (!job.Acquired) throw new Exception("Depot route planning: "+job.Waiting);
                 var departure=airport.Traffic.Depart(plane,out var reason); if (departure==null) throw new Exception(reason);
                 var camera=Object.FindAnyObjectByType<Camera>();
+                Directory.CreateDirectory("Captures/BaggageDepot/Frames");
+                foreach (var previous in Directory.GetFiles("Captures/BaggageDepot/Frames","unload-*.png")) File.Delete(previous);
                 bool unloaded=false,collected=false,loaded=false; int frame=0;
+                float simulatedSeconds=.2f,baggageSeconds=0;
                 var sample=Stopwatch.StartNew(); double simulation=0; int samples=0;
                 for (int tick=0;tick<36000 && departure.Phase!=FlightPhase.Taxi;tick++)
                 {
-                    sample.Restart(); airport.Simulate(.25f); simulation+=sample.Elapsed.TotalMilliseconds; samples++;
+                    sample.Restart(); airport.Simulate(.25f); simulatedSeconds+=.25f; simulation+=sample.Elapsed.TotalMilliseconds; samples++;
                     if (tick%1200==0) Debug.Log($"DEPOT progress {tick*.25f:F0}s: {job.State}; {job.Waiting}");
                     if (job.DepotTransfer && job.State==BaggageTurnaroundState.UnloadingArrivals && !unloaded)
                     {
                         var stationary=job.Fleet.Train.Tractor.position;
                         for (int i=0;i<160 && job.DepotTransfer;i++)
                         {
-                            airport.Simulate(.05f); station.Present(.05f); depot.Present();
+                            airport.Simulate(.05f); simulatedSeconds+=.05f; station.Present(.05f); depot.Present();
                             if (Vector2.Distance(stationary,job.Fleet.Train.Tractor.position)>.001f) throw new Exception("Tractor moved while unloading at its depot bay.");
                             Aim(camera,airport,depot.Point(5,-4),new Vector3(-23,20,-22));
                             Shot(camera,$"Captures/BaggageDepot/Frames/unload-{frame++:000}.png",1000,700);
@@ -70,15 +75,16 @@ namespace AirCity.EditorTools.Vehicles
                         camera.orthographic=false; camera.fieldOfView=48; camera.transform.position=at+airport.transform.TransformDirection(offset); camera.transform.LookAt(at);
                         Shot(camera,"Captures/BaggageDepot/ramp-team.png"); loaded=true;
                     }
+                    if (job.DepartureReady && baggageSeconds==0) baggageSeconds=simulatedSeconds;
                 }
-                if (!job.DepartureReady || departure.Phase!=FlightPhase.Taxi || job.Fleet.Arrivals.Count!=station.incomingBags ||
+                if (!job.DepartureReady || departure.Phase!=FlightPhase.Taxi || job.DeliveredArrivals!=station.incomingBags ||
                     job.Hold.Count!=station.outgoingBags || depot.Working!=0 || airport.Baggage.Ledger.Count!=station.incomingBags+station.outgoingBags)
                     throw new Exception($"Depot turnaround: {job.State}: {job.Waiting}; {departure.Status}");
                 if (!unloaded || !collected || !loaded || frame<20) throw new Exception("Missing depot review phases.");
                 station.Present(.25f); depot.Present();
                 Aim(camera,airport,depot.Point(-15,0),new Vector3(-100,120,-100)); Shot(camera,"Captures/BaggageDepot/sandbox-overview.png");
                 Directory.CreateDirectory("Logs");
-                File.WriteAllText("Logs/baggage-depot-native.json",$"{{\"passed\":true,\"incoming\":{job.IncomingCount},\"outgoing\":{job.OutgoingCount},\"assignedWorkersAfterReturn\":{depot.Working},\"frames\":{frame},\"meanQuarterSecondSimulationMs\":{(simulation/samples).ToString("F3",System.Globalization.CultureInfo.InvariantCulture)}}}");
+                File.WriteAllText("Logs/baggage-depot-native.json",$"{{\"passed\":true,\"incoming\":{job.IncomingCount},\"outgoing\":{job.OutgoingCount},\"cartCapacity\":{job.Fleet.Cart.Capacity},\"arrivalTrips\":{job.ArrivalTrips},\"departureTrips\":{job.DepartureTrips},\"baggageSeconds\":{baggageSeconds.ToString("F2",System.Globalization.CultureInfo.InvariantCulture)},\"assignedWorkersAfterReturn\":{depot.Working},\"frames\":{frame},\"meanQuarterSecondSimulationMs\":{(simulation/samples).ToString("F3",System.Globalization.CultureInfo.InvariantCulture)}}}");
                 Debug.Log($"DEPOT REVIEW passed: {job.IncomingCount} arrivals / {job.OutgoingCount} departures, all bags conserved, depot team returned, aircraft taxiing; mean .25s simulation {simulation/samples:F3} ms.");
                 EditorApplication.Exit(0);
             }

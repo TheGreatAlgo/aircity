@@ -713,14 +713,19 @@ taxiway.
   as well on the first code C stand), L1 + L2 on a head on the code E stand and the second code F stand, L1 + L2 +
   UL1 on a two-storey head on the first code F stand (UL1 only once a double-deck type exists), and one long bridge
   per fan stand.
-- Parked, ready to leave: narrow-bodies on two contact stands and a fan stand, a wide-body on the code E stand, and
-  the double-deck and long-haul quadjet types on the code F stands once their models exist.
+- Parked, ready to leave: narrow-bodies on two contact stands and a fan stand, a wide-body on the code E stand, the
+  double-deck and long-haul quadjet types on the code F stands, and the regional turboprop on the last fan stand (a
+  code B type on a code C stand, nose on the design nose line). The trijet has no code D stand to park on and shows
+  on the display ramp only.
 - Two code E de-icing bays (D1, D2) on a bypass beside A at the 09 end, for westbound departures.
 - The depot west of the GA apron (3 ploughs, 1 mower, 2 small and 2 large tugs) on a small pad, with service roads
   east onto the GA apron, north across the dirt taxiway to A, and round the GA apron to the heads of the code C
   contact stands (their tugs come that way).
 - A display ramp south-east, off every taxiway, where Add Sandbox Airport moves the scene's showcase rows of every
-  type and livery.
+  type and livery. After adding an aircraft type, **AirCity ▸ Airfield ▸ Refresh Sandbox Aircraft** (batch:
+  `-executeMethod AirCity.EditorTools.Airfield.AirfieldSetup.RefreshSandboxAircraft -quit`) lists it in the saved
+  sandbox's `Airport.aircraftTypes`, adds its showcase rows behind the others and parks the turboprop, without
+  rebuilding the airport (`AircraftSetup.AddMissingShowcaseRows`).
 
 ## Invariants and gotchas
 
@@ -784,3 +789,8 @@ taxiway.
 
 Commands are in [dev-tools.md](dev-tools.md). Look at results with SceneCapture or a temporary editor script that
 calls `SceneCapture.Capture(cam, path, w, h)`; delete the script afterwards.
+
+Baggage depots provide a separate `PaintArea` mask for road paint. `PaintBuilder.roadExclusions` clips
+connector edge/centre strokes inside the forecourt while preserving stand boundaries and aircraft guidance.
+The depot draws its own bay outlines and circulation arrows. These masks never alter the service-road graph
+or physical pavement; road paint refresh remains independent of operational layout versions.

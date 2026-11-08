@@ -39,6 +39,7 @@ namespace AirCity.Dev
         }
         public int standIndex;
         public BaggageDepotSize depotSize;
+        public void SetMessage(string message) => Message=message;
 
         public void HireWorker() { if (Station?.depot!=null) { Station.depot.Hire(out var why); Message=why; } }
         public void FireWorker() { if (Station?.depot!=null) { Station.depot.Fire(out var why); Message=why; } }
@@ -82,9 +83,9 @@ namespace AirCity.Dev
             var at = Airport.Taxiways.Node(station.dispatchNode) != null ? Airport.Taxiways.At(station.dispatchNode) : station.loaderParking;
             if (station.depot!=null)
             {
-                var depot=station.depot; at=depot.Point(10,(depot.Maximum.teams-1)*12f-5f);
+                var depot=station.depot; at=depot.PaintArea.centre;
                 orbit.pivot=Airport.transform.TransformPoint(new Vector3(at.x,0,at.y));
-                orbit.distance=Mathf.Max(75,depot.Maximum.teams*30f); orbit.pitch=45; orbit.yaw=depot.bearing-110; return;
+                orbit.distance=Mathf.Max(75,Mathf.Max(depot.PaintArea.width,depot.PaintArea.length)*1.1f); orbit.pitch=45; orbit.yaw=depot.bearing-110; return;
             }
             orbit.pivot = Airport.transform.TransformPoint(new Vector3(at.x - 20f, 0f, at.y + 15f));
             orbit.distance = 180f; orbit.pitch = 58f; orbit.yaw = 215f;
@@ -146,6 +147,7 @@ namespace AirCity.Dev
                 {
                     var go=new GameObject("Baggage depot"); go.transform.SetParent(Airport.transform,false);
                     var depot=go.AddComponent<BaggageDepot>(); depot.size=depotSize; depot.firstBay=net.At(best.id); depot.bearing=bearing;
+                    depot.connection.enabled=true;
                     var placementProblem=depot.PlacementProblem();
                     if (placementProblem!=null) { Destroy(go); Message=placementProblem; return; }
                     var added=depot.AddTeam(station,out var why);
@@ -168,7 +170,12 @@ namespace AirCity.Dev
         }
 
         public void StandParking(bool enabled)
-        { if (!CanConfigure) return; station.parkAtStand=enabled; Airport.Baggage.RefreshParking(station); }
+        {
+            if (!CanConfigure) return;
+            station.parkAtStand=enabled;
+            if (!enabled) station.depot?.ConnectBay(station);
+            Airport.Baggage.RefreshParking(station);
+        }
         public void StageAt(Stand stand)
         { if (!CanConfigure || stand==null || !station.standIds.Contains(stand.id)) return; station.parkingStandId=stand.id; station.parkAtStand=true; Airport.Baggage.RefreshParking(station); }
     }

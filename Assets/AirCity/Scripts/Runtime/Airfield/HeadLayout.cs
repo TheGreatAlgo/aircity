@@ -500,7 +500,7 @@ namespace AirCity.Airfield
         {
             AircraftType design = null;
             foreach (var t in types)
-                if (t != null && !t.Light && BridgeLayout.TryDoor(t, door, out _) && (design == null || t.Wingspan > design.Wingspan)) design = t;
+                if (t != null && !t.BoardsByStairs && BridgeLayout.TryDoor(t, door, out _) && (design == null || t.Wingspan > design.Wingspan)) design = t;
             return design;
         }
 

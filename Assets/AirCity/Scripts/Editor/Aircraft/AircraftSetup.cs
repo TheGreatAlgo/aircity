@@ -5,6 +5,7 @@ using AirCity.Dev;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
+using System.Collections.Generic;
 using UnityEngine.Rendering;
 using UnityEngine.SceneManagement;
 
@@ -123,7 +124,7 @@ namespace AirCity.EditorTools.Aircraft
                 inst.AddComponent<AircraftCargoDoors>();
                 inst.AddComponent<AircraftGroundMotion>().FindParts(type);
                 foreach (var t in inst.GetComponentsInChildren<Transform>(true))
-                    if ((t.name == "Propeller" || t.name.StartsWith("Fan_")) && t.GetComponent<PropellerSpinner>() == null)
+                    if ((t.name.StartsWith("Propeller") || t.name.StartsWith("Fan_")) && t.GetComponent<PropellerSpinner>() == null)
                         t.gameObject.AddComponent<PropellerSpinner>();
 
                 // the glow material is assigned after AddComponent, so nothing is generated into the prefab
@@ -185,9 +186,20 @@ namespace AirCity.EditorTools.Aircraft
             // one parked aircraft per (type, livery): light aircraft in front, airliners behind. Widebodies show one
             // row of every other livery (the airline ones), which keeps them on the apron
             var parent = new GameObject("Aircraft").transform;
-            var liveries = AllLiveries();
             float rowZ = 0f;
-            foreach (var type in AllTypes())
+            ShowcaseRows(parent, AllTypes(), ref rowZ);
+
+            EditorSceneManager.SaveScene(scene, SandboxScene);
+            EditorBuildSettings.scenes = new[] { new EditorBuildSettingsScene(SandboxScene, true) };
+        }
+
+        /// <summary>One parked aircraft per (type, livery) in rows along +Z from rowZ, under `parent` (the sandbox's
+        /// "Aircraft" root): light aircraft in front, airliners behind. Widebodies show one row of every other livery
+        /// (the airline ones), which keeps them on the apron. Leaves rowZ past the last row.</summary>
+        static void ShowcaseRows(Transform parent, IEnumerable<AircraftType> types, ref float rowZ)
+        {
+            var liveries = AllLiveries();
+            foreach (var type in types)
             {
                 var prefab = Prefab(type);
                 if (prefab == null) continue;
@@ -200,7 +212,8 @@ namespace AirCity.EditorTools.Aircraft
                     var go = (GameObject)PrefabUtility.InstantiatePrefab(prefab, parent);
                     go.name = $"{type.model} {livery.name}";
                     var pos = new Vector3((i % 3 - 1) * dx + 14f, 0f, rowZ + (i / 3) * dz);
-                    go.transform.SetPositionAndRotation(pos, Quaternion.Euler(0f, 215f, 0f));
+                    go.transform.localPosition = pos;
+                    go.transform.localRotation = Quaternion.Euler(0f, 215f, 0f);
                     var a = go.GetComponent<AircraftLiveryApplier>();
                     a.liveryAsset = livery;
                     a.dirt = (i % 5) / 4f;          // clean to filthy, to show the range
@@ -208,9 +221,27 @@ namespace AirCity.EditorTools.Aircraft
                 }
                 rowZ += (shown + 2) / 3 * dz + 6f;
             }
+        }
 
-            EditorSceneManager.SaveScene(scene, SandboxScene);
-            EditorBuildSettings.scenes = new[] { new EditorBuildSettingsScene(SandboxScene, true) };
+        /// <summary>Showcase rows for the types the open scene's "Aircraft" root has none of (a type added since the
+        /// sandbox was created), behind the rows it has. Returns how many types were added.</summary>
+        public static int AddMissingShowcaseRows()
+        {
+            Transform parent = null;
+            foreach (var root in SceneManager.GetActiveScene().GetRootGameObjects())
+                if (root.name == "Aircraft") parent = root.transform;
+            if (parent == null) parent = new GameObject("Aircraft").transform;
+            var shown = new HashSet<AircraftType>();
+            float rowZ = 0f;
+            foreach (var a in parent.GetComponentsInChildren<AirCity.Aircraft.Aircraft>())
+            {
+                if (a.type == null) continue;
+                shown.Add(a.type);
+                rowZ = Mathf.Max(rowZ, a.transform.localPosition.z + a.type.Length + 4f + 6f);
+            }
+            var missing = AllTypes().Where(t => !shown.Contains(t)).ToList();
+            ShowcaseRows(parent, missing, ref rowZ);
+            return missing.Count;
         }
 
         internal static Light SetUpDaylight()

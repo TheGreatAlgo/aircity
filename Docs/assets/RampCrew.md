@@ -24,6 +24,8 @@ material-specific smoothness distinguish fabric, skin, rubber and reflective tap
 trilinear filtering and mipmaps keep the weave stable at gameplay distances. Textures use a fixed random
 seed and require no external downloads. Runtime poses are procedural,
 including seated driving, standing controls, walking, reach/lift/carry/place and kneeling hold work.
+`BaggagePacing` applies the same gameplay time compression to boarding, handling, conveyor travel and
+procedural poses. Base generated timings stay unchanged; extra hired handlers still increase throughput.
 
 ```sh
 rtk proxy /Applications/Blender.app/Contents/MacOS/Blender -b --factory-startup --python ArtSource/Characters/RampCrew/build.py

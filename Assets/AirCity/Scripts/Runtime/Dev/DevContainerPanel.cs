@@ -14,27 +14,27 @@ namespace AirCity.Dev
             if (containers == null || containers.Station == null || !Fold("containers", "CONTAINERS")) return;
             var station = containers.Station; var baggage = airport.Baggage;
             var fleet = baggage.ContainerFleet(station);
-            Note(station.name);
+            if (ShowMore) Note(station.name);
             Buttons(B("View station", containers.FocusStation, "Move the camera to the container station"),
                 B("Auto handling", () => station.automaticHandling = !station.automaticHandling,
                     "Prepare container manifests for compatible aircraft on assigned stands", station.automaticHandling));
-            Buttons(B("Send to reclaim", () => baggage.SendToReclaim(station), "Free arrivals bag capacity without deleting records"),
+            if (ShowMore) Buttons(B("Send to reclaim", () => baggage.SendToReclaim(station), "Free arrivals bag capacity without deleting records"),
                 B(station.accessBlocked ? "Clear access" : "Block access", () => station.accessBlocked = !station.accessBlocked, "Pause equipment access and transfers", station.accessBlocked));
-            Note($"Dispatch {fleet?.Dispatch.Count ?? 0} ULDs · Arrivals {fleet?.ArrivalsBags.Count ?? 0} bags");
+            if (ShowMore) Note($"Dispatch {fleet?.Dispatch.Count ?? 0} ULDs · Arrivals {fleet?.ArrivalsBags.Count ?? 0} bags");
             ContainerTurnaround current = fleet?.Job;
             if (current == null)
                 foreach (var job in baggage.ContainerJobs)
                     if (job.Fleet.Station == station && !job.Finished) { current = job; break; }
             if (current != null)
             {
-                Note(current.Aircraft?.name + ": " + (current.Waiting ?? current.State.ToString()));
-                ContainerActions(baggage, current);
+                Note(current.Waiting ?? "Handling containers");
+                if (ShowMore) { Note(current.Aircraft?.name + ": " + current.State); ContainerActions(baggage, current); }
             }
-            else
+            else if (ShowMore)
                 foreach (var job in baggage.ContainerJobs)
                     if (job.Fleet.Station == station && job.State == ContainerTurnaroundState.Cancelled) ContainerActions(baggage, job);
             Note(station.Problem ?? containers.Message);
-            if (!Fold("container-setup", "CONTAINER STATION SETUP")) return;
+            if (!ShowMore || !Fold("container-setup", "CONTAINER STATION SETUP")) return;
             bool edit = containers.CanConfigure;
             Buttons(B("Stand staging",()=>containers.StandParking(!station.parkAtStand),
                 "Place equipment beside its assigned stand; bays follow the stand and cargo door",station.parkAtStand,enabled:edit));
@@ -102,6 +102,7 @@ namespace AirCity.Dev
             var job = airport != null ? airport.Baggage.ContainerJobOf(aircraft) : null;
             if (job == null) return;
             Section("CONTAINERS"); Note(job.Waiting ?? job.State.ToString());
+            if (!ShowMore) return;
             Note($"Hold {job.Hold.Count} ULDs · {job.Unloaded} unloaded / {job.Loaded} loaded");
             Note($"Dolly {job.Fleet.Dolly.Count} · Main {job.Fleet.Main.Count} · Front {job.Fleet.Front.Count}");
             ContainerActions(airport.Baggage, job);

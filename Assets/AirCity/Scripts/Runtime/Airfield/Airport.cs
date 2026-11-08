@@ -367,12 +367,14 @@ namespace AirCity.Airfield
             t.storeyHeights = new List<float>(changed.storeyHeights);
             t.exterior = changed.exterior.Clone();
             t.boardingHeight = changed.boardingHeight;
+            t.baggage=(changed.baggage ?? new Vehicles.TerminalBaggageSettings()).Clone();
             BuildGround();
             return true;
         }
 
         public void RemoveTerminal(Terminal t)
         {
+            if (!Baggage.RemoveTerminalBaggage(t)) return;
             if (!terminals.Remove(t)) return;
             BuildGround();
         }

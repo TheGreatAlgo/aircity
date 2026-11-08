@@ -1000,6 +1000,14 @@ namespace AirCity.Airfield
         /// <summary>Parking paint changes independently of operational geometry and must not invalidate service plans.</summary>
         public void RefreshEquipmentPaint() => RefreshEquipmentPaint(true);
 
+        static List<StandMarkings.EquipmentBay> DepotPaintExclusions(Airport airport)
+        {
+            var masks=new List<StandMarkings.EquipmentBay>();
+            foreach (var depot in airport.GetComponentsInChildren<AirCity.Vehicles.BaggageDepot>())
+                if (depot.isActiveAndEnabled) masks.Add(depot.PaintArea);
+            return masks;
+        }
+
         void RefreshEquipmentPaint(bool refreshRoads)
         {
             var airport = Airport;
@@ -1009,7 +1017,7 @@ namespace AirCity.Airfield
             if (refreshRoads && surfacePart?.Mesh != null && paintPart != null)
             {
                 var surface = new SurfaceBuilder(Surfaces.Count);
-                var roadPaint = new PaintBuilder { parkingBays = bays };
+                var roadPaint = new PaintBuilder { parkingBays = bays, roadExclusions=DepotPaintExclusions(airport) };
                 var layouts = Layouts();
                 var roads = new TaxiwayBuilder(this,airport.Runways,Frontages(layouts));
                 roads.Build(surface,roadPaint,new LightBuilder());
@@ -1023,7 +1031,7 @@ namespace AirCity.Airfield
                 RefreshState();
             }
             equipmentPaintPart ??= new AirfieldPart(transform, "Equipment parking paint");
-            var paint = new PaintBuilder { parkingBays = bays.FindAll(b=>!b.working) };
+            var paint = new PaintBuilder { parkingBays = bays.FindAll(b=>!b.working), roadExclusions=DepotPaintExclusions(airport) };
             var builder = new EquipmentParkingBuilder();
             foreach (var bay in bays) builder.Build(bay,paint);
             equipmentPaintPart.Set(paint.Apply(equipmentPaintPart.Target,"Equipment parking paint"),airport.paint);
@@ -1043,7 +1051,7 @@ namespace AirCity.Airfield
             fixturePart ??= new AirfieldPart(transform, "Fixtures");
             vergePart ??= new AirfieldPart(transform, "Verges");
             var surface = new SurfaceBuilder(Surfaces.Count);
-            var paint = new PaintBuilder { parkingBays = StandMarkings.Equipment(airport) };
+            var paint = new PaintBuilder { parkingBays = StandMarkings.Equipment(airport), roadExclusions=DepotPaintExclusions(airport) };
             var lights = new LightBuilder();
             var verges = new SurfaceBuilder(1);
             var layouts = Layouts();

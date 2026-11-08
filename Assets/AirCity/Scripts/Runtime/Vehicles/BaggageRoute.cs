@@ -9,7 +9,7 @@ namespace AirCity.Vehicles
         /// <summary>Service roads only. Endpoints are road nodes; local stand approaches can be added later.</summary>
         public static bool Plan(TaxiwayNetwork network, int from, int to, float radius, float speed,
             float minimumWidth, out VehiclePath path, out string reason,
-            Vector2? startFacing = null, Vector2? endFacing = null)
+            Vector2? startFacing = null, Vector2? endFacing = null, Func<TaxiwayEdge,bool> allowed = null)
         {
             path = null; reason = null;
             if (network == null || network.Node(from) == null || network.Node(to) == null || from == to ||
@@ -25,7 +25,7 @@ namespace AirCity.Vehicles
             var nodes = network.FindRoute(from, to,
                 e => e.road == RoadClass.Service && e.width >= minimumWidth && e.wear < RunwayRules.ClosedWear &&
                     !TaxiwayNetwork.Closed(e) && network.Node(e.a).runway == null && network.Node(e.b).runway == null &&
-                    Heading(e, from, startFacing, false) && Heading(e, to, endFacing, true),
+                    Heading(e, from, startFacing, false) && Heading(e, to, endFacing, true) && (allowed==null || allowed(e)),
                 _ => false);
             if (nodes == null) { reason = "no open service-road route for baggage"; return false; }
             path = new VehiclePath();

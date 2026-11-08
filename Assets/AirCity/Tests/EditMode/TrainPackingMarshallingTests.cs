@@ -73,8 +73,8 @@ namespace AirCity.Tests
                 { aircraft = demo.aircraft.type,bagCapacity = 250,weightCapacity = 5000 },demo.station,"TWO-IN","TWO-OUT",out var why);
             Assert.That(job,Is.Not.Null,why);
             var ledger = demo.airport.Baggage.Ledger;
-            for (int i = 0; i < 12; i++) ledger.Add("IN-"+i,"TWO-IN",10,150,true,job.Hold);
-            for (int i = 0; i < 15; i++) ledger.Add("OUT-"+i,"TWO-OUT",10,150,true,job.Fleet.Dispatch);
+            for (int i = 0; i < 20; i++) ledger.Add("IN-"+i,"TWO-IN",6,90,true,job.Hold);
+            for (int i = 0; i < 25; i++) ledger.Add("OUT-"+i,"TWO-OUT",6,90,true,job.Fleet.Dispatch);
             Assert.That(job.Seal(out why),Is.True,why); return job;
         }
         [Test]
@@ -82,11 +82,12 @@ namespace AirCity.Tests
         {
             var demo = Load(); var job = Job(demo);
             Until(demo,job,()=>job.State == BaggageTurnaroundState.OutboundDrive);
-            Assert.That(job.Fleet.Carts[0].Count,Is.EqualTo(100)); Assert.That(job.Fleet.Carts[1].Count,Is.EqualTo(50));
-            Assert.That(job.ArrivalTrips,Is.EqualTo(1)); Assert.That(job.DepartureTrips,Is.EqualTo(1));
+            Assert.That(job.Fleet.Carts[0].Count,Is.EqualTo(36)); Assert.That(job.Fleet.Carts[1].Count,Is.EqualTo(36));
+            Assert.That(job.ArrivalTrips,Is.EqualTo(2)); Assert.That(job.DepartureTrips,Is.EqualTo(1));
             Until(demo,job,()=>job.DepartureReady);
             Assert.That(job.Hold.Count,Is.EqualTo(150)); Assert.That(job.Fleet.Arrivals.Count,Is.EqualTo(120));
             Assert.That(job.Fleet.CartCount,Is.Zero); Assert.That(demo.airport.Baggage.Ledger.Count,Is.EqualTo(270));
+            Assert.That(job.DepartureTrips,Is.EqualTo(3));
             Assert.That(job.Fleet.Crew.GroundSeated && job.Fleet.Crew.HoldSeated,Is.True);
         }
         [Test]

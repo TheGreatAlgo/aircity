@@ -9,6 +9,9 @@ namespace AirCity.Vehicles
     /// <summary>Projected aircraft parts protect swept wings, engines, tail and gear during close servicing.</summary>
     public static class AircraftServiceClearance
     {
+        /// <summary>Above this, an aircraft part is over every piece of ground equipment (the container loader, the
+        /// tallest, is 2.8 m) and casts no ground obstacle.</summary>
+        public const float EquipmentHeadroom = 3.1f;
         sealed class Envelope
         {
             public object parts;
