@@ -42,7 +42,11 @@ namespace AirCity.EditorTools.Aircraft
                 }
                 string prefabPath = PrefabPath(type);
                 if (!File.Exists(prefabPath)) CreatePrefab(type, $"{TypeFolder(type)}/Models/{type.model}.fbx", prefabPath, first);
-                else InstallCargoDoors(prefabPath);
+                else
+                {
+                    InstallCargoDoors(prefabPath);
+                    InstallAfterburner(type, prefabPath);
+                }
             }
             AssetDatabase.SaveAssets();
         }
@@ -63,6 +67,27 @@ namespace AirCity.EditorTools.Aircraft
                 PrefabUtility.SaveAsPrefabAsset(root, path);
             }
             finally { PrefabUtility.UnloadPrefabContents(root); }
+        }
+
+        // A type that gained afterburning nozzles after its prefab was made gets the flames too.
+        static void InstallAfterburner(AircraftType type, string path)
+        {
+            if (!type.HasAfterburner || AssetDatabase.LoadAssetAtPath<GameObject>(path).GetComponent<AircraftAfterburner>() != null) return;
+            var root = PrefabUtility.LoadPrefabContents(path);
+            try
+            {
+                AddAfterburner(root, type);
+                PrefabUtility.SaveAsPrefabAsset(root, path);
+            }
+            finally { PrefabUtility.UnloadPrefabContents(root); }
+        }
+
+        static void AddAfterburner(GameObject root, AircraftType type)
+        {
+            // the material is assigned after AddComponent, so nothing is generated into the prefab
+            var afterburner = root.AddComponent<AircraftAfterburner>();
+            afterburner.type = type;
+            afterburner.flameMaterial = SharedMaterial("AircraftAfterburner", "AirCity/AircraftAfterburner");
         }
 
         public static AircraftLiveryAsset[] AllLiveries() =>
@@ -131,6 +156,7 @@ namespace AirCity.EditorTools.Aircraft
                 var lights = inst.AddComponent<AircraftLights>();
                 lights.type = type;
                 lights.glowMaterial = SharedMaterial("AircraftLightGlow", "AirCity/AircraftLightGlow");
+                if (type.HasAfterburner) AddAfterburner(inst, type);
                 PrefabUtility.SaveAsPrefabAsset(inst, prefabPath);   // a variant of the model: re-exports flow through
             }
             finally

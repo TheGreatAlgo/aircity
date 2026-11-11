@@ -239,7 +239,7 @@ namespace AirCity.Vehicles
             Box.Of(bay.centre,bay.facing,new Bounds(Vector3.zero,new Vector3(bay.width,1,bay.length)),margin);
         static Vector2 GeoRight(Vector2 f) => new Vector2(f.y,-f.x);
 
-        static List<Box> Fixed(Airport airport,BaggageDepot except=null)
+        static List<Box> Fixed(Airport airport,BaggageDepot except=null,bool serviceYard=false)
         {
             var boxes = new List<Box>();
             foreach (var depot in airport.GetComponentsInChildren<BaggageDepot>()) if (depot!=except) boxes.Add(depot.BuildingBox);
@@ -256,7 +256,7 @@ namespace AirCity.Vehicles
             foreach (var e in airport.Taxiways.edges)
             {
                 // A depot owns a service-road yard. Its internal links and adjoining frontage belong in its footprint.
-                if (except!=null && e.road==RoadClass.Service) continue;
+                if ((except!=null || serviceYard) && e.road==RoadClass.Service) continue;
                 var a=airport.Taxiways.At(e.a); var b=airport.Taxiways.At(e.b);
                 boxes.Add(Box.Of((a+b)*.5f,(b-a).normalized,new Bounds(Vector3.zero,new Vector3(e.width,1,Vector2.Distance(a,b))),.5f));
             }
@@ -264,9 +264,9 @@ namespace AirCity.Vehicles
         }
 
         /// <summary>Shared equipment courts may use the adjoining apron, clear of every stand's arrival envelope.</summary>
-        public static List<Box> StorageExclusions(Airport airport,BaggageDepot except=null)
+        public static List<Box> StorageExclusions(Airport airport,BaggageDepot except=null,bool serviceYard=false)
         {
-            var boxes=Fixed(airport,except);
+            var boxes=Fixed(airport,except,serviceYard);
             foreach (var layout in airport.Taxiways.Layouts())
             {
                 var swept=Swept(layout,airport.Bridges.TypesFor(layout.stand));

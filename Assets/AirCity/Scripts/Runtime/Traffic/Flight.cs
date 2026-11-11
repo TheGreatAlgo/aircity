@@ -697,6 +697,9 @@ namespace AirCity.Traffic
             c.elevator = elevator;
         }
 
+        /// <summary>Takeoff power with the afterburners lit: from brake release through the climb-out.</summary>
+        public bool Reheat => type.HasAfterburner && (Phase == FlightPhase.TakeoffRoll || Phase == FlightPhase.Climb);
+
         /// <summary>Beacon from push-back to parking, taxi lights taxiing, landing lights and strobes on the runway
         /// and in the air; engines from engine start.</summary>
         void Lights()
@@ -717,6 +720,9 @@ namespace AirCity.Traffic
             float power = Phase == FlightPhase.TakeoffRoll || Phase == FlightPhase.Climb || Phase == FlightPhase.GoAround ? 2.2f : 1f;
             foreach (var p in aircraft.GetComponentsInChildren<PropellerSpinner>())
                 p.rpm = engines ? (p.name.StartsWith("Fan") ? 1100f : 900f) * power : 0f;
+            // afterburners (supersonic types) light at brake release and burn through the climb-out
+            var reheat = aircraft.GetComponent<AircraftAfterburner>();
+            if (reheat != null) reheat.reheat = Reheat ? 1f : 0f;
         }
 
         public override string ToString() => $"{Name}: {Status}";

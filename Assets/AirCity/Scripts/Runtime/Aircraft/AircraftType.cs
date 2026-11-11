@@ -96,6 +96,17 @@ namespace AirCity.Aircraft
             public Color color;
         }
 
+        /// <summary>An engine nozzle the game draws a flame out of: the exit's centre, the jet's direction (aft) and
+        /// the exit radius. With `afterburner`, AircraftAfterburner lights it for the takeoff.</summary>
+        [Serializable]
+        public struct Exhaust
+        {
+            public string name;
+            public Vector3 position, direction;
+            public float radius;
+            public bool afterburner;
+        }
+
         [Serializable]
         public struct Scheme
         {
@@ -138,7 +149,7 @@ namespace AirCity.Aircraft
         /// type names are trademarks and never appear in anything the player sees.</summary>
         public const string Manufacturer = "Starling";
 
-        /// <summary>Player-facing type designator: the ICAO size code letter and the seat count ("A4", "C180",
+        /// <summary>Player-facing type designator: the size code letter and the seat count ("A4", "C180", "D100",
         /// "F550"), so the letter painted at a stand's entrance tells which aircraft fit it.</summary>
         public string Designator => seats > 0 ? $"{SizeCode}{seats}" : SizeCode.ToString();
 
@@ -181,6 +192,8 @@ namespace AirCity.Aircraft
         public ServicePoint[] points = Array.Empty<ServicePoint>();
         public CargoDoor[] cargoDoors = Array.Empty<CargoDoor>();
         public LightPoint[] lights = Array.Empty<LightPoint>();
+        [Tooltip("Engine nozzles; those with an afterburner flame on takeoff (AircraftAfterburner).")]
+        public Exhaust[] exhausts = Array.Empty<Exhaust>();
 
         [Header("Paint")]
         public int atlasSize = 2048;
@@ -214,12 +227,25 @@ namespace AirCity.Aircraft
         public float Length => bounds.size.z;
         public float Height => bounds.size.y;
 
-        /// <summary>ICAO aerodrome reference code letter, from the wingspan. Stands, taxiways and runways
-        /// are rated by it: A (&lt; 15 m) small props, C (&lt; 36 m) A320 / 737, E (&lt; 65 m) 777 / A350.</summary>
-        public char SizeCode => SizeCodeFor(Wingspan);
+        /// <summary>Size code letter: the ICAO aerodrome reference code from the wingspan, raised to the code whose
+        /// stands are long enough for it (RunwayRules.StandLength). Stands, taxiways, runway width and the player's
+        /// designator all use it, so a long, slender aircraft (the supersonic: code C span, 62 m long) rates as the
+        /// bigger code everywhere. A (&lt; 15 m) small props, C (&lt; 36 m) A320 / 737, E (&lt; 65 m) 777 / A350.</summary>
+        public char SizeCode => SizeCodeFor(Wingspan, Length);
+
+        /// <summary>The ICAO code from the wingspan alone (before the length raises it).</summary>
+        public char WingspanCode => SizeCodeFor(Wingspan);
 
         public static char SizeCodeFor(float wingspan) =>
             wingspan < 15f ? 'A' : wingspan < 24f ? 'B' : wingspan < 36f ? 'C' : wingspan < 52f ? 'D' : wingspan < 65f ? 'E' : 'F';
+
+        /// <summary>The wingspan's code, raised until a stand of that code is long enough (F at most).</summary>
+        public static char SizeCodeFor(float wingspan, float length)
+        {
+            char code = SizeCodeFor(wingspan);
+            while (code < 'F' && length > AirCity.Airfield.RunwayRules.StandLength(code) + 0.01f) code++;
+            return code;
+        }
 
         /// <summary>The longer of the takeoff and landing distances: the runway length this type needs on a dry,
         /// paved runway (Airfield.RunwayRules adds surface and weather factors).</summary>
@@ -254,6 +280,17 @@ namespace AirCity.Aircraft
         public float TouchdownSpeed => ApproachSpeed - (Light ? 3f : 4f);
         public float ClimbRate => climbRate > 0f ? climbRate : Light ? 3.6f : 12f;
         public float ClimbSpeed => climbSpeed > 0f ? climbSpeed : Light ? 38f : 85f;
+
+        /// <summary>Any nozzle with an afterburner: departures light them for the takeoff roll and climb-out.</summary>
+        public bool HasAfterburner
+        {
+            get
+            {
+                foreach (var e in exhausts)
+                    if (e.afterburner) return true;
+                return false;
+            }
+        }
 
         /// <summary>Tightest turn at full steering, measured to the main-gear midpoint.</summary>
         public float MinTurnRadius => Wheelbase / Mathf.Tan(Mathf.Max(maxSteeringAngle, 1f) * Mathf.Deg2Rad);

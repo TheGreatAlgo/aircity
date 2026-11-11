@@ -1,0 +1,21 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 627853e17adf045a88b60a0d9dc1d631, type: 3}
+  m_Name: AirportAccessRoad
+  m_EditorClassIdentifier: AirCity.Runtime::AirCity.World.PublicRoadProfile
+  displayName: Airport access road
+  pavementWidth: 6.5
+  shoulderWidth: 0.8
+  crown: 0.065
+  asphalt: {fileID: 2100000, guid: cfcca074b51ef4699b3ffe2f074c74de, type: 2}
+  shoulder: {fileID: 2100000, guid: 1676f6901117741e3932e3d8bf782471, type: 2}
+  markings: {fileID: 2100000, guid: ac1ec82c342c1453e95f019cf67fa822, type: 2}

@@ -348,7 +348,8 @@ namespace AirCity.Airfield
         public static StandProblem CheckStand(AircraftType type, char code, PavementSurface surface, float taxiwayWidth,
             PavementSurface taxiwaySurface)
         {
-            if (type.SizeCode > code) return StandProblem.WingspanTooBig;
+            // by the wingspan's own code first, so a long, narrow aircraft on a short stand reads "too long"
+            if (type.WingspanCode > code) return StandProblem.WingspanTooBig;
             if (type.Length > StandLength(code) + 0.01f) return StandProblem.TooLong;
             if (!surface.IsPaved() && !type.unpavedRunways) return StandProblem.NeedsPavement;
             if (!CanTaxi(type, taxiwaySurface, taxiwayWidth)) return StandProblem.TaxiwayTooSmall;

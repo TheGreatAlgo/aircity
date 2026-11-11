@@ -150,23 +150,36 @@ namespace AirCity.Vehicles
         }
         public void SetInterior(bool visible) { showInterior=visible; presentation?.SetInterior(); }
 
-        public string PlacementProblem()
+        public string PlacementProblem() => PlacementProblem(Airport,size,firstBay,bearing,this);
+
+        public static StandMarkings.EquipmentBay Site(BaggageDepotSize size,Vector2 origin,float bearing)
         {
-            var box=BuildingBox;
-            if (StandEquipmentLayout.StorageExclusions(Airport,this).Any(q=>q.Overlaps(box)))
+            var layout=new BaggageDepotLayout(size); var facing=BaggageServicePlan.Facing(bearing);
+            return new StandMarkings.EquipmentBay { centre=origin+new Vector2(facing.y,-facing.x)*layout.YardRight*.5f+
+                facing*((layout.EntryZ+layout.ExitZ)*.5f),facing=facing,
+                width=layout.YardRight+4,length=layout.ExitZ-layout.EntryZ+12 };
+        }
+
+        /// <summary>Checks a proposed site without creating components, roads or equipment.</summary>
+        public static string PlacementProblem(Airport airport,BaggageDepotSize size,Vector2 origin,float bearing,BaggageDepot except=null)
+        {
+            if (airport==null) return "Choose an airport first.";
+            var layout=new BaggageDepotLayout(size); var site=Site(size,origin,bearing); var facing=site.facing;
+            var box=AirportMaintenance.Box.Of(site.centre,facing,new Bounds(Vector3.zero,new Vector3(site.width,layout.Ridge,site.length)),.5f);
+            if (StandEquipmentLayout.StorageExclusions(airport,except,true).Any(q=>q.Overlaps(box)))
                 return "The depot needs clear space beside the road, outside aircraft, buildings and equipment.";
             foreach (float x in new[] { -box.hx,box.hx })
                 foreach (float z in new[] { -box.hz,box.hz })
                 {
                     var p=box.c+box.ax*x+box.az*z;
-                    if (!Airport.aprons.Any(a=>a.surface.IsPaved() && a.Contains(p))) return "Pave the depot footprint before building or expanding it.";
+                    if (!airport.aprons.Any(a=>a.surface.IsPaved() && a.Contains(p))) return "Pave the depot footprint before building or expanding it.";
                 }
-            for (float z=Layout.EntryZ;z<=Layout.ExitZ;z+=2)
+            for (float z=layout.EntryZ;z<=layout.ExitZ;z+=2)
             {
-                var p=Point(0,z);
-                if (!Airport.Taxiways.edges.Any(e=>e.road==RoadClass.Service &&
-                    DistanceToSegment(p,Airport.Taxiways.At(e.a),Airport.Taxiways.At(e.b))<.1f &&
-                    Mathf.Abs(Vector2.Dot((Airport.Taxiways.At(e.b)-Airport.Taxiways.At(e.a)).normalized,Facing))>.99f))
+                var p=origin+facing*z;
+                if (!airport.Taxiways.edges.Any(e=>e.road==RoadClass.Service &&
+                    DistanceToSegment(p,airport.Taxiways.At(e.a),airport.Taxiways.At(e.b))<.1f &&
+                    Mathf.Abs(Vector2.Dot((airport.Taxiways.At(e.b)-airport.Taxiways.At(e.a)).normalized,facing))>.99f))
                     return "Extend the straight service-road frontage for this depot size.";
             }
             return null;

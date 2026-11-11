@@ -62,7 +62,8 @@ Arrival:    Approach ─► Landing (the roll, until slow) ─► Taxi ─► Pa
   through without stopping (its stopping distance + 40 m before it).
 - **Takeoff:** lined up 3 s, then accelerates to `RotateSpeed` over 60% of the takeoff distance (× the runway's
   length factor now), rotates at 3°/s, lifts off and climbs at `ClimbRate`; gone above 450 m. It gives the runway
-  back 60 m up (or past the runway's end). Each takeoff and landing wears the runway (`Runway.AddMovement`), each
+  back 60 m up (or past the runway's end). Types with afterburners (`AircraftType.HasAfterburner`, the
+  Supersonic) light them at brake release and burn them through the climb-out (`Flight.Reheat` → `AircraftAfterburner.reheat`). Each takeoff and landing wears the runway (`Runway.AddMovement`), each
   section taxied the taxiway (`TaxiwayNetwork.AddMovement`).
 - **Landing:** starts `FinalTime` (110 s) out at `ApproachSpeed`, slowing to `TouchdownSpeed` over the last 600 m;
   asks for landing clearance 60 s out; goes around if it has none 12 s out. Touches down a fifth of the landing
@@ -191,7 +192,7 @@ this remains a simplified game animation. See [RampCrew](../assets/RampCrew.md) 
 | "Wind -30°" / "+30°" | Turns the wind (the caption shows it); the runway strip shows the runway's "in use" end |
 
 Aircraft on a flight set their own lights (beacon from push-back, taxi lights taxiing, landing lights and strobes on
-the runway and in the air) and engines; the sandbox light / engine toggles apply to the rest.
+the runway and in the air), engines and afterburners; the sandbox light / engine / reheat toggles apply to the rest.
 
 ## Tests (TrafficTests)
 

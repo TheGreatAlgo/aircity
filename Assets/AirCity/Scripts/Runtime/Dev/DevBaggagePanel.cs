@@ -11,6 +11,7 @@ namespace AirCity.Dev
 
         void BaggageSidebar(Airport airport)
         {
+            if (airfield!=null && (airfield.Tool==DevTool.Baggage || airfield.SelectedBaggageHall!=null)) return;
             if (baggage == null) baggage = GetComponent<DevBaggageControls>();
             if (baggage == null || baggage.Station == null || !Fold("baggage", "BAGGAGE")) return;
             var station = baggage.Station;

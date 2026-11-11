@@ -96,7 +96,7 @@ namespace AirCity.Dev
 
         public static readonly float[] TimeScales = { 1f, 5f, 20f, 60f };
 
-        enum Kind { None, Runway, Edge, Depot, Apron, Stand, Terminal }
+        enum Kind { None, Runway, Edge, Depot, Apron, Stand, Terminal, BaggageHall }
 
         /// <summary>Something on the airfield to select or delete.</summary>
         struct Pick
@@ -108,10 +108,11 @@ namespace AirCity.Dev
             public int apron;
             public Stand stand;
             public Terminal terminal;
+            public BaggageDepot baggageHall;
 
             public static Pick None => new Pick { apron = -1 };
             public bool Same(in Pick o) => kind == o.kind && runway == o.runway && edge == o.edge && depot == o.depot &&
-                                           apron == o.apron && stand == o.stand && terminal == o.terminal;
+                                           apron == o.apron && stand == o.stand && terminal == o.terminal && baggageHall==o.baggageHall;
         }
 
         DevTool tool;
@@ -231,6 +232,14 @@ namespace AirCity.Dev
         public Runway SelectedRunway => selection.kind == Kind.Runway ? selection.runway : null;
         public TaxiwayEdge SelectedEdge => selection.kind == Kind.Edge ? selection.edge : null;
         public MaintenanceDepot SelectedDepot => selection.kind == Kind.Depot ? selection.depot : null;
+        public BaggageDepot SelectedBaggageHall => selection.kind==Kind.BaggageHall ? selection.baggageHall : null;
+        public void SelectBaggageHall(BaggageDepot hall)
+        {
+            if (hall==null || hall.Airport!=airport) return;
+            SetTool(DevTool.Select);
+            Select(new Pick { kind=Kind.BaggageHall,baggageHall=hall,apron=-1 });
+            (GetComponent<DevBaggageControls>() ?? gameObject.AddComponent<DevBaggageControls>()).SelectHall(hall);
+        }
         public bool ApronSelected => selection.kind == Kind.Apron;
         public Stand SelectedStand => selection.kind == Kind.Stand ? selection.stand : null;
         public void SelectStand(Stand stand)
@@ -908,6 +917,7 @@ namespace AirCity.Dev
                 .Select(a => a.type).Where(t => t != null).Distinct().OrderBy(t => t.RunwayLength).ToArray();
             // sandbox scenes made before the toolbar existed don't have one
             if (GetComponent<DevToolbar>() == null) gameObject.AddComponent<DevToolbar>();
+            if (GetComponent<DevBaggageControls>() == null) gameObject.AddComponent<DevBaggageControls>();
         }
 
         void OnDisable()
@@ -966,7 +976,13 @@ namespace AirCity.Dev
                 case DevTool.Bridge: BridgeTool(click, free, point); break;
                 case DevTool.Lights: LightsTool(mouse, keys, click, free, point); break;
                 case DevTool.Baggage:
-                    if (click) GetComponent<DevBaggageControls>()?.Place(point);
+                    var baggageBuild=GetComponent<DevBaggageControls>();
+                    if (baggageBuild!=null)
+                    {
+                        if (keys.zKey.wasPressedThisFrame) baggageBuild.FlipSite();
+                        if (free) baggageBuild.Preview(point);
+                        if (click) baggageBuild.Place(point);
+                    }
                     break;
                 case DevTool.Containers:
                     if (click) GetComponent<DevContainerControls>()?.Place(point);
@@ -1026,7 +1042,8 @@ namespace AirCity.Dev
             if (keys.xKey.wasPressedThisFrame) SetTool(tool == DevTool.Delete ? DevTool.Select : DevTool.Delete);
             if (keys.escapeKey.wasPressedThisFrame && !DevGui.GateDesignerOpen)
             {
-                if (bridgeStart != null) bridgeStart = headNear = null;
+                if (tool==DevTool.Baggage) GetComponent<DevBaggageControls>()?.Cancel();
+                else if (bridgeStart != null) bridgeStart = headNear = null;
                 else if (dragging != null) DropRunway();
                 else if (chainNode >= 0) chainNode = -1;
                 else if (apronCorners.Count > 0 || apronDrag) SetTool(tool);
@@ -1037,6 +1054,7 @@ namespace AirCity.Dev
             if (mouse.rightButton.wasPressedThisFrame) rightPress = mouse.position.ReadValue();
             if (mouse.rightButton.wasReleasedThisFrame && Vector2.Distance(rightPress, mouse.position.ReadValue()) < 6f)
             {
+                if (tool==DevTool.Baggage && !DevGui.PointerOverHud) GetComponent<DevBaggageControls>()?.Cancel();
                 chainNode = -1;
                 DropRunway();
                 bridgeStart = headNear = null;
@@ -2361,6 +2379,7 @@ namespace AirCity.Dev
             if (tool != DevTool.Apron) apronProblem = null;
             SelectedFrame = Time.frameCount;
             if (p.kind == Kind.Depot) fleetDepot = p.depot;
+            if (p.kind == Kind.BaggageHall) GetComponent<DevBaggageControls>()?.SelectHall(p.baggageHall);
         }
 
         /// <summary>What's at a ground point: a depot, a runway, a taxiway or road section (a few pixels' slack, so thin
@@ -2369,6 +2388,8 @@ namespace AirCity.Dev
         {
             var local = airport.transform.InverseTransformPoint(world);
             var p = Geo.XZ(local);
+            var hall=GetComponent<DevBaggageControls>()?.HallAt(world);
+            if (hall!=null) return new Pick { kind=Kind.BaggageHall,baggageHall=hall,apron=-1 };
             if (airport.TryPickDepot(p, out var d, 2f)) return new Pick { kind = Kind.Depot, depot = d, apron = -1 };
             if (airport.TryPickRunway(local, out var r)) return new Pick { kind = Kind.Runway, runway = r, apron = -1 };
             float slack = Mathf.Max(2f, MetresPerPixel(world) * 6f);
@@ -2384,6 +2405,7 @@ namespace AirCity.Dev
             Kind.Runway => p.runway != null,
             Kind.Edge => airport.Taxiways.edges.Contains(p.edge),
             Kind.Depot => p.depot != null,
+            Kind.BaggageHall => p.baggageHall!=null,
             Kind.Apron => p.apron >= 0 && p.apron < airport.aprons.Count,
             Kind.Stand => airport.Taxiways.stands.Contains(p.stand),
             Kind.Terminal => airport.terminals.Contains(p.terminal),
@@ -2397,6 +2419,7 @@ namespace AirCity.Dev
                 case Kind.Runway: return "Runway " + p.runway.Designation;
                 case Kind.Edge: return p.edge.IsRoad ? RoadName(p.edge.road) : "Taxiway";
                 case Kind.Depot: return p.depot.name;
+                case Kind.BaggageHall: return p.baggageHall.name;
                 case Kind.Apron: return airport.aprons[p.apron].surface + " apron";
                 case Kind.Stand: return p.stand.Name;
                 case Kind.Terminal: return $"Terminal {airport.terminals.IndexOf(p.terminal) + 1}";
@@ -2430,6 +2453,13 @@ namespace AirCity.Dev
                     if (!airport.Baggage.CanRemoveTerminal(p.terminal,out apronProblem)) return;
                     airport.RemoveTerminal(p.terminal);
                     break;
+                case Kind.BaggageHall:
+                    // Keep bags and equipment leases intact; a live hall must be drained before demolition.
+                    var hall=p.baggageHall;
+                    if (!airport.Baggage.ReleaseHall(hall,out apronProblem)) return;
+                    foreach (var team in hall.Teams) { team.gameObject.SetActive(false); Destroy(team.gameObject); }
+                    hall.gameObject.SetActive(false); Destroy(hall.gameObject);
+                    airport.Baggage.ParkingChanged(); break;
             }
             // removing an apron renumbers the ones after it
             if (selection.Same(p) || (p.kind == Kind.Apron && selection.kind == Kind.Apron)) selection = Pick.None;
@@ -2461,6 +2491,29 @@ namespace AirCity.Dev
         void DrawOutlines(bool pointing, Vector3 point)
         {
             outlines.Begin();
+            var baggageBuild=GetComponent<DevBaggageControls>();
+            if (tool==DevTool.Baggage && pointing && baggageBuild!=null)
+            {
+                if (baggageBuild.HasPreview)
+                {
+                    var site=BaggageDepot.Site(baggageBuild.depotSize,baggageBuild.PreviewOrigin,baggageBuild.PreviewBearing);
+                    loop.Clear();
+                    foreach (var v in new[] { site.Point(-site.width*.5f,-site.length*.5f),site.Point(site.width*.5f,-site.length*.5f),
+                        site.Point(site.width*.5f,site.length*.5f),site.Point(-site.width*.5f,site.length*.5f) })
+                        loop.Add(airport.transform.TransformPoint(Geo.X0Z(v)));
+                    var colour=baggageBuild.PreviewProblem==null ? new Color(.55f,1,.55f) : DevGui.Danger;
+                    outlines.Loop(cam,loop,colour,3);
+                    var layout=new BaggageDepotLayout(baggageBuild.depotSize);
+                    var facing=site.facing; var right=Geo.Right(facing); var origin=baggageBuild.PreviewOrigin;
+                    loop.Clear();
+                    foreach (var v in new[] { new Vector2(layout.Left,layout.WallBottom),new Vector2(layout.Right,layout.WallBottom),
+                        new Vector2(layout.Right,layout.WallTop),new Vector2(layout.Left,layout.WallTop) })
+                        loop.Add(airport.transform.TransformPoint(new Vector3(origin.x+right.x*v.x+facing.x*v.y,layout.Eaves,origin.y+right.y*v.x+facing.y*v.y)));
+                    outlines.Loop(cam,loop,colour,2);
+                }
+                else if (baggageBuild.LinkSource!=null && Corners(new Pick { kind=Kind.BaggageHall,baggageHall=baggageBuild.LinkSource }))
+                    outlines.Loop(cam,loop,DevGui.Accent,3);
+            }
             if (selection.kind != Kind.None && Corners(selection)) outlines.Loop(cam, loop, DevGui.Accent, 3f);
             if (hover.kind != Kind.None && !hover.Same(selection))
             {
@@ -2754,6 +2807,11 @@ namespace AirCity.Dev
                     break;
                 case Kind.Depot:
                     c = p.depot.Corners;
+                    break;
+                case Kind.BaggageHall:
+                    var site=p.baggageHall.PaintArea;
+                    c=new[] { site.Point(-site.width*.5f,-site.length*.5f),site.Point(site.width*.5f,-site.length*.5f),
+                        site.Point(site.width*.5f,site.length*.5f),site.Point(-site.width*.5f,site.length*.5f) };
                     break;
                 case Kind.Apron:
                     c = airport.aprons[p.apron].outline.ToArray();

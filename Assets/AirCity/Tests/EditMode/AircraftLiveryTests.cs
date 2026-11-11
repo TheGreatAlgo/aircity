@@ -19,6 +19,7 @@ namespace AirCity.Tests.Aircraft
     [TestFixture("Quadjet")]
     [TestFixture("Turboprop")]
     [TestFixture("Trijet")]
+    [TestFixture("Supersonic")]
     public class AircraftLiveryTests
     {
         readonly string model;
@@ -211,7 +212,8 @@ namespace AirCity.Tests.Aircraft
             // (The contact shadow quad is the exception: it draws at every distance, as a single draw call.)
             var inLods = lods.SelectMany(l => l.renderers).ToArray();
             Assert.That(inLods, Is.Unique);
-            var all = go.GetComponentsInChildren<Renderer>(true).Where(r => r.name != "GroundShadow" && r.name != "LightGlows");
+            var all = go.GetComponentsInChildren<Renderer>(true).Where(r => r.name != "GroundShadow" && r.name != "LightGlows" &&
+                                                                     r.name != AircraftAfterburner.RendererName);
             Assert.That(inLods, Is.EquivalentTo(all));
             Assert.AreEqual(LODFadeMode.CrossFade, go.GetComponent<LODGroup>().fadeMode);
         }

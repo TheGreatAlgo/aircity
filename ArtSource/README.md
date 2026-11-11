@@ -2,6 +2,10 @@
 
 Scripts that generate the game's art. The outputs go straight into `Assets/AirCity/`. Regenerate rather than hand-edit.
 
+The [world asset pipeline](World/README.md) combines a generated transparent foliage atlas with native Unity
+tree and public-road mesh generators. It provides spruce/pine variants, distance impostors, traffic signals,
+curved junctions and an elevated highway/ramp model kit.
+
 Ramp workers have their own skinned-character generator in `Characters/RampCrew/build.py`; run it through
 Blender to regenerate the shared FBX, LODs, fabric/skin atlases and `.crew` timing data. See
 [`Docs/assets/RampCrew.md`](../Docs/assets/RampCrew.md). Equipment workstations are declared as `CREW` in

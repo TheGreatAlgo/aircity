@@ -3,8 +3,9 @@
 AirCity is an airport-building game for PC and Mac: Unity 6000.6.7f1, URP, minimum spec around an RTX 3060, up to
 about 100 aircraft. It's the real game, not a prototype. It's early: there's a sandbox scene with aircraft,
 generated airfields and service roads, aircraft stands and de-icing bays, weather, maintenance depots with their vehicles, and air
-traffic: aircraft taxi, take off and land on their own, held apart by a tower. There's no gameplay loop yet: no
-schedule or economy, no terrain and no real UI.
+traffic: aircraft taxi, take off and land on their own, held apart by a tower. A separate New Game scene now
+provides a first task-guided career: manual tree clearing and terrain brushes, player-placed airport layouts,
+progressive bottom tools, road access, paid charters and save/resume. A full schedule and airport economy remain future work.
 
 Read this page, then the system doc for whatever you're touching. The repo's `CLAUDE.md` has conventions and
 gotchas, and `README.md` / `ArtSource/README.md` are the human-facing guides.
@@ -13,6 +14,9 @@ gotchas, and `README.md` / `ArtSource/README.md` are the human-facing guides.
 
 | Doc | Read it when you touch |
 |---|---|
+| [systems/new-game.md](systems/new-game.md) | player-placed airport, manual clearing/terrain, progressive tools, natural terrain relief, scanned ground, instanced rocks/undergrowth, first charter and save/resume |
+| [systems/public-roads.md](systems/public-roads.md) | separate 3D road graph, terminal entrances, lane turns, signals, road geometry, bridge/ramp kit and career drawing |
+| [assets/ForestTrees.md](assets/ForestTrees.md) | spruce/pine assets, foliage source, instancing, distance models and regeneration |
 | [systems/aircraft.md](systems/aircraft.md) | aircraft models, the Blender pipeline, `AircraftType`, prefabs, lights, LODs |
 | [systems/liveries.md](systems/liveries.md) | paint schemes, registrations, tail logos, the runtime compositor |
 | [systems/airfield.md](systems/airfield.md) | runways, taxiways, service roads, stands and de-icing bays, aprons, verges, runway rules, weather (snow, rain, grass), airfield shaders |
@@ -23,7 +27,7 @@ gotchas, and `README.md` / `ArtSource/README.md` are the human-facing guides.
 | [systems/traffic.md](systems/traffic.md) | flights: taxi route planning, holds and clearances, takeoffs, landings, go-arounds, the wind, the sandbox's traffic controls |
 | [taxi-todo.md](taxi-todo.md) | what's left in ground traffic: the jams the soak test still finds, ideas, tuning |
 | [systems/dev-tools.md](systems/dev-tools.md) | batch commands, tests, captures, the sandbox controls |
-| [assets/Cessna172.md](assets/Cessna172.md), [assets/Narrowbody.md](assets/Narrowbody.md), [assets/Widebody.md](assets/Widebody.md), [assets/DoubleDeck.md](assets/DoubleDeck.md), [assets/Quadjet.md](assets/Quadjet.md), [assets/Turboprop.md](assets/Turboprop.md), [assets/Trijet.md](assets/Trijet.md) | one aircraft type |
+| [assets/Cessna172.md](assets/Cessna172.md), [assets/Narrowbody.md](assets/Narrowbody.md), [assets/Widebody.md](assets/Widebody.md), [assets/DoubleDeck.md](assets/DoubleDeck.md), [assets/Quadjet.md](assets/Quadjet.md), [assets/Turboprop.md](assets/Turboprop.md), [assets/Trijet.md](assets/Trijet.md), [assets/Supersonic.md](assets/Supersonic.md) | one aircraft type |
 | [assets/SnowPlough.md](assets/SnowPlough.md), [assets/Mower.md](assets/Mower.md), [assets/Tugs.md](assets/Tugs.md), [assets/Depot.md](assets/Depot.md), [assets/ControlTowers.md](assets/ControlTowers.md), [assets/JetBridge.md](assets/JetBridge.md) | one vehicle / building |
 | [assets/BaggageEquipment.md](assets/BaggageEquipment.md) | baggage tractor, covered cart, belt loader, bag props, mechanical posing and the standalone review scene |
 | [assets/BaggageDepot.md](assets/BaggageDepot.md) | Small/Medium/Large depot shells, shared drive-through positions, roof inspection and equipment upgrades |

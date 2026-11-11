@@ -292,9 +292,47 @@ def delete():
     return i
 
 
+def baggage():
+    """A suitcase with a recessed handle, straps and two wheels."""
+    i = Icon()
+    i.rect(45, 12, 83, 40, radius=7)
+    i.rect(53, 20, 75, 38, radius=3, on=False)
+    i.rect(23, 33, 105, 109, radius=12)
+    for x in (42, 80):
+        i.rect(x, 40, x + 6, 102, radius=2, on=False)
+    i.circle(42, 113, 6)
+    i.circle(86, 113, 6)
+    return i
+
+
+def clear_trees():
+    """A tree with a cut mark: the player chooses woodland to remove."""
+    i = Icon()
+    i.rect(53, 76, 67, 112, radius=2)
+    i.polygon([(60, 13), (24, 58), (38, 58), (17, 84), (102, 84), (81, 58), (96, 58)])
+    i.line([(36, 98), (87, 55)], 9, on=False)
+    i.line([(88, 87), (108, 110)], 9)
+    i.polygon([(76, 80), (93, 65), (109, 83), (94, 95)])
+    return i
+
+
+def level_ground():
+    """Two land terraces and vertical grading arrows."""
+    i = Icon()
+    i.line([(16, 91), (54, 91), (54, 70), (112, 70)], 8)
+    i.line([(16, 112), (112, 112)], 6)
+    i.line([(35, 23), (35, 64)], 7)
+    i.polygon([(22, 52), (35, 70), (48, 52)])
+    i.line([(91, 20), (91, 47)], 7)
+    i.polygon([(78, 32), (91, 14), (104, 32)])
+    return i
+
+
 ICONS = {
     "select": select, "runway": runway, "taxiway": taxiway, "road": road, "apron": apron, "terminal": terminal,
     "depot": depot, "lights": lights, "stand": stand, "deice": deice, "bridge": bridge, "gates": gates, "delete": delete,
+    "baggage": baggage,
+    "clear-trees": clear_trees, "level-ground": level_ground,
 }
 
 

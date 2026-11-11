@@ -4,7 +4,7 @@ using UnityEngine;
 
 namespace AirCity.Dev
 {
-    public enum BaggagePlacement { Dispatch, Arrivals, Loader, Depot }
+    public enum BaggagePlacement { Dispatch, Arrivals, Loader, Depot, Underground, Covered }
 
     /// <summary>Sandbox authoring actions. The airport owns all baggage and operational state.</summary>
     public sealed class DevBaggageControls : MonoBehaviour
@@ -12,6 +12,13 @@ namespace AirCity.Dev
         public BaggageStation station;
         public string Message { get; private set; }
         public BaggagePlacement Placement { get; private set; }
+        public bool Linking => Placement==BaggagePlacement.Underground || Placement==BaggagePlacement.Covered;
+        public BaggageDepot LinkSource { get; private set; }
+        public bool HasPreview { get; private set; }
+        public Vector2 PreviewOrigin { get; private set; }
+        public float PreviewBearing { get; private set; }
+        public string PreviewProblem { get; private set; }
+        bool reverse;
         Airport Airport => GetComponent<DevAirfieldTool>()?.airport;
         public BaggageStation Station
         {
@@ -40,6 +47,62 @@ namespace AirCity.Dev
         public int standIndex;
         public BaggageDepotSize depotSize;
         public void SetMessage(string message) => Message=message;
+
+        public void BeginHall(BaggageDepotSize size) { depotSize=size; BeginPlacement(BaggagePlacement.Depot); }
+        public void SelectHall(BaggageDepot hall)
+        {
+            if (hall==null) return;
+            station=System.Array.Find(hall.Teams,t=>t==station) ?? System.Array.Find(hall.Teams,t=>t!=null);
+        }
+        public void FlipSite() => reverse=!reverse;
+        public void Cancel()
+        {
+            HasPreview=false; LinkSource=null; Message=null;
+            GetComponent<DevAirfieldTool>().SetTool(DevTool.Select);
+        }
+        public void Preview(Vector3 worldPoint)
+        {
+            HasPreview=false; PreviewProblem=null;
+            if (Airport==null || Placement!=BaggagePlacement.Depot) return;
+            var p=BaggageServicePlan.XZ(Airport.transform.InverseTransformPoint(worldPoint));
+            float best=15; Vector2 origin=p,facing=Vector2.up;
+            foreach (var edge in Airport.Taxiways.edges)
+            {
+                if (edge.road!=RoadClass.Service) continue;
+                var a=Airport.Taxiways.At(edge.a); var b=Airport.Taxiways.At(edge.b); var d=b-a;
+                var q=a+d*Mathf.Clamp01(Vector2.Dot(p-a,d)/Mathf.Max(.001f,d.sqrMagnitude));
+                float distance=Vector2.Distance(p,q);
+                if (distance>=best) continue;
+                best=distance; origin=q; facing=d.normalized; HasPreview=true;
+            }
+            if (!HasPreview) { PreviewProblem="Move within 15 m of a straight service road."; return; }
+            if (reverse) facing=-facing;
+            PreviewOrigin=origin; PreviewBearing=Mathf.Repeat(Mathf.Atan2(facing.x,facing.y)*Mathf.Rad2Deg,360);
+            PreviewProblem=BaggageDepot.PlacementProblem(Airport,depotSize,origin,PreviewBearing);
+        }
+        public BaggageDepot HallAt(Vector3 worldPoint)
+        {
+            if (Airport==null) return null;
+            var p=BaggageServicePlan.XZ(Airport.transform.InverseTransformPoint(worldPoint));
+            foreach (var hall in Airport.GetComponentsInChildren<BaggageDepot>())
+            {
+                var b=hall.BuildingBox; var d=p-b.c;
+                if (Mathf.Abs(Vector2.Dot(d,b.ax))<=b.hx && Mathf.Abs(Vector2.Dot(d,b.az))<=b.hz) return hall;
+            }
+            return null;
+        }
+        void PlaceLink(Vector3 worldPoint)
+        {
+            var hall=HallAt(worldPoint);
+            if (hall!=null) { LinkSource=hall; Message="Now click the terminal to connect to "+hall.name+"."; return; }
+            if (LinkSource==null) { Message="Click a baggage hall first, then its terminal."; return; }
+            var p=BaggageServicePlan.XZ(Airport.transform.InverseTransformPoint(worldPoint));
+            if (!Airport.TryPickTerminal(p,out var terminal)) { Message="Click a terminal building."; return; }
+            if (!Airport.Baggage.ConnectTerminal(LinkSource,terminal,Placement==BaggagePlacement.Covered ?
+                BaggageConnectionKind.Covered : BaggageConnectionKind.Underground,out var reason)) { Message=reason; return; }
+            var connected=LinkSource; connected.ShowConnection(true); LinkSource=null; Message=null;
+            GetComponent<DevAirfieldTool>().SelectBaggageHall(connected);
+        }
 
         public void HireWorker() { if (Station?.depot!=null) { Station.depot.Hire(out var why); Message=why; } }
         public void FireWorker() { if (Station?.depot!=null) { Station.depot.Fire(out var why); Message=why; } }
@@ -116,16 +179,34 @@ namespace AirCity.Dev
 
         public void BeginPlacement(BaggagePlacement placement)
         {
-            if (!CanConfigure && placement!=BaggagePlacement.Depot) return;
+            if (!CanConfigure && placement<BaggagePlacement.Depot) return;
             Placement = placement;
+            HasPreview=false; PreviewProblem=null; LinkSource=null;
+            if (Linking) LinkSource=GetComponent<DevAirfieldTool>().SelectedBaggageHall;
             Message = placement == BaggagePlacement.Loader ? "Click loader parking on the apron." : placement==BaggagePlacement.Depot ?
-                "Choose a paved service-road junction with space on its right for the baggage depot." : "Click a service-road junction.";
+                "Click beside a straight service road on a paved apron. Z flips the yard to the other side." : Linking ?
+                LinkSource!=null ? "Click the terminal to connect to "+LinkSource.name+"." : "Click a baggage hall, then the terminal it serves." : "Click a service-road junction.";
             GetComponent<DevAirfieldTool>().SetTool(DevTool.Baggage);
         }
 
         public void Place(Vector3 worldPoint)
         {
-            if (!CanConfigure && Placement!=BaggagePlacement.Depot) return;
+            if (Airport==null) return;
+            if (Linking) { PlaceLink(worldPoint); return; }
+            if (Placement==BaggagePlacement.Depot)
+            {
+                Preview(worldPoint);
+                if (!HasPreview || PreviewProblem!=null) { Message=PreviewProblem; return; }
+                var catalog=BaggageBuildCatalog.Load();
+                if (catalog==null || !catalog.Ready) { Message="Baggage equipment package is missing."; return; }
+                var go=new GameObject(depotSize+" baggage hall"); go.SetActive(false); go.transform.SetParent(Airport.transform,false);
+                var depot=go.AddComponent<BaggageDepot>(); depot.size=depotSize; depot.firstBay=PreviewOrigin; depot.bearing=PreviewBearing;
+                depot.connection.enabled=true; go.SetActive(true);
+                station=catalog.AddTeam(depot,out var why);
+                if (station==null) { go.SetActive(false); Destroy(go); Message=why; return; }
+                HasPreview=false; Message=null; GetComponent<DevAirfieldTool>().SelectBaggageHall(depot); return;
+            }
+            if (!CanConfigure) return;
             var point = BaggageServicePlan.XZ(Airport.transform.InverseTransformPoint(worldPoint));
             if (Placement == BaggagePlacement.Loader) { station.parkAtStand=false; station.loaderParking = point; }
             else
@@ -143,17 +224,6 @@ namespace AirCity.Dev
                 var heading = (net.At(TaxiwayNetwork.Other(edge, best.id)) - net.At(best.id)).normalized;
                 if (Placement == BaggagePlacement.Arrivals) heading = -heading;
                 float bearing = Mathf.Repeat(Mathf.Atan2(heading.x, heading.y) * Mathf.Rad2Deg, 360f);
-                if (Placement==BaggagePlacement.Depot)
-                {
-                    var go=new GameObject("Baggage depot"); go.transform.SetParent(Airport.transform,false);
-                    var depot=go.AddComponent<BaggageDepot>(); depot.size=depotSize; depot.firstBay=net.At(best.id); depot.bearing=bearing;
-                    depot.connection.enabled=true;
-                    var placementProblem=depot.PlacementProblem();
-                    if (placementProblem!=null) { Destroy(go); Message=placementProblem; return; }
-                    var added=depot.AddTeam(station,out var why);
-                    if (added==null) { Destroy(go); Message=why; return; }
-                    station=added; depot.Rebuild(); Message=null; GetComponent<DevAirfieldTool>().SetTool(DevTool.Select); return;
-                }
                 if (Placement == BaggagePlacement.Dispatch) { station.dispatchNode = best.id; station.dispatchBearing = bearing; }
                 else { station.arrivalsNode = best.id; station.arrivalsBearing = bearing; }
             }

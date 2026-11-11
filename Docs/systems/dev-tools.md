@@ -109,7 +109,9 @@ one). The camera carries `DevOrbitCamera`, `DevSandboxControls`,
 
 ### HUD (`DevToolbar`, `DevGui`)
 
-An IMGUI HUD, dev only (not game UI):
+`DevToolbar` is the Sandbox's development HUD. Its `DevGui` visual controls are also shared by the career
+HUD, so the opening stages use the same panels, icon buttons, typography, amber selection and scaling.
+Tooltips wrap to the viewport in both scenes. Sandbox-specific controls remain in `DevToolbar`:
 
 - **Bottom (2026-11-02):** the tools as square icon buttons in groups: Select | Runway, Taxiway, Road, Apron | Lights |
   Terminal, Stand, Bridge, Gates | De-icing bay, Depot | Delete. Hover a button for its name and what it does; clicking the tool
@@ -167,6 +169,7 @@ How it's built:
 | H | hide / show the HUD |
 | N, + / − | day / night, dusk |
 | 1 2 3 4 | beacons, strobes, landing + taxi lights, logo lights |
+| 5 | afterburners on the supersonic aircraft that aren't on a flight ("Reheat"; departures light their own) |
 | R, T, G | engines, taxi the selected aircraft, dirt on it |
 | Enter (Shift+Enter) | push the selected aircraft back off its push-back stand: a tug comes from the depot (Shift: face the other way along the taxiway). If it can't, the inspector says why. **Park** (inspector only) puts it on the nearest free stand that takes it |
 | Space / "Depart" | the selected aircraft departs: pushed back if it needs to be, taxis to the runway in use and takes off (`DevTrafficControls`). A selected aircraft's route is drawn on the ground (a parked one's as it would go now); the inspector shows its flight's status. Sidebar TRAFFIC: Land per type, Auto traffic, wind. See [traffic.md](traffic.md) |

@@ -106,6 +106,25 @@ namespace AirCity.Vehicles
 
         bool parkingDirty;
         public void ParkingChanged() { parkingDirty=true; cachedStations=null; cachedContainerStations=null; }
+        /// <summary>Release an idle, empty hall's fleet records before its scene objects are removed.</summary>
+        public bool ReleaseHall(BaggageDepot hall,out string reason)
+        {
+            reason=null;
+            if (hall==null || hall.Airport!=airport) { reason="Choose a baggage hall at this airport."; return false; }
+            if (!CanChangeTerminalLink(hall,out reason)) return false;
+            var teams=hall.Teams;
+            if (jobs.Exists(j=>Array.IndexOf(teams,j.Fleet.Station)>=0 && !j.VisitEnded))
+            { reason="Wait for aircraft visits and their baggage manifests to finish before removing the hall."; return false; }
+            if (Array.Exists(ContainerStations,s=>Array.IndexOf(teams,s.bulkStation)>=0))
+            { reason="Detach container handling from this hall before removing it."; return false; }
+            foreach (var team in teams)
+                if (fleets.TryGetValue(team,out var fleet) && (fleet.Dispatch.Count>0 || fleet.Arrivals.Count>0))
+                { reason="Move the stored baggage before removing this hall."; return false; }
+            if (!DisconnectTerminal(hall,out reason)) return false;
+            jobs.RemoveAll(j=>Array.IndexOf(teams,j.Fleet.Station)>=0);
+            foreach (var team in teams) fleets.Remove(team);
+            ParkingChanged(); return true;
+        }
         void RefreshIdleParking()
         {
             parkingDirty=false;

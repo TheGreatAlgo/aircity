@@ -427,16 +427,17 @@ namespace AirCity.EditorTools.Airfield
             ParkAircraft(airport, new List<Stand> { contact[4] }, "Widebody");
             ParkAircraft(airport, new List<Stand> { contact[5] }, "DoubleDeck");
             ParkAircraft(airport, new List<Stand> { contact[6] }, "Quadjet");
-            // the regional turboprop on the last fan stand (code B on a code C stand: its nose comes to the design nose
-            // line). The trijet needs a code D stand or larger and there is none free: it shows on the display ramp
-            ParkAircraft(airport, new List<Stand> { fanStands[2] }, "Turboprop");
+            // the regional turboprop on the third contact stand (code B on a code C stand: its nose comes to the design
+            // nose line; it pushes back onto the wide taxilane, not into the fan stands' lane). The trijet needs a code D
+            // stand or larger and there is none free: it shows on the display ramp
+            ParkAircraft(airport, new List<Stand> { contact[2] }, "Turboprop");
             return airport;
         }
 
         /// <summary>
         /// Bring the saved sandbox up to date with the aircraft types: every type in Airport.aircraftTypes, showcase rows
-        /// on the display ramp for the types it has none of, and the turboprop parked on a free fan stand (as
-        /// BuildSandboxAirport parks it). Batch: -executeMethod AirCity.EditorTools.Airfield.AirfieldSetup.RefreshSandboxAircraft -quit
+        /// on the display ramp for the types it has none of, and the turboprop parked on a free code C contact stand
+        /// (as BuildSandboxAirport parks it). Batch: -executeMethod AirCity.EditorTools.Airfield.AirfieldSetup.RefreshSandboxAircraft -quit
         /// </summary>
         [MenuItem("AirCity/Airfield/Refresh Sandbox Aircraft")]
         public static void RefreshSandboxAircraft()
@@ -461,11 +462,11 @@ namespace AirCity.EditorTools.Airfield
             var turboprop = AircraftSetup.AllTypes().FirstOrDefault(t => t.model == "Turboprop");
             if (turboprop != null && !airport.GetComponentsInChildren<AirCity.Aircraft.Aircraft>().Any(a => a.type == turboprop))
             {
-                // the fan stands: code C parking stands not facing south like the contact stands; the last one first
-                var fan = net.stands.Where(s => s != null && s.kind == StandKind.Parking && s.code == SizeCode.C &&
-                                                Mathf.Abs(Mathf.DeltaAngle(s.heading, 180f)) > 1f && Free(s))
-                    .OrderByDescending(s => s.heading).FirstOrDefault();
-                if (fan != null) { ParkAircraft(airport, new List<Stand> { fan }, "Turboprop"); parkedNow = 1; }
+                // the contact stands face south (180); the last free code C one, past the first (which has R1 as well)
+                var stand = net.stands.Where(s => s != null && s.kind == StandKind.Parking && s.code == SizeCode.C &&
+                                                  Mathf.Abs(Mathf.DeltaAngle(s.heading, 180f)) < 1f && Free(s))
+                    .OrderByDescending(s => s.number).FirstOrDefault();
+                if (stand != null) { ParkAircraft(airport, new List<Stand> { stand }, "Turboprop"); parkedNow = 1; }
             }
             airport.BuildGround();
             net.Rebuild();

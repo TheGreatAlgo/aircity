@@ -13,7 +13,7 @@ namespace AirCity.EditorTools.Aircraft
     /// <see cref="AircraftType"/>. Paths in the file are relative to it, positions are already in Unity space.
     /// Re-imports automatically when the generator rewrites the file or any referenced texture.
     /// </summary>
-    [ScriptedImporter(11, "aircraft")]
+    [ScriptedImporter(12, "aircraft")]
     public class AircraftTypeImporter : ScriptedImporter
     {
 #pragma warning disable 0649   // assigned by JsonUtility
@@ -34,6 +34,7 @@ namespace AirCity.EditorTools.Aircraft
         [Serializable] class PointJson { public string name, type; public float[] position, normal, size; }
         [Serializable] class CargoDoorJson { public string point, transform; public float[] pivot, axis; public float openAngle, seconds, holdDepth, holdSideMin, holdSideMax, holdHeight, holdFloorStart; }
         [Serializable] class LightJson { public string name, type; public float[] position, direction, color; public float spread; }
+        [Serializable] class ExhaustJson { public string name; public float[] position, direction; public float radius; public bool afterburner; }
 
         [Serializable]
         class ExampleJson
@@ -61,6 +62,7 @@ namespace AirCity.EditorTools.Aircraft
             public PointJson[] points;
             public CargoDoorJson[] cargoDoors;
             public LightJson[] lights;
+            public ExhaustJson[] exhausts;
         }
 #pragma warning restore 0649
 
@@ -137,6 +139,14 @@ namespace AirCity.EditorTools.Aircraft
                     color = l.color != null && l.color.Length >= 3 ? new Color(l.color[0], l.color[1], l.color[2]) : Color.white,
                 });
             t.lights = lights.ToArray();
+            var exhausts = new List<AircraftType.Exhaust>();
+            foreach (var e in json.exhausts ?? Array.Empty<ExhaustJson>())
+                exhausts.Add(new AircraftType.Exhaust
+                {
+                    name = e.name, position = V3(e.position), direction = V3(e.direction).normalized, radius = e.radius,
+                    afterburner = e.afterburner,
+                });
+            t.exhausts = exhausts.ToArray();
 
             t.atlasSize = json.atlasSize;
             t.texelsPerMetre = json.texelsPerMetre;

@@ -27,6 +27,13 @@ ArtSource/README.md. When you change a system, update its doc in `Docs/` in the 
 - Roads are `TaxiwayEdge`s with `road` set to a `RoadClass` (`Service` now; `Street` / `Highway` reserved, see
   `RunwayRules.Road`): aircraft routing must keep leaving every class out. Road pavement sits under paved aprons
   (`AirfieldHeights.Road`), so across an apron a road is only paint. Aprons are polygons (`ApronArea.outline`).
+- Public roads in the career use the independent `World/PublicRoadNetwork` 3D graph, never `TaxiwayNetwork`.
+  `PublicRoadGeometry` builds its own strips, junctions and bridges. At-grade crossings share a node; overpasses
+  remain separate. Terminal entrances are explicit public node identifiers. See `Docs/systems/public-roads.md`.
+- New Game construction is player-operated: `CareerConstruction` validates/charges brush edits and placed layouts;
+  `CareerLayout` saves them. The task card guides the player and bottom tools unlock through work. Never put back
+  automatic clearing/grading/building purchases or a construction checklist. The sequential `CareerState.Build`
+  path is retained only for original-save compatibility/fixtures; new games reject it after land purchase.
 - Flights (`Assets/AirCity/Scripts/Runtime/Traffic`, `airport.Traffic`) are simulated in game seconds like the teams
   (tests run them headless). Routes come from `TaxiPlanner` over the taxiway graph (never roads or aprons); every
   clearance (runways, junctions, one-way sections) goes through `AirTraffic`. Runways are used into

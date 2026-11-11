@@ -703,6 +703,9 @@ def write_profile(model, paths, px_per_m, reg, font, bounds, wing, service):
                        for d in cargo_doors.definitions(model)],
         "lights": [{"name": n, "type": t, "position": to_unity(pos), "direction": to_unity(d), "spread": spread,
                     "color": list(col)} for t, n, pos, d, spread, col in model.LIGHTS],
+        # engine nozzles the game draws flames out of (afterburners); optional, most types have none
+        "exhausts": [{"name": n, "position": to_unity(pos), "direction": to_unity(d), "radius": r, "afterburner": ab}
+                     for n, pos, d, r, ab in getattr(model, "EXHAUSTS", [])],
     }
     with open(os.path.join(paths.unity, f"{model.NAME}.aircraft"), "w") as fh:
         json.dump(profile, fh, indent=2, default=float)

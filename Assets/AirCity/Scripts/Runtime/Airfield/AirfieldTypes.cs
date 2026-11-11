@@ -91,8 +91,8 @@ namespace AirCity.Airfield
         Stand = 7,
     }
 
-    /// <summary>ICAO aerodrome reference code letters, by wingspan (AircraftType.SizeCodeFor). Stands are built
-    /// for a code and take any aircraft up to it.</summary>
+    /// <summary>ICAO aerodrome reference code letters, by wingspan, raised for aircraft longer than that code's
+    /// stands (AircraftType.SizeCode). Stands are built for a code and take any aircraft up to it.</summary>
     public enum SizeCode
     {
         A = 0,

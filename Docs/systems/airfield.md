@@ -33,7 +33,7 @@ Stands, 2026-10-24:
 |---|---|
 | Attaching | stands open onto either side of any taxiway; there is no separate apron-lane object (a taxiway lined with stands *is* the apron taxilane). Since 2026-10-27 stands can be built first, anywhere, and connected afterwards by a taxiway laid along their front line ("most people place the stands first") |
 | Angles | any angle from 25° to 155° to the front line (90° square on, past it leaning the other way); 90°, 60°, 45° and 30° are one click, keeping the lean; Shift+scroll turns it (2026-10-27) |
-| Sizes | ICAO codes A–F by wingspan; each stand shows its code (painted letter), the largest aircraft it takes |
+| Sizes | ICAO codes A–F by wingspan, raised for an aircraft longer than that code's stands (`AircraftType.SizeCode`); each stand shows its code (painted letter), the largest aircraft it takes |
 | Leaving | per stand: push-back (nose in) or taxi-out (nose out, needs about twice the room) |
 | Grass | a surface choice, for codes A and B only |
 | De-icing | drive-through bays on a taxiway, with lanes for the trucks either side |
@@ -230,8 +230,8 @@ A taxiway may run along a stand's front line but not across its pad (`Fits`, `St
 
 **Gameplay.**
 
-- `RunwayRules.CheckStand(type, code, surface, taxiwayWidth, taxiwaySurface)` checks, in order: wingspan code ≤ the
-  stand's, length ≤ `StandLength`, pavement unless the type takes unpaved runways, and the taxiway it opens onto
+- `RunwayRules.CheckStand(type, code, surface, taxiwayWidth, taxiwaySurface)` checks, in order: wingspan code (`WingspanCode`) ≤ the
+  stand's, length ≤ `StandLength` (so a long, narrow aircraft on a short stand is `TooLong`), pavement unless the type takes unpaved runways, and the taxiway it opens onto
   (`CanTaxi`).
 - `net.CheckStand(stand, type)` and `net.StandsFor(type, kind)` wrap it.
 - `layout.ParkPosition(type)` gives where an aircraft's origin (main gear) stands with its nose gear on the stop
@@ -714,8 +714,8 @@ taxiway.
   UL1 on a two-storey head on the first code F stand (UL1 only once a double-deck type exists), and one long bridge
   per fan stand.
 - Parked, ready to leave: narrow-bodies on two contact stands and a fan stand, a wide-body on the code E stand, the
-  double-deck and long-haul quadjet types on the code F stands, and the regional turboprop on the last fan stand (a
-  code B type on a code C stand, nose on the design nose line). The trijet has no code D stand to park on and shows
+  double-deck and long-haul quadjet types on the code F stands, and the regional turboprop on the third code C contact
+  stand (a code B type on a code C stand, nose on the design nose line). The trijet has no code D stand to park on and shows
   on the display ramp only.
 - Two code E de-icing bays (D1, D2) on a bypass beside A at the 09 end, for westbound departures.
 - The depot west of the GA apron (3 ploughs, 1 mower, 2 small and 2 large tugs) on a small pad, with service roads

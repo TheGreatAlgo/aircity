@@ -6,7 +6,7 @@ using UnityEngine.InputSystem;
 namespace AirCity.Dev
 {
     /// <summary>
-    /// The sandbox HUD's look and plumbing (development only, not game UI): dark rounded IMGUI panels and buttons
+    /// Shared visual primitives for the sandbox and career HUDs: dark rounded IMGUI panels and buttons
     /// that scale with the screen (fonts are sized up, not stretched, so text stays sharp), and the parts of the
     /// screen the HUD covers, so clicks and scrolls over it don't reach the world tools (PointerOverHud).
     ///
@@ -50,7 +50,7 @@ namespace AirCity.Dev
         public static float U(float units) => Mathf.Round(units * Scale);
 
         public static GUIStyle Label, Bold, Small, Caption, Title, Hint;
-        static GUIStyle buttonText, buttonOnText, dangerText, dangerOnText, keyHint, keyHintOn, cardSub, cardSubOn;
+        static GUIStyle buttonText, buttonOnText, dangerText, dangerOnText, keyHint, keyHintOn, cardSub, cardSubOn, tooltipText;
         static Color Text, OnText, PanelFill, PanelEdge, ButtonFill, ButtonHover, Shadow, AccentFill, DangerFill, DangerHover, Well;
         static float builtScale;
 
@@ -83,6 +83,7 @@ namespace AirCity.Dev
                     clipping = TextClipping.Clip,
                 };
             Label = Style(13f, Text);
+            tooltipText = new GUIStyle(Label) { wordWrap = true, alignment = TextAnchor.UpperLeft };
             Bold = Style(13f, Text, FontStyle.Bold);
             Small = Style(11f, dim);
             Caption = Style(10f, dim, FontStyle.Bold);
@@ -248,20 +249,24 @@ namespace AirCity.Dev
 
         public static float Width(string text, GUIStyle style) => style.CalcSize(new GUIContent(text)).x;
 
-        /// <summary>The hovered control's tip, in a small box above the cursor. Call last in OnGUI.</summary>
+        /// <summary>A wrapped tip kept inside the viewport. Call last in OnGUI; tips don't capture world input.</summary>
         public static void Tooltip()
         {
             if (string.IsNullOrEmpty(UnityEngine.GUI.tooltip) || Event.current.type != EventType.Repaint) return;
             var content = new GUIContent(UnityEngine.GUI.tooltip);
-            var size = Label.CalcSize(content);
-            float pad = U(7f);
+            float pad = U(7f), margin = U(8f);
+            float maxWidth = Mathf.Max(1f, Mathf.Min(U(420f), Screen.width - margin * 2f));
+            float width = Mathf.Min(maxWidth, Mathf.Ceil(Label.CalcSize(content).x) + pad * 2f);
+            float textWidth = Mathf.Max(1f, width - pad * 2f);
+            float height = Mathf.Min(Mathf.Max(1f, Screen.height - margin * 2f), Mathf.Ceil(tooltipText.CalcHeight(content, textWidth)) + pad * 2f);
             var m = Event.current.mousePosition;
-            var r = new Rect(m.x + U(14f), m.y - size.y - pad * 2f - U(8f), size.x + pad * 2f, size.y + pad);
-            r.x = Mathf.Clamp(r.x, 4f, Screen.width - r.width - 4f);
-            if (r.y < 4f) r.y = m.y + U(22f);
+            var r = new Rect(m.x + U(14f), m.y - height - U(8f), width, height);
+            r.x = Mathf.Clamp(r.x, margin, Mathf.Max(margin, Screen.width - r.width - margin));
+            if (r.y < margin) r.y = m.y + U(22f);
+            r.y = Mathf.Clamp(r.y, margin, Mathf.Max(margin, Screen.height - r.height - margin));
             Fill(r, GUI(new Color(0.03f, 0.035f, 0.05f, 0.96f)), U(6f));
             Outline(r, PanelEdge, U(6f));
-            UnityEngine.GUI.Label(new Rect(r.x + pad, r.y, r.width - pad * 2f, r.height), content, Label);
+            UnityEngine.GUI.Label(new Rect(r.x + pad, r.y + pad, textWidth, Mathf.Max(1f, r.height - pad * 2f)), content, tooltipText);
         }
     }
 }

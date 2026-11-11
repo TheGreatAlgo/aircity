@@ -7,8 +7,10 @@ as an `AircraftType` ScriptableObject. Gameplay reads dimensions, wheels, servic
 from that asset only, never from mesh positions or per-model constants. One prefab per type carries the runtime
 components (picking/outline, livery, lights, ground motion, control surfaces, cargo doors, spinners). The scale target is ~100
 aircraft of mixed types, mostly zoomed out, so the far LOD is 2 draw calls, every material is shared, and light
-glows run on the GPU. Five types exist: `Cessna172` (see `Docs/assets/Cessna172.md`), `Narrowbody`
-(`Docs/assets/Narrowbody.md`), `Widebody` (`Docs/assets/Widebody.md`), `DoubleDeck` (`Docs/assets/DoubleDeck.md`) and `Quadjet` (`Docs/assets/Quadjet.md`). Liveries are documented in `Docs/systems/liveries.md`; this doc covers only how they
+glows run on the GPU. Eight types exist: `Cessna172` (see `Docs/assets/Cessna172.md`), `Turboprop`
+(`Docs/assets/Turboprop.md`), `Narrowbody` (`Docs/assets/Narrowbody.md`), `Supersonic` (`Docs/assets/Supersonic.md`,
+the only type with afterburners), `Trijet` (`Docs/assets/Trijet.md`), `Widebody` (`Docs/assets/Widebody.md`),
+`DoubleDeck` (`Docs/assets/DoubleDeck.md`) and `Quadjet` (`Docs/assets/Quadjet.md`). Liveries are documented in `Docs/systems/liveries.md`; this doc covers only how they
 hook in.
 
 ## Naming (what the player sees)
@@ -23,12 +25,15 @@ and its seat count, so the letter painted at a stand's entrance tells straight a
 | `Cessna172` | A4 | Starling A4 | Light single |
 | `Turboprop` | B50 | Starling B50 | Regional turboprop |
 | `Narrowbody` | C180 | Starling C180 | Narrowbody twinjet |
+| `Supersonic` | D100 | Starling D100 | Supersonic airliner |
 | `Trijet` | D250 | Starling D250 | Long-range trijet |
 | `Widebody` | E350 | Starling E350 | Widebody twinjet |
 | `Quadjet` | F450 | Starling F450 | Long-haul quadjet |
 | `DoubleDeck` | F550 | Starling F550 | Double-deck quadjet |
 
-The letter is `AircraftType.SizeCode` (computed from the wingspan, so a new model can never carry the wrong one) and
+The letter is `AircraftType.SizeCode` (computed from the wingspan, raised to the code whose stands are long enough for
+the aircraft, so a new model can never carry the wrong one: the supersonic has a code C span but needs a code D stand,
+so it is D everywhere, stands, taxiways, runway width and its name) and
 the number is `SEATS` in the model's `model.py`, written into `.aircraft` as `seats`. `model` names folders, assets
 and textures only. Player-facing code uses `TypeName` (or `FullName`, "Starling C180 narrowbody twinjet"), stop bars
 paint `Designator` (`StandMarkings.StopMark.Label`), and the size-code tips in the build tray name Starling types
@@ -97,15 +102,16 @@ and use **Open cargo / Close cargo**. Active handling retains control of its con
 | `Assets/AirCity/Aircraft/<Model>/Thumbnails/` | `AircraftSetup.RenderThumbnails` output, 384×256 PNGs |
 | `Assets/AirCity/Aircraft/Shared/RegistrationFont.png` + `.regfont` | Shared font, rewritten by every `finish.py` run |
 | `Assets/AirCity/Liveries/*.asset`, `Liveries/Logos/*.png` | Livery assets (created once) and logos (rewritten by every `finish.py` run) |
-| `Assets/AirCity/Materials/AircraftOutline.mat`, `AircraftLightGlow.mat` | Shared materials that the prefabs reference |
+| `Assets/AirCity/Materials/AircraftOutline.mat`, `AircraftLightGlow.mat`, `AircraftAfterburner.mat` | Shared materials that the prefabs reference |
 | `Scripts/Runtime/Aircraft/AircraftType.cs` | The type asset, plus the enums `AircraftCategory`, `ServicePointType`, `AircraftLightType`; derived `Wingspan`, `Length`, `Height`, `SizeCode`, `RunwayLength`, `Wheelbase`, `MinTurnRadius` |
 | `Scripts/Runtime/Aircraft/Aircraft.cs` | Root component: `type`, `TryPick`, `Highlight` outline, `CurrentLod(cam)`, `WorldPosition(point)` |
 | `Scripts/Runtime/Aircraft/AircraftLights.cs` | Light switches, the per-type glow mesh, spot lights near the camera, global `Glow` |
 | `Scripts/Runtime/Aircraft/AircraftGroundMotion.cs` | Wheel spin + nose-gear steering: `Drive(speed, steer)`, `TurnRadius(type)` |
 | `Scripts/Runtime/Aircraft/AircraftControlSurfaces.cs` | Elevator / aileron / rudder / flap deflection, found by name prefix |
 | `Scripts/Runtime/Aircraft/PropellerSpinner.cs` | Spins `Propeller` / `Fan_*` about local Z (`rpm`, `spoolTime`) |
+| `Scripts/Runtime/Aircraft/AircraftAfterburner.cs` + `Shaders/AircraftAfterburner.shader` | Afterburner flames out of `type.exhausts` (`reheat` 0..1), a point light near the camera; see "Afterburners" |
 | `Scripts/Runtime/Aircraft/Liveries/` | `AircraftLiveryApplier`, compositor, livery assets, `RegistrationFont` (see `liveries.md`) |
-| `Scripts/Editor/Aircraft/AircraftTypeImporter.cs` | `[ScriptedImporter(8, "aircraft")]`: JSON → `AircraftType` |
+| `Scripts/Editor/Aircraft/AircraftTypeImporter.cs` | `[ScriptedImporter(12, "aircraft")]`: JSON → `AircraftType` |
 | `Scripts/Editor/Aircraft/RegistrationFontImporter.cs` | `[ScriptedImporter(1, "regfont")]` |
 | `Scripts/Editor/Aircraft/AircraftAssetPostprocessor.cs` | Texture and model import rules, nesting restore, collider, Trim palette merge, LODGroup (`GetVersion() => 7`) |
 | `Scripts/Editor/Aircraft/AircraftSetup.cs` | `Bootstrap`, prefab + example-livery creation, sandbox scene, thumbnails |
@@ -228,12 +234,14 @@ LOD is visible in previews and the saved `.blend`), `--w/--h`.
 | `AircraftCargoDoors` | `Operate(point, open, gameSeconds, out reason)`; manual `SetOpen(bool)` | Independent eased rotations from `type.cargoDoors`; service controls its hatch until closed |
 | `AircraftControlSurfaces` (`[ExecuteAlways]`) | `elevator`, `aileron`, `rudder` (−1..1), `flaps` (0..1) | `rest * AngleAxis(deg, right)` (rudder: `up`); limits 28/23, 20/15, 17, 30° |
 | `PropellerSpinner` (on `Propeller`, `Fan_*`) | `rpm` | `MoveTowards` with `spoolTime`, rotate about local −Z (clockwise from behind) |
+| `AircraftAfterburner` (types with afterburning `exhausts` only) | `reheat` 0..1 (`Flight` sets it; sandbox key 5) | `Level` eases up over `lightTime`, down over `cancelTime`; shader user value; see "Afterburners" |
 
 - Ground motion finds wheels by the exact names in `type.wheels` and the nose gear by the name `NoseGear`. Control
   surfaces are found by name prefix (`Elevator`, `Aileron_L`, `Aileron_R`, `Rudder`, `Flap_L`, `Flap_R`), skipping
   names that contain `_LOD`.
 - `TurnRadius(type) = Wheelbase / tan(|steer angle|)`. `Wheelbase = steeringPivot.z`.
-- `SizeCode` from wingspan: A < 15 m, B < 24, C < 36, D < 52, E < 65, else F. `RunwayLength = max(takeoff, landing)`.
+- `SizeCode` from wingspan: A < 15 m, B < 24, C < 36, D < 52, E < 65, else F (`WingspanCode`), then raised while the
+  length exceeds that code's `RunwayRules.StandLength` (A 18, B 28, C 45, D 62, E/F 77 m). `RunwayLength = max(takeoff, landing)`.
   The airfield applies surface and weather factors in `RunwayRules`.
 
 ### LODs and draw calls
@@ -303,6 +311,28 @@ Each renderer draws at most 3 submeshes: Body + Registration (LOD0 body only) + 
 - Phase offset within one aircraft (`AircraftLights.PhaseOffset`): all of its strobes flash together; a beacon
   shining downward (`direction.y < -0.5`, the belly beacon) gets +0.5 s, so top and bottom alternate.
   `Beacons_AlternateTopAndBottom` guards it.
+
+### Afterburners
+
+A model may list `EXHAUSTS` in `model.py`: `(name, nozzle exit centre, jet direction, exit radius, afterburner)` in
+Blender space. Stage 2 writes them into `.aircraft` as `exhausts` (`AircraftType.exhausts`, `HasAfterburner`).
+`AircraftSetup` adds `AircraftAfterburner` (material `Materials/AircraftAfterburner.mat`) to the prefab of a type
+with an afterburning nozzle, also to an existing prefab on the next Bootstrap.
+
+- `AircraftAfterburner.FlameMesh(type)` is shared per type: per nozzle a core tube and a plume tube (24 rings × 12
+  segments each) and a disc in the exit. Every vertex sits on the nozzle exit; tangent = its radial direction,
+  uv0 = (t along the flame, layer 0 core / 1 plume / 2 disc), uv1 = (exit radius, nozzle phase). Bounds reach the end
+  of the plume at full reheat. The renderer is an `AfterburnerFlames` child with `HideFlags.DontSave`, outside the
+  LOD group (like `LightGlows`), enabled only while the flames are lit.
+- `AirCity/AircraftAfterburner` (additive, `Transparent+40`) shapes the flames in the vertex shader: the core
+  (`_CoreLength` 8 exit radii, `_Diamonds` 5 pinches) and the plume (`_PlumeLength` 19 radii, = `PlumeLength`)
+  grow from 45% to full length with the level and flicker. The fragment shader brightens the shock diamonds, fades
+  the silhouette (view angle) and the tail, and burns 60% brighter at night (`_AirCityLightGlow`).
+- User value: bits 0..7 = level (0–255), 8..15 = per-aircraft flicker phase.
+- A real point light (`Afterburner glow`, `DontSave`) four exit radii behind the nozzles, enabled while lit and
+  `Camera.main` is within `lightDistance` (350 m).
+- `Flight.Reheat`: on from brake release (`TakeoffRoll`) through `Climb` until the departure is gone; never on the
+  ground otherwise, never on a go-around.
 
 ### Ground shadow
 

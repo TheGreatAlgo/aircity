@@ -253,7 +253,14 @@ namespace AirCity.Tests
             finally { Application.logMessageReceived -= LoadingLog; }
             if (warned) LogAssert.Expect(LogType.Warning, renderTargetWarning);
             UnityEditor.SessionState.SetFloat("AirCity.Baggage.PlayRequested",(float)UnityEditor.EditorApplication.timeSinceStartup);
-            yield return new EnterPlayMode(); yield return null;
+            // ... and again entering Play with the scene's showcase rows of every type (the editor swaps its render
+            // target once more as the larger scene is backed up and reloaded)
+            warned = false;
+            Application.logMessageReceived += LoadingLog;
+            try { yield return new EnterPlayMode(); }
+            finally { Application.logMessageReceived -= LoadingLog; }
+            if (warned) LogAssert.Expect(LogType.Warning, renderTargetWarning);
+            yield return null;
             LogAssert.Expect(LogType.Log,new System.Text.RegularExpressions.Regex("^Sandbox first Play frame: "));
             Debug.Log($"Sandbox first Play frame: {UnityEditor.EditorApplication.timeSinceStartup-UnityEditor.SessionState.GetFloat("AirCity.Baggage.PlayRequested",0):F3}s after request.");
             var controls = Object.FindFirstObjectByType<DevBaggageControls>();

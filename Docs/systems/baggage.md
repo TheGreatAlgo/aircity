@@ -1,6 +1,24 @@
 # Baggage handling: requirements and asset plan
 
-Status: **one staffed baggage-depot example in the main Sandbox, with optional container handling in its review scene**.
+Status: **player-placeable Small, Medium and Large baggage halls, with a staffed example in the main Sandbox and optional container handling in its review scene**.
+
+The bottom toolbar's suitcase **Baggage** button opens three hall cards and two terminal-link cards.
+Select a hall size, move beside a straight service road on a paved apron, and click a green site outline.
+The outline includes the complete equipment yard; **Z** flips the yard to the opposite side of the road.
+Placement snaps anywhere along a service-road segment. Invalid sites create no hall, team or road links.
+Each new hall includes a tractor, two carts, a belt loader and four hired workers, supplied by the runtime
+`Resources/AirCityBuild/Baggage` catalog rather than copying an example station. Its first team starts with
+no stand assignments and the current narrowbody hold configuration, shown in the hall inspector.
+
+Click a hall to connect its terminal, assign stands, add equipment teams, hire workers or install processing
+upgrades. Stand assignments belong to each team. The Underground and Covered link cards connect a clicked
+hall to a clicked terminal; opening a link from a selected hall starts with that hall already chosen.
+Covered links retain the existing 80 m limit and clearance checks. **Esc** or a right-click cancels construction;
+right-drag still orbits the camera. Terminal interiors remain abstract. `BaggageBuildReview.Run` captures the
+actual Game-view palette, placed-hall controls and connected hall into `Captures/BaggageBuild/`.
+Verification (2026-11-07): **124 distinct Unity checks have passing latest results**, including first-hall
+placement for every size, road-side flipping, invalid-site rollback, both link modes and safe empty-hall
+demolition. The native Game-view review also passes. Results: `Logs/baggage-build-verification.json`.
 
 **Stand staging** places loaders and empty trains beside their assigned stand, separately from the baggage
 dispatch/arrivals endpoints. Parking follows the stand frame and the configured cargo-door side, including when the

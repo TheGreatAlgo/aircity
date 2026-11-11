@@ -57,10 +57,13 @@ namespace AirCity.Tests
             }
             Debug.Log($"GAMEPLAY BAGGAGE {elapsed:F1}s; "+string.Join(", ",phases.Select(p=>$"{p.Key}={p.Value:F1}s")));
             Assert.IsTrue(job.DepartureReady,job.State+": "+job.Waiting);
-            Assert.AreEqual(120,job.Fleet.Arrivals.Count); Assert.AreEqual(180,job.Hold.Count);
+            var terminal=station.depot.ConnectedTerminal; Assert.IsNotNull(terminal);
+            Assert.AreEqual(120,airport.Baggage.TerminalFacility(terminal).Delivered);
+            Assert.AreEqual(0,job.Fleet.Arrivals.Count); Assert.AreEqual(180,job.Hold.Count);
+            Assert.AreEqual(0,airport.Baggage.TerminalLink(station.depot).InTransit);
             Assert.AreEqual(300,airport.Baggage.Ledger.Count); Assert.AreEqual(0,station.depot.Working);
             Assert.AreEqual(2,job.ArrivalTrips); Assert.AreEqual(3,job.DepartureTrips);
-            Assert.That(elapsed,Is.InRange(240f,300f),"the complete default cycle should take four to five minutes at 1x");
+            Assert.That(elapsed,Is.InRange(240f,360f),"the complete default cycle, including terminal conveyor travel, should take four to six minutes at 1x");
         }
     }
 }

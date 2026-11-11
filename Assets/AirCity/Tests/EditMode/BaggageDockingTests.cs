@@ -47,7 +47,7 @@ namespace AirCity.Tests
         }
 
         [TestCase("Cessna172")] [TestCase("Narrowbody")] [TestCase("Widebody")] [TestCase("DoubleDeck")] [TestCase("Quadjet")]
-        [TestCase("Turboprop")] [TestCase("Trijet")]
+        [TestCase("Turboprop")] [TestCase("Trijet")] [TestCase("Supersonic")]
         public void Aircraft_HaveGeneratedClearancePartsAndUsableHoldDepth(string model)
         {
             var type = AssetDatabase.LoadAssetAtPath<AirCity.Aircraft.AircraftType>($"Assets/AirCity/Aircraft/{model}/{model}.aircraft");

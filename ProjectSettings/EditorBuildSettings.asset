@@ -6,6 +6,9 @@ EditorBuildSettings:
   serializedVersion: 2
   m_Scenes:
   - enabled: 1
+    path: Assets/AirCity/Scenes/NewGame.unity
+    guid: 9ec94c6b0c70c41ce94ffd1d8c91c610
+  - enabled: 1
     path: Assets/AirCity/Scenes/Sandbox.unity
     guid: 010182478b7de4f1d9606a3aca298c51
   m_configObjects:

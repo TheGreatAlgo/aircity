@@ -10,7 +10,7 @@ namespace AirCity.Dev
     /// <summary>
     /// Sandbox keys for trying the aircraft features (development only, not game UI; DevToolbar has buttons too):
     ///   left click = select an aircraft (hover highlights); with the delete tool (X) it removes it   N = day / night
-    ///   1 = beacons   2 = strobes   3 = landing + taxi lights   4 = logo lights
+    ///   1 = beacons   2 = strobes   3 = landing + taxi lights   4 = logo lights   5 = afterburners (supersonic types)
     ///   R = engines (props / fans spin)   T = taxi selected aircraft   G = dirt on selected   +/- = time of day
     ///   Enter = push the selected aircraft back off its stand (a tug comes for it; Shift: facing the other way)
     /// Flights (departures, arrivals, the wind) are DevTrafficControls'. Aircraft on a flight set their own lights and
@@ -34,6 +34,8 @@ namespace AirCity.Dev
         public bool Strobes { get; set; }
         public bool Landing { get; set; }
         public bool Logos { get; set; }
+        /// <summary>Afterburners lit on the supersonic aircraft that aren't on a flight (departures light their own).</summary>
+        public bool Reheat { get; set; }
         /// <summary>The selected aircraft taxis round in a slow weave.</summary>
         public bool Taxiing { get; set; }
 
@@ -185,6 +187,7 @@ namespace AirCity.Dev
                 if (keys.digit2Key.wasPressedThisFrame) Strobes = !Strobes;
                 if (keys.digit3Key.wasPressedThisFrame) Landing = !Landing;
                 if (keys.digit4Key.wasPressedThisFrame) Logos = !Logos;
+                if (keys.digit5Key.wasPressedThisFrame) Reheat = !Reheat;
                 if (keys.rKey.wasPressedThisFrame) Engines = !Engines;
                 if (keys.tKey.wasPressedThisFrame) Taxiing = !Taxiing;
                 if (keys.gKey.wasPressedThisFrame) AddDirt();
@@ -201,6 +204,8 @@ namespace AirCity.Dev
             }
             foreach (var p in FindObjectsByType<PropellerSpinner>(FindObjectsInactive.Exclude))
                 if (!Flying(p.GetComponentInParent<Aircraft.Aircraft>())) p.rpm = Engines ? (p.name.StartsWith("Fan") ? 1100f : 900f) : 0f;
+            foreach (var a in FindObjectsByType<AircraftAfterburner>(FindObjectsInactive.Exclude))
+                if (!Flying(a.GetComponent<Aircraft.Aircraft>())) a.reheat = Reheat ? 1f : 0f;
             // (a tug moves an aircraft it's pushing back)
             if (selected != null && SelectedTow == null && !Flying(selected))
             {

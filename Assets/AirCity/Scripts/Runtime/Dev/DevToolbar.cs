@@ -85,6 +85,7 @@ namespace AirCity.Dev
             (DevTool.Stand, "stand", "Stand", "Click beside a taxiway to add an aircraft stand (it snaps to the stands beside it)", null, 3),
             (DevTool.Bridge, "bridge", "Bridge", "Place jet bridges and bridge heads by hand, starting from a terminal wall", null, 3),
             (null, "gates", "Gates", "Design gate layouts, aircraft stops, bridge families and saved presets", null, 3),
+            (DevTool.Baggage, "baggage", "Baggage", "Build baggage halls and connect them to terminals", null, 4),
             (DevTool.DeIcing, "deice", "De-icing bay", "Click on a taxiway to add a drive-through de-icing bay", null, 4),
             (DevTool.Depot, "depot", "Depot", "Drag from the doors outwards to build a maintenance depot", null, 4),
         };
@@ -187,6 +188,7 @@ namespace AirCity.Dev
                     }
                     else if (tool == DevTool.Bridge) OpenBridgeBuilder();
                     else if (tool == DevTool.Stand) OpenStandBuilder();
+                    else if (tool == DevTool.Baggage && !active) OpenBaggageBuilder();
                     else
                     {
                         if (gateDesigner.IsOpen) gateDesigner.Close();
@@ -271,6 +273,9 @@ namespace AirCity.Dev
                     break;
                 case DevTool.Terminal:
                     FloorCards(airfield.TerminalFloors);
+                    break;
+                case DevTool.Baggage:
+                    BaggageCards();
                     break;
                 case DevTool.DeIcing:
                     CodeCards();
@@ -762,7 +767,7 @@ namespace AirCity.Dev
             if (airfield.Tool != DevTool.Select) return airfield.Tool;
             if (AircraftShown) return sandbox.Selected;
             return (object)airfield.SelectedStand ?? (object)airfield.SelectedRunway ?? (object)airfield.SelectedEdge ??
-                   (object)airfield.SelectedDepot ?? (object)airfield.SelectedTerminal ?? airfield.SelectedApron;
+                   (object)airfield.SelectedDepot ?? (object)airfield.SelectedBaggageHall ?? (object)airfield.SelectedTerminal ?? airfield.SelectedApron;
         }
 
         bool AircraftShown => sandbox != null && sandbox.Selected != null &&
@@ -892,6 +897,9 @@ namespace AirCity.Dev
                         Fleet(airfield.FleetDepot);
                     }
                     return;
+                case DevTool.Baggage:
+                    BaggageBuildInspector();
+                    return;
                 case DevTool.Stand:
                 case DevTool.DeIcing:
                 {
@@ -937,6 +945,7 @@ namespace AirCity.Dev
                 Buttons(B("Delete", () => airfield.DeleteSelection(), "Remove this section (between junctions)", hint: "Del", danger: true),
                     B("Delete run", airfield.DeleteSelectedRun, "Remove it and the sections running on from it, as far as it goes", danger: true));
             }
+            else if (airfield.SelectedBaggageHall!=null) BaggageHallInspector(airfield.SelectedBaggageHall);
             else if (airfield.SelectedDepot != null)
             {
                 var depot = airfield.SelectedDepot;
@@ -1272,7 +1281,8 @@ namespace AirCity.Dev
                     B("Beacons", () => sandbox.Beacons = !sandbox.Beacons, "Red anti-collision beacons", sandbox.Beacons, "1"));
                 Buttons(B("Strobes", () => sandbox.Strobes = !sandbox.Strobes, "White wingtip strobes", sandbox.Strobes, "2"),
                     B("Landing", () => sandbox.Landing = !sandbox.Landing, "Landing and taxi lights", sandbox.Landing, "3"));
-                Buttons(B("Logo", () => sandbox.Logos = !sandbox.Logos, "Tail logo floodlights", sandbox.Logos, "4"));
+                Buttons(B("Logo", () => sandbox.Logos = !sandbox.Logos, "Tail logo floodlights", sandbox.Logos, "4"),
+                    B("Reheat", () => sandbox.Reheat = !sandbox.Reheat, "Afterburners on the supersonic aircraft (departures light them for takeoff)", sandbox.Reheat, "5"));
             }
             if (ShowMore && airport!=null && Fold("diagnostics","DIAGNOSTICS")) Note(airfield.DiagnosticsText());
             Add(U(16f), r => GUI.Label(r, "H hides the menu", DevGui.Small));
