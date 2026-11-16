@@ -120,6 +120,14 @@ namespace AirCity.Dev
         {
             sandbox = GetComponent<DevSandboxControls>();
             cam = GetComponent<Camera>();
+            var catalog = AirCity.Game.GameAssetCatalog.Load();
+            if (GetComponent<DevAirfieldTool>()?.game != null && catalog != null)
+                foreach (var entry in catalog.entries)
+                    if (entry.asset is GameObject prefab && prefab.GetComponent<Aircraft.Aircraft>() is Aircraft.Aircraft aircraft && aircraft.type != null && !templates.ContainsKey(aircraft.type))
+                    {
+                        var copy = Instantiate(prefab); copy.SetActive(false); copy.hideFlags = HideFlags.HideAndDontSave;
+                        templates[aircraft.type] = copy;
+                    }
             // one hidden copy of each type in the scene, to make new arrivals from
             foreach (var a in FindObjectsByType<Aircraft.Aircraft>(FindObjectsInactive.Exclude))
             {

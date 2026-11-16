@@ -63,6 +63,7 @@ namespace AirCity.Traffic
         public TaxiPath path;
         public readonly List<Hold> holds = new List<Hold>();
         public readonly List<Traversal> traversals = new List<Traversal>();
+        public readonly List<DeicingStop> deicingStops = new List<DeicingStop>();
         /// <summary>The runway taken off from or landed on, and which way (from its start towards its end).</summary>
         public Runway runway;
         public bool fromStart;

@@ -9,6 +9,7 @@ namespace AirCity.World
         public string name;
         public float height = 24f;
         public Mesh[] levels = new Mesh[3];
+        public Material bark, foliage, distantFoliage;
     }
 
     /// <summary>Generated, reusable tree meshes. Each level has bark and alpha-tested foliage submeshes.</summary>

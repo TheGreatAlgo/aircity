@@ -72,6 +72,14 @@ namespace AirCity.Airfield.Building
 
         static readonly (float, float)[] Corners = { (-1f, -1f), (-1f, 1f), (1f, 1f), (1f, -1f) };
 
+        /// <summary>A continuous triangular arrowhead, shaded from an analytic distance field.</summary>
+        public void ArrowHead(Vector2 tip, Vector2 direction, float length, float halfWidth, Color color)
+        {
+            int first=mesh.Count;
+            Box(tip-direction.normalized*(length*.5f),direction,halfWidth,length*.5f,color);
+            for(int i=first;i<mesh.Count;i++){var shape=mesh.uv1[i];shape.w=2f;mesh.uv1[i]=shape;}
+        }
+
         /// <summary>A line of constant width through points (straight runs or sampled curves).</summary>
         public void Strip(IList<Vector2> points, float halfWidth, Color color, bool outsideParking = false)
         {

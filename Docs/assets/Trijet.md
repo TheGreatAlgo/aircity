@@ -23,7 +23,7 @@ EditMode test log.
 | Main track / wheels | legs at x ±4.7 (track 9.4 m), four-wheel bogies: axles ±0.85 m about the leg, wheels at ±0.62 from it, r 0.58 m; nose twin at ±0.36, r 0.48 m | `parts.py` |
 | Max steering | 68° | `GEAR` |
 | MTOW | 210,000 kg | `PERFORMANCE` |
-| Takeoff / landing distance | 3,000 m / 1,850 m | `RunwayLength` = 3,000 m; fits the sandbox's 3,400 m runway dry |
+| Takeoff / landing distance | 3,000 m / 1,850 m | `RunwayLength` = 3,000 m; fits the sandbox's 3,600 m runway dry |
 | Unpaved runways | no | `PERFORMANCE` |
 | Wing | NACA 2415; LE sweep 31° from s 21.6 at the side (y 2.55); TE kink at y 9.2; tip y 24.95, squared with a small fairing, no winglet; dihedral 5.5°; washout 2.5° → −1°; hinge 0.75 chord | `parts.py` |
 | Wing engines | x ±8.1, z 2.15, inlet s 21.3; the Narrowbody nacelle profile stretched 1.25× across and 1.94× along (`K`, `L`): fan 2.1 m, cowl 7.3 m long; 20-blade fans; long core and plug; NACA 0010 pylon | `build_engine`, `_engine_body` |

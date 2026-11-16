@@ -1,3 +1,4 @@
+using System.Linq;
 using AirCity.World;
 using AirCity.Game;
 using AirCity.EditorTools.World;
@@ -48,7 +49,7 @@ namespace AirCity.Tests.World
                 view.Terrain.terrainData.alphamapResolution = 128; view.RefreshSurface();
                 var details = root.GetComponentInChildren<GroundCoverRenderer>();
                 var instances = details.Instances;
-                var roadMesh = root.transform.Find("Public road network/Asphalt and junctions").GetComponent<MeshFilter>().sharedMesh;
+                var roadMesh = root.transform.Find("Public road network").GetComponentsInChildren<MeshFilter>().First(f=>f.name=="Asphalt and junctions").sharedMesh;
                 var heights = (float[])state.world.heights.Clone();
                 var c = state.Site.centre;
                 Assert.IsTrue(CareerConstruction.Clear(state, c, 90f, out string why), why);
@@ -65,7 +66,7 @@ namespace AirCity.Tests.World
                     Assert.AreSame(instances, details.Instances, "Clearing must not reroll the world's groundcover batches.");
                 }
                 Assert.AreEqual(queued, tiles);
-                Assert.AreSame(roadMesh, root.transform.Find("Public road network/Asphalt and junctions").GetComponent<MeshFilter>().sharedMesh);
+                Assert.AreSame(roadMesh, root.transform.Find("Public road network").GetComponentsInChildren<MeshFilter>().First(f=>f.name=="Asphalt and junctions").sharedMesh);
                 CollectionAssert.AreEqual(heights, state.world.heights);
                 var geometry = new PublicRoadGeometry(state.RoadNetwork(), null, null, state.world.Height);
                 try
@@ -80,6 +81,21 @@ namespace AirCity.Tests.World
                 { foreach (var mesh in new[] { geometry.pavement, geometry.shoulders, geometry.markings, geometry.structures }) Object.DestroyImmediate(mesh); }
             }
             finally { Object.DestroyImmediate(root); }
+        }
+
+        [Test]
+        public void RoadMeshesAreTheOnlyAsphaltAndTheirTerrainPaletteMatchesUnbuiltLand()
+        {
+            var world=ValleyWorld.Generate(42);var graph=new PublicRoadNetwork();
+            graph.AddSegment(graph.AddNode(new Vector3(-900,100,0)),graph.AddNode(new Vector3(900,100,0)),PublicRoadStyle.Avenue,RoadStructure.Ground);
+            var geometry=new PublicRoadGeometry(graph,null,null,world.Height);
+            try
+            {
+                var unbuilt=ValleySurface.Paint(world,null,64);var built=ValleySurface.Paint(world,geometry,64);
+                CollectionAssert.AreEqual(unbuilt,built,"A road must not stain the land around its exact mesh.");
+                for(int z=0;z<64;z++)for(int x=0;x<64;x++)Assert.AreEqual(0f,built[z,x,2]);
+            }
+            finally{foreach(var mesh in new[]{geometry.pavement,geometry.shoulders,geometry.markings,geometry.structures,geometry.kerbMesh,geometry.medianGrass})Object.DestroyImmediate(mesh);}
         }
 
         [Test]
@@ -105,7 +121,7 @@ namespace AirCity.Tests.World
             finally { Object.DestroyImmediate(root); }
         }
         [Test]
-        public void LandscapeMixHasMeadowForestAndEarthworkVariationWithNormalizedWeights()
+        public void NaturalLandscapeMixIgnoresLegacyConstructionStainsWithNormalizedWeights()
         {
             var world = ValleyWorld.Generate(42);
             var graph = PublicRoadNetwork.FromWorld(world);
@@ -127,7 +143,8 @@ namespace AirCity.Tests.World
                     maxLitter = Mathf.Max(maxLitter, edited[z, x, 5]);
                     earthChange = Mathf.Max(earthChange, edited[z, x, 1] - first[z, x, 1]);
                 }
-                Assert.Greater(maxDry - minDry, .3f); Assert.Greater(maxLitter, .3f); Assert.Greater(earthChange, .4f);
+                Assert.Greater(maxDry - minDry, .3f); Assert.Greater(maxLitter, .3f); Assert.AreEqual(0f,earthChange,"Saved construction disturbance must not paint a dirt halo.");
+                CollectionAssert.AreEqual(first,edited);
             }
             finally
             { foreach (var mesh in new[] { geometry.pavement, geometry.shoulders, geometry.markings, geometry.structures }) Object.DestroyImmediate(mesh); }

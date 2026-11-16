@@ -85,6 +85,14 @@ namespace AirCity.Aircraft
             public Vector2[] outline;
         }
 
+        /// <summary>A source-authored section of the right main wing's upper skin; the left wing mirrors X.</summary>
+        [Serializable]
+        public struct DeicingWingSection
+        {
+            public float span;
+            public Vector3 leading, middle, trailing;
+        }
+
         [Serializable]
         public struct LightPoint
         {
@@ -165,6 +173,8 @@ namespace AirCity.Aircraft
         [Tooltip("The left wing and its engines from above, outboard of the fuselage: a convex outline (x, z), " +
                  "counter-clockwise; the right wing mirrors it. Empty: none known (the bounds' span stands in).")]
         public Vector2[] wingOutline = Array.Empty<Vector2>();
+        [Tooltip("Right main-wing upper skin from root to tip, generated from the same airfoil sections as its model.")]
+        public DeicingWingSection[] deicingWing = Array.Empty<DeicingWingSection>();
         public Wheel[] wheels = Array.Empty<Wheel>();
         [Tooltip("Ground point of the nose-gear steering axis.")]
         public Vector3 steeringPivot;

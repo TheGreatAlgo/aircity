@@ -55,7 +55,7 @@ namespace AirCity.Vehicles
 
         public bool Plough(Runway r) => r != null && r.snow > 0.05f && Enqueue(new MaintenanceJob(WorkKind.Plough, r));
         public bool Mow(Runway r) => r != null && r.surface == PavementSurface.Grass && Enqueue(new MaintenanceJob(WorkKind.Mow, r));
-        public bool MowVerges(Runway r) => r != null && Enqueue(new MaintenanceJob(WorkKind.Mow, r, true));
+        public bool MowVerges(Runway r) => r != null && r.HasVerges && Enqueue(new MaintenanceJob(WorkKind.Mow, r, true));
 
         /// <summary>Plough the run this taxiway (or road) section is on: its snowy sections end to end.</summary>
         public bool Plough(TaxiwayEdge e) =>
@@ -315,7 +315,7 @@ namespace AirCity.Vehicles
         /// tailplane (a third of the span, over the last 15%). Close enough to tell whether two aircraft clear each
         /// other as they pass on a taxilane, where their bounding rectangles would overlap.
         /// </summary>
-        public static List<Box> Outline(Vector2 position, Vector2 facing, AircraftType type, float inflate)
+        public static List<Box> Outline(Vector2 position, Vector2 facing, AircraftType type, float inflate, float elevation = 0f)
         {
             var b = type.bounds;
             float length = b.size.z, span = b.size.x;
@@ -327,9 +327,9 @@ namespace AirCity.Vehicles
             }
             return new List<Box>
             {
-                Box.Of(position, facing, Part(Mathf.Max(length / 18f, 0.6f), b.min.z, b.max.z), inflate),
-                Box.Of(position, facing, Part(span * 0.5f, -0.15f * length, 0.18f * length), inflate),
-                Box.Of(position, facing, Part(span / 6f, b.min.z, b.min.z + 0.15f * length), inflate),
+                Box.Of(position, facing, Part(Mathf.Max(length / 18f, 0.6f), b.min.z, b.max.z), inflate, elevation),
+                Box.Of(position, facing, Part(span * 0.5f, -0.15f * length, 0.18f * length), inflate, elevation),
+                Box.Of(position, facing, Part(span / 6f, b.min.z, b.min.z + 0.15f * length), inflate, elevation),
             };
         }
 
@@ -339,7 +339,7 @@ namespace AirCity.Vehicles
             var t = airport.transform;
             var p = t.InverseTransformPoint(a.transform.position);
             var f = t.InverseTransformDirection(a.transform.forward);
-            return Outline(new Vector2(p.x, p.z), new Vector2(f.x, f.z).normalized, a.type, inflate);
+            return Outline(new Vector2(p.x, p.z), new Vector2(f.x, f.z).normalized, a.type, inflate, p.y);
         }
 
         /// <summary>An aircraft's fuselage on the ground (the first box of its Outline), grown by `inflate`.</summary>
@@ -348,7 +348,7 @@ namespace AirCity.Vehicles
             var t = airport.transform;
             var p = t.InverseTransformPoint(a.transform.position);
             var f = t.InverseTransformDirection(a.transform.forward);
-            var box = Outline(new Vector2(p.x, p.z), new Vector2(f.x, f.z).normalized, a.type, inflate)[0];
+            var box = Outline(new Vector2(p.x, p.z), new Vector2(f.x, f.z).normalized, a.type, inflate, p.y)[0];
             box.what = "aircraft";
             box.aircraft = a;
             return box;
@@ -414,6 +414,8 @@ namespace AirCity.Vehicles
         {
             public Vector2 c, ax, az;
             public float hx, hz;
+            public bool hasElevation;
+            public float bottom, top;
             public VehicleTeam team;
             public int index;
             public string what;
@@ -424,15 +426,19 @@ namespace AirCity.Vehicles
 
             public float Radius => Mathf.Sqrt(hx * hx + hz * hz);
 
-            public static Box Of(Vector2 p, Vector2 facing, Bounds b, float inflate)
+            public static Box Of(Vector2 p, Vector2 facing, Bounds b, float inflate, float elevation = float.NaN)
             {
                 var ax = Geo.Right(facing);
                 return new Box
                 {
                     c = p + ax * b.center.x + facing * b.center.z, ax = ax, az = facing,
                     hx = b.extents.x + inflate, hz = b.extents.z + inflate,
+                    hasElevation = !float.IsNaN(elevation), bottom = elevation + Mathf.Min(0f,b.min.y) - .25f, top = elevation + b.max.y + .25f,
                 };
             }
+
+            public static Box Of(BaggageVehiclePose pose, Bounds bounds, float inflate, Airport airport) =>
+                Of(pose.position, pose.facing, bounds, inflate, float.IsNaN(pose.elevation) ? airport.PavementElevationAt(pose.position) : pose.elevation);
 
             public bool Contains(Vector2 p)
             {
@@ -442,15 +448,18 @@ namespace AirCity.Vehicles
 
             public bool Overlaps(in Box o)
             {
+                if (hasElevation && o.hasElevation && (top < o.bottom || o.top < bottom)) return false;
                 var d = o.c - c;
                 if ((Radius + o.Radius) * (Radius + o.Radius) < d.sqrMagnitude) return false;
-                foreach (var axis in new[] { ax, az, o.ax, o.az })
-                {
-                    float ra = hx * Mathf.Abs(Vector2.Dot(ax, axis)) + hz * Mathf.Abs(Vector2.Dot(az, axis));
-                    float rb = o.hx * Mathf.Abs(Vector2.Dot(o.ax, axis)) + o.hz * Mathf.Abs(Vector2.Dot(o.az, axis));
-                    if (Mathf.Abs(Vector2.Dot(d, axis)) > ra + rb) return false;
-                }
-                return true;
+                // separating axes, unrolled: this runs in hot loops (staging candidates, vehicle avoidance)
+                return !Separates(ax, d, o) && !Separates(az, d, o) && !Separates(o.ax, d, o) && !Separates(o.az, d, o);
+            }
+
+            bool Separates(Vector2 axis, Vector2 d, in Box o)
+            {
+                float ra = hx * Mathf.Abs(Vector2.Dot(ax, axis)) + hz * Mathf.Abs(Vector2.Dot(az, axis));
+                float rb = o.hx * Mathf.Abs(Vector2.Dot(o.ax, axis)) + o.hz * Mathf.Abs(Vector2.Dot(o.az, axis));
+                return Mathf.Abs(Vector2.Dot(d, axis)) > ra + rb;
             }
         }
 
@@ -469,13 +478,14 @@ namespace AirCity.Vehicles
             {
                 if (a == null || a.type == null) continue;
                 bool parked = !a.Moving;
-                if (t.InverseTransformPoint(a.transform.position).y > 3f) continue;   // in the air
+                var localPosition = t.InverseTransformPoint(a.transform.position);
+                if (localPosition.y - airport.PavementElevationAt(new Vector2(localPosition.x, localPosition.z)) > 3f) continue;
                 if (parkedOnly && !parked) continue;
                 var at = t.InverseTransformPoint(a.transform.position);
                 var f = t.InverseTransformDirection(a.transform.forward);
                 var facing = new Vector2(f.x, f.z);
                 if (facing.sqrMagnitude < 1e-6f) continue;
-                var box = Box.Of(new Vector2(at.x, at.z), facing.normalized, a.type.bounds, inflate);
+                var box = Box.Of(new Vector2(at.x, at.z), facing.normalized, a.type.bounds, inflate, at.y);
                 box.what = "aircraft";
                 box.parkedAircraft = parked;
                 box.aircraft = a;
@@ -491,10 +501,11 @@ namespace AirCity.Vehicles
         {
             var boxes = AircraftBoxes(true);
             boxes.AddRange(airport.Baggage.VehicleBoxes());
+            boxes.AddRange(airport.Deicing.VehicleBoxes());
             // where the aircraft being pushed back will stand
             foreach (var j in tows)
                 if (j.Valid && j.State < TowState.Done)
-                    boxes.Add(Box.Of(j.path.End, j.path.endFacing, j.path.type.bounds, AircraftClearance));
+                    boxes.Add(Box.Of(j.path.End, j.path.endFacing, j.path.type.bounds, AircraftClearance, airport.PavementElevationAt(j.path.End)));
             if (boxes.Count == 0) return null;
             // the vehicle's half width, and as far as it keeps right of the line between the nodes (VehicleTeam.Points)
             float grow = type.Width * 0.5f + VehicleTeam.MaxKeepRight + extra;
@@ -505,22 +516,39 @@ namespace AirCity.Vehicles
                 b.hz += grow;
                 boxes[i] = b;
             }
-            return (a, b) =>
+            return new RouteObstacles(airport, boxes, type).Blocked2D;
+        }
+
+        sealed class RouteObstacles : IVehicleRouteBlocker
+        {
+            readonly Airport airport;
+            readonly List<Box> boxes;
+            readonly Bounds vehicle;
+            public RouteObstacles(Airport airport, List<Box> boxes, VehicleType type)
+            { this.airport = airport; this.boxes = boxes; vehicle = type.bounds; }
+            public bool Blocked2D(Vector2 a, Vector2 b) => Blocked(
+                Geo.X0Z(a, airport.PavementElevationAt(a)), Geo.X0Z(b, airport.PavementElevationAt(b)));
+            public bool Blocked(Vector3 a, Vector3 b)
             {
-                float len = Vector2.Distance(a, b);
-                int n = Mathf.Max(1, Mathf.CeilToInt(len / 3f));
+                var from = Geo.XZ(a); var to = Geo.XZ(b);
+                int n = Mathf.Max(1, Mathf.CeilToInt(Vector2.Distance(from, to) / 3f));
                 foreach (var box in boxes)
                 {
-                    if (box.Contains(a))
+                    bool Separate(float h) => box.hasElevation &&
+                        (h + vehicle.max.y + .25f < box.bottom || h + vehicle.min.y - .25f > box.top);
+                    if (box.Contains(from) && !Separate(a.y))
                     {
-                        if (Vector2.Dot(b - a, box.c - a) > 0f) return true;
+                        if (Vector2.Dot(to - from, box.c - from) > 0f) return true;
                         continue;
                     }
                     for (int k = 0; k <= n; k++)
-                        if (box.Contains(Vector2.Lerp(a, b, k / (float)n))) return true;
+                    {
+                        float t = k / (float)n;
+                        if (!Separate(Mathf.Lerp(a.y, b.y, t)) && box.Contains(Vector2.Lerp(from, to, t))) return true;
+                    }
                 }
                 return false;
-            };
+            }
         }
 
         /// <summary>Every vehicle out of its bay, as a footprint grown by VehicleClearance (taxiing aircraft stop short
@@ -535,7 +563,7 @@ namespace AirCity.Vehicles
                 {
                     if (t.InBay(i)) continue;
                     var p = t.Where(i, t.Position(i), out var f);
-                    var box = Box.Of(p, f, t.type.bounds, VehicleClearance);
+                    var box = Box.Of(p, f, t.type.bounds, VehicleClearance, t.Elevation(i));
                     box.team = t;
                     box.index = i;
                     box.what = t.type.IsTug ? "a tug" : t.type.kind == VehicleKind.Mower ? "a mower" : "a plough";
@@ -562,6 +590,7 @@ namespace AirCity.Vehicles
         {
             var obstacles = AircraftBoxes(false);
             obstacles.AddRange(airport.Baggage.VehicleBoxes());
+            obstacles.AddRange(airport.Deicing.VehicleBoxes());
             var tracks = airport.Traffic.Tracks();
             var claimed = new List<(Vector2, Vector2)>();
             var teams = new List<VehicleTeam>();
@@ -575,7 +604,7 @@ namespace AirCity.Vehicles
                     t.blockedBy[i] = null;
                     if (t.InBay(i)) continue;
                     var p = t.Where(i, t.Position(i), out var f);
-                    var box = Box.Of(p, f, t.type.bounds, VehicleClearance);
+                    var box = Box.Of(p, f, t.type.bounds, VehicleClearance, t.Elevation(i));
                     box.team = t;
                     box.index = i;
                     box.what = t.type.IsTug ? "a tug" : t.type.kind == VehicleKind.Mower ? "a mower" : "a plough";
@@ -585,7 +614,7 @@ namespace AirCity.Vehicles
                     foreach (var (q, g) in claimed)
                     {
                         // grown by the sampling step, so the ends of the legs are covered
-                        var c = Box.Of(q, g, t.type.bounds, VehicleClearance + 1.5f);
+                        var c = Box.Of(q, g, t.type.bounds, VehicleClearance + 1.5f, t.Elevation(i));
                         c.team = t;
                         c.index = i;
                         c.what = box.what;
@@ -603,7 +632,7 @@ namespace AirCity.Vehicles
                     float look = v * v / (2f * Decel) + 6f + t.type.Length * 0.25f;
                     // taxiing aircraft's tracks, but not one it's on already (it drives on, off it) or of one that waits
                     // for it (it goes on, out of its way)
-                    var now = Box.Of(t.Where(i, d0, out var f0), f0, t.type.bounds, VehicleClearance);
+                    var now = Box.Of(t.Where(i, d0, out var f0), f0, t.type.bounds, VehicleClearance, t.Elevation(i,d0));
                     var yieldTo = new List<(Box box, Vector2 way)>();
                     if (tracks.Count > 0 && !t.InBay(i))
                         foreach (var (who, exempt, track) in tracks)
@@ -621,7 +650,7 @@ namespace AirCity.Vehicles
                     for (float d = d0 + 1.5f; d <= d0 + look; d += 2f)
                     {
                         var p = t.Where(i, d, out var f);
-                        var me = Box.Of(p, f, t.type.bounds, VehicleClearance);
+                        var me = Box.Of(p, f, t.type.bounds, VehicleClearance, t.Elevation(i,d));
                         bool towingNow = t.TowedBox(d0, out _);
                         // a tug pushing an aircraft back looks out for the aircraft's footprint too
                         bool towing = t.TowedBox(d, out var towed);

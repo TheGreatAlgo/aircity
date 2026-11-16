@@ -12,7 +12,7 @@ namespace AirCity.EditorTools.World
     public static class GroundCoverSetup
     {
         public const string LibraryPath = WorldAssetSetup.Root + "/Vegetation/GroundCover.asset";
-        const int Version = 2;
+        const int Version = 3;
 
         [MenuItem("AirCity/World/Regenerate Rocks and Understorey")]
         public static void Regenerate() { EnsureLibrary(true); AssetDatabase.SaveAssets(); }
@@ -26,18 +26,21 @@ namespace AirCity.EditorTools.World
             rebuild |= library.generatorVersion != Version;
             var rock = Material("GroundRock", true);
             var plant = Material("Understorey", false);
+            var wood = Material("ForestDebris", false); wood.SetFloat("_Wind", 0f);
             var kinds = new[] { GroundCoverKind.Boulder, GroundCoverKind.Boulder, GroundCoverKind.Boulder,
                 GroundCoverKind.Stone, GroundCoverKind.Stone, GroundCoverKind.Grass, GroundCoverKind.Grass,
-                GroundCoverKind.Grass, GroundCoverKind.Fern, GroundCoverKind.Fern, GroundCoverKind.Shrub, GroundCoverKind.Shrub };
-            if (library.models == null || library.models.Length != kinds.Length) { library.models = new GroundCoverModel[kinds.Length]; rebuild = true; }
+                GroundCoverKind.Grass, GroundCoverKind.Fern, GroundCoverKind.Fern, GroundCoverKind.Shrub, GroundCoverKind.Shrub,
+                GroundCoverKind.Boulder, GroundCoverKind.Stone, GroundCoverKind.Fern, GroundCoverKind.Shrub,
+                GroundCoverKind.Shrub, GroundCoverKind.Log, GroundCoverKind.Log, GroundCoverKind.Log };
+            if (library.models == null || library.models.Length != kinds.Length) { Array.Resize(ref library.models, kinds.Length); rebuild = true; }
             for (int i = 0; i < kinds.Length; i++)
             {
                 var model = library.models[i] ??= new GroundCoverModel();
                 model.name = kinds[i] + " " + (i + 1); model.kind = kinds[i];
-                model.material = kinds[i] <= GroundCoverKind.Stone ? rock : plant;
+                model.material = kinds[i] <= GroundCoverKind.Stone ? rock : kinds[i] == GroundCoverKind.Log ? wood : plant;
                 if (rebuild || model.nearMesh == null) Store(Build(kinds[i], i, false), ref model.nearMesh, library);
                 if (rebuild || model.farMesh == null) Store(Build(kinds[i], i, true), ref model.farMesh, library);
-                model.bounds = model.nearMesh.bounds;
+                model.bounds = model.nearMesh.bounds; model.bounds.Encapsulate(model.farMesh.bounds);
             }
             library.generatorVersion = Version;
             EditorUtility.SetDirty(library); AssetDatabase.SaveAssets();
@@ -79,7 +82,8 @@ namespace AirCity.EditorTools.World
                 case GroundCoverKind.Stone: Rock(mesh, variant, far, true); break;
                 case GroundCoverKind.Grass: Grass(mesh, rng, variant, far); break;
                 case GroundCoverKind.Fern: Fern(mesh, rng, far); break;
-                case GroundCoverKind.Shrub: Shrub(mesh, rng, far); break;
+                case GroundCoverKind.Shrub: Shrub(mesh, rng, far, variant); break;
+                case GroundCoverKind.Log: Log(mesh, rng, variant, far); break;
             }
             return mesh.Create(kind + " " + variant + (far ? " distant" : " detail"));
         }
@@ -89,10 +93,10 @@ namespace AirCity.EditorTools.World
 
         static void Rock(Builder mesh, int variant, bool far, bool small)
         {
-            int sides = far ? 10 : 24, rings = far ? 6 : 14;
+            int sides = far ? 8 : 18, rings = far ? 5 : 10;
             float seed = variant * 15.71f;
             var points = new int[rings + 1, sides + 1];
-            var scale = small ? new Vector3(.25f, .20f, .22f) : new Vector3(1.45f, .94f, 1.08f);
+            var scale = small ? new Vector3(.25f, .20f, .22f) : variant == 12 ? new Vector3(1.70f, .61f, 1.22f) : new Vector3(1.45f, .94f, 1.08f);
             // Direction-space deformations remain identical in both LODs. Two weathered fracture planes
             // create ledges and unequal sides without the uniform facets of a low-poly sphere.
             var fracture = new Vector3(.8f, .45f, -.36f).normalized;
@@ -134,7 +138,7 @@ namespace AirCity.EditorTools.World
 
         static void Grass(Builder mesh, System.Random rng, int variant, bool far)
         {
-            int count = far ? 28 : 90;
+            int count = far ? 16 : 48;
             for (int blade = 0; blade < count; blade++)
             {
                 // Several unequal tufts leave soil visible between their roots, rather than a solid lawn disk.
@@ -145,7 +149,7 @@ namespace AirCity.EditorTools.World
                 float heading = angle + Range(rng, -1.4f, 1.4f), h = Range(rng, .24f, .78f) * (variant == 7 ? 1.22f : 1f);
                 float width = Range(rng, .012f, .032f), lean = Range(rng, .14f, .45f);
                 var dir = Horizontal(heading); var across = Vector3.Cross(Vector3.up, dir).normalized;
-                int segments = far ? 2 : 4, previousL = -1, previousR = -1;
+                int segments = far ? 2 : 3, previousL = -1, previousR = -1;
                 Color baseColor = Color.Lerp(new Color(.065f, .135f, .036f), new Color(.17f, .22f, .07f), Range(rng, 0f, 1f));
                 bool straw = blade % 19 == 0;
                 for (int s = 0; s <= segments; s++)
@@ -178,7 +182,7 @@ namespace AirCity.EditorTools.World
                 float a = frond / (float)count * Mathf.PI * 2f + Range(rng, -.25f, .25f);
                 var direction = Horizontal(a); var across = Vector3.Cross(Vector3.up, direction);
                 float length = Range(rng, .60f, .94f), height = Range(rng, .45f, .75f);
-                int pairs = far ? 9 : 17; Vector3 previous = Vector3.down * .03f;
+                int pairs = far ? 5 : 11; Vector3 previous = Vector3.down * .03f;
                 Vector3 At(float t) => direction * (length * Mathf.Pow(t, 1.35f)) + Vector3.up * (height * Mathf.Sin(t * 2.68f));
                 for (int j = 0; j < pairs; j++)
                 {
@@ -191,38 +195,84 @@ namespace AirCity.EditorTools.World
                         var end = p + across * width * side + tangent * (width * .27f) - Vector3.up * (width * .11f);
                         Color c = Color.Lerp(new Color(.035f, .095f, .025f), new Color(.075f, .17f, .04f), t);
                         c.a = Mathf.Lerp(.66f, 1f, t);
-                        if (far) mesh.Leaf(p, end, tangent * .013f, c);
-                        else mesh.Pinna(p, end, tangent * .016f, c);
+                        if (far || j % 2 != 0) mesh.Leaf(p, end, tangent * .019f, c);
+                        else mesh.Pinna(p, end, tangent * .022f, c);
                     }
                 }
                 mesh.Leaf(previous, At(1f), across * .014f, new Color(.07f, .16f, .035f));
             }
         }
 
-        static void Shrub(Builder mesh, System.Random rng, bool far)
+        static void Shrub(Builder mesh, System.Random rng, bool far, int variant)
         {
-            int branches = far ? 7 : 13;
+            int branches = far ? 6 : 10;
+            bool broad = variant >= 15;
             for (int b = 0; b < branches; b++)
             {
                 float angle = b * 2.39996f; var dir = Horizontal(angle);
                 var joint = dir * Range(rng, .15f, .43f) + Vector3.up * Range(rng, .30f, .65f);
-                var tip = dir * Range(rng, .45f, .83f) + Vector3.up * Range(rng, .60f, 1.18f);
+                var tip = dir * Range(rng, .45f, .78f) + Vector3.up * Range(rng, broad ? .45f : .60f, broad ? .80f : 1.18f);
                 Color wood = new Color(.24f, .20f, .13f, .9f);
                 mesh.Stem(Vector3.down * .05f, joint, .018f, wood, 4);
                 mesh.Stem(joint, tip, .010f, wood, 3);
-                int leaves = far ? 6 : 17;
+                int leaves = far ? 5 : 10;
                 for (int k = 0; k < leaves; k++)
                 {
                     float t = Range(rng, .05f, 1f), leafAngle = angle + k * 2.39996f;
                     var root = Vector3.Lerp(joint, tip, t);
                     var outDir = Horizontal(leafAngle);
-                    var leafEnd = root + outDir * Range(rng, .075f, .15f) + Vector3.up * Range(rng, .01f, .05f);
-                    var across = Vector3.Cross(outDir, Vector3.up) * Range(rng, .018f, .038f);
+                    var leafEnd = root + outDir * Range(rng, broad ? .13f : .075f, broad ? .23f : .15f) + Vector3.up * Range(rng, .01f, .05f);
+                    var across = Vector3.Cross(outDir, Vector3.up) * Range(rng, broad ? .045f : .018f, broad ? .08f : .038f);
                     Color color = Color.Lerp(new Color(.045f, .105f, .035f), new Color(.12f, .19f, .06f), Range(rng, 0f, 1f));
                     color.a = .78f + t * .22f;
                     mesh.Leaf(root, leafEnd, across, color);
                 }
             }
+        }
+
+        static void Log(Builder mesh, System.Random rng, int variant, bool far)
+        {
+            int sides = far ? 6 : 10, sections = far ? 3 : 6;
+            float length = variant == 19 ? 4.4f : 6.8f;
+            float radius = variant == 18 ? .36f : .48f;
+            var rings = new int[sections + 1, sides];
+            var centres = new Vector3[sections + 1];
+            for (int section = 0; section <= sections; section++)
+            {
+                float t = section / (float)sections;
+                centres[section] = new Vector3((t - .5f) * length, radius * .65f + Mathf.Sin(t * 3.7f + variant) * .035f,
+                    Mathf.Sin(t * 2.7f) * .16f);
+                float taper = Mathf.Lerp(1f, .66f, t);
+                for (int side = 0; side < sides; side++)
+                {
+                    float angle = side / (float)sides * Mathf.PI * 2f;
+                    float bark = .93f + .09f * Mathf.Sin(side * 2.13f + variant);
+                    var p = centres[section] + new Vector3(0f, Mathf.Cos(angle), Mathf.Sin(angle)) * (radius * taper * bark);
+                    Color color = side % 3 == 0 ? new Color(.19f, .15f, .095f, .8f) : new Color(.29f, .24f, .17f, .92f);
+                    rings[section, side] = mesh.Vertex(p, new Vector2(t * 3f, side / (float)sides), color);
+                }
+            }
+            for (int section = 1; section <= sections; section++)
+            for (int side = 0; side < sides; side++)
+            {
+                int next = (side + 1) % sides;
+                mesh.Quad(rings[section - 1, side], rings[section - 1, next], rings[section, next], rings[section, side]);
+            }
+            foreach (int end in new[] { 0, sections })
+            {
+                Color cut = new Color(.45f, .34f, .20f, .95f);
+                int centre = mesh.Vertex(centres[end], new Vector2(.5f, .5f), cut);
+                for (int side = 0; side < sides; side++)
+                {
+                    int next = (side + 1) % sides;
+                    if (end == 0) mesh.Triangle(centre, rings[end, next], rings[end, side]);
+                    else mesh.Triangle(centre, rings[end, side], rings[end, next]);
+                }
+            }
+            // A broken branch and short root spur make the fallen trunk read as debris, not a pipe.
+            var joint = centres[sections / 2];
+            mesh.Stem(joint, joint + new Vector3(-.65f, .85f, .58f), .12f, new Color(.24f, .19f, .12f, .9f), far ? 4 : 6);
+            if (!far) mesh.Stem(centres[0], centres[0] + new Vector3(-.45f, .25f, -.65f), .13f, new Color(.18f, .14f, .085f, .8f), 5);
         }
 
         sealed class Builder

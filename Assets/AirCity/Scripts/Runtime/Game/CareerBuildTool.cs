@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using AirCity.Airfield;
+using AirCity.World;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
@@ -8,7 +9,7 @@ namespace AirCity.Game
     /// <summary>Player-operated clearing/earthworks and placed airport construction, using terrain raycasts.</summary>
     [RequireComponent(typeof(CareerGame))]
     [DefaultExecutionOrder(100)]
-    public sealed class CareerBuildTool : MonoBehaviour
+    public sealed partial class CareerBuildTool : MonoBehaviour
     {
         public Material previewMaterial;
         public CareerTool Tool { get; private set; }
@@ -26,21 +27,35 @@ namespace AirCity.Game
         Vector2 anchor, lastStamp, rightDown;
         float nextStamp;
         int pickedTree = -1;
+        bool levelPointPinned;
+        Vector2 levelPinnedPoint, levelPinnedPointer;
+        float levelPinnedHeight, levelPinnedRadius;
+        Vector4 levelPinnedCamera;
+        Vector2 levelPinnedPivot;
+        Vector2Int levelPinnedScreen;
 
         void Awake() { game = GetComponent<CareerGame>(); }
-        public void ResetTool() { Tool = CareerTool.Select; dragging = dirtyStroke = false; draft.Clear(); if (line != null) line.enabled = false; }
+        public void FinishEditing() { FinishStroke(); ResetTool(); }
+        public void ResetTool() { HideModelPreviews(); Tool = CareerTool.Select; dragging = dirtyStroke = levelPointPinned = false; draft.Clear(); if (line != null) line.enabled = false; }
         public void Choose(CareerTool tool)
         {
             game = GetComponent<CareerGame>();
-            if (!game.State.handsOn || !game.State.layout.Unlocked(tool)) return;
+            if (!game.State.handsOn || (!game.Sandbox && !game.State.layout.Unlocked(tool))) return;
+            if (game.SharedTools && (tool == CareerTool.Runway || tool == CareerTool.Taxiway || tool == CareerTool.Stand || tool == CareerTool.Road || tool == CareerTool.Select))
+            {
+                FinishStroke(); ResetTool();
+                game.BuildTools.SetTool(tool switch { CareerTool.Runway => AirCity.Dev.DevTool.Runway, CareerTool.Taxiway => AirCity.Dev.DevTool.Taxiway,
+                    CareerTool.Stand => AirCity.Dev.DevTool.Stand, CareerTool.Road => AirCity.Dev.DevTool.Street, _ => AirCity.Dev.DevTool.Select });
+                return;
+            }
             FinishStroke(); GetComponent<CareerRoadTool>().Cancel(); ResetTool(); Tool = tool;
             if (tool == CareerTool.Level) TargetHeight = game.State.HasRunway ? game.State.layout.elevation : game.State.Site.elevation;
             if (tool == CareerTool.Road) GetComponent<CareerRoadTool>().Begin();
             Status = Hint(tool);
         }
         public static string Hint(CareerTool tool) => tool switch {
-            CareerTool.ClearTrees => "Click a tree or drag a clearing brush. Only selected trees are removed.",
-            CareerTool.Level => "Drag over cleared ground to level it. Keep the brush clear of existing structures and pavement.",
+            CareerTool.ClearTrees => "Brush away trees, rocks, fallen timber and shrubs, or select one tree.",
+            CareerTool.Level => "Click or drag to set the chosen height in one pass. Keep clear of structures and pavement.",
             CareerTool.Runway => "Drag between runway thresholds. Clear and level its footprint first.",
             CareerTool.Taxiway => "Click a route from the runway. Enter finishes; right-click removes a corner.",
             CareerTool.Stand => "Click beside a taxiway to place parking. The side you click sets its direction.",
@@ -51,23 +66,25 @@ namespace AirCity.Game
 
         void Update()
         {
-            if (game == null || game.State == null || !game.State.handsOn || game.State.Site == null) return;
+            if (game == null || game.State == null || !game.State.handsOn || game.State.Site == null) { HideModelPreviews(); return; }
             var mouse = Mouse.current; var keys = Keyboard.current;
+            PlacementScroll(keys, mouse);
             if (keys != null && !game.view.KeyboardCaptured)
             {
                 if (keys.escapeKey.wasPressedThisFrame) { FinishStroke(); Choose(CareerTool.Select); return; }
-                if (keys.rKey.wasPressedThisFrame && Tool == CareerTool.Reception) BuildingHeading = Mathf.Repeat(BuildingHeading + 15f, 360f);
+                if ((keys.rKey.wasPressedThisFrame || keys.zKey.wasPressedThisFrame) && SupportsPlacementRotation)
+                    RotatePlacement(keys.shiftKey.isPressed ? -45f : 45f);
                 if (keys.enterKey.wasPressedThisFrame && Tool == CareerTool.Taxiway) FinishTaxiway();
             }
             if (Tool == CareerTool.Select || Tool == CareerTool.Road || mouse == null)
-            { if (line != null) line.enabled = false; return; }
+            { HideModelPreviews(); if (line != null) line.enabled = false; return; }
             if (mouse.leftButton.wasReleasedThisFrame)
             {
                 if (dragging && Tool == CareerTool.Runway && !game.view.PointerOverHud) PlaceRunway(anchor, EndPoint());
                 dragging = false; FinishStroke();
             }
-            if (game.view.PointerOverHud) { if (line != null) line.enabled = false; return; }
-            if (!TryPoint(out var point)) { if (line != null) line.enabled = false; return; }
+            if (game.view.PointerOverHud) { HideModelPreviews(); if (line != null) line.enabled = false; return; }
+            if (!TryPoint(out var point)) { HideModelPreviews(); if (line != null) line.enabled = false; return; }
             Preview(point);
             if (mouse.leftButton.wasPressedThisFrame)
             {
@@ -103,7 +120,16 @@ namespace AirCity.Game
         {
             point = default;
             if (game.valley.Terrain == null || Mouse.current == null) return false;
-            var ray = game.view.GetComponent<Camera>().ScreenPointToRay(Mouse.current.position.ReadValue());
+            var camera = game.view.GetComponent<Camera>();
+            var pointer = Mouse.current.position.ReadValue();
+            var controls = new Vector4(game.view.yaw, game.view.pitch, game.view.distance, camera.fieldOfView);
+            if (levelPointPinned && Tool == CareerTool.Level && (pointer - levelPinnedPointer).sqrMagnitude < .25f &&
+                TargetHeight == levelPinnedHeight && Radius == levelPinnedRadius && controls == levelPinnedCamera &&
+                new Vector2(game.view.pivot.x, game.view.pivot.z) == levelPinnedPivot &&
+                new Vector2Int(Screen.width, Screen.height) == levelPinnedScreen)
+            { point = levelPinnedPoint; return true; }
+            levelPointPinned = false;
+            var ray = camera.ScreenPointToRay(pointer);
             if (!game.valley.Terrain.GetComponent<TerrainCollider>().Raycast(ray, out var hit, 20000f)) return false;
             point = new Vector2(hit.point.x, hit.point.z); return true;
         }
@@ -130,14 +156,16 @@ namespace AirCity.Game
             {
                 case CareerTool.ClearTrees:
                     pickedTree = SingleTree ? PickTree() : -1;
-                    int count = SingleTree ? pickedTree >= 0 ? 1 : 0 : CareerConstruction.Trees(state, point, Radius).Count;
-                    Price = count * CareerConstruction.TreePrice; Valid = count > 0 && state.funds >= Price;
+                    var clear = SingleTree && pickedTree < 0 ? default : CareerConstruction.QuoteClear(state, point, Radius,
+                        SingleTree ? null : game.valley.ClearCandidates(point, Radius), SingleTree ? pickedTree : -1);
+                    Price = clear.Price; Valid = clear.Count > 0 && (game.Sandbox || state.funds >= Price);
                     if (SingleTree && pickedTree >= 0) point = state.world.trees[pickedTree].position;
                     Circle(outline, point, SingleTree ? 5f : Radius);
-                    Status = count > 0 ? $"Remove {count} tree{(count == 1 ? "" : "s")} · ${Price:N0}" : "Choose trees to remove. Remaining woodland stays untouched.";
+                    Status = clear.Count == 0 ? SingleTree ? "Choose a tree." : "This area is already clear." :
+                        !Valid ? "Not enough funds for this work." : $"Clear land · ${Price:N0}";
                     break;
                 case CareerTool.Level:
-                    Valid = CareerConstruction.Level(state, point, Radius, TargetHeight, false, out int grading, out why); Price = grading;
+                    Valid = CareerConstruction.Level(state, point, Radius, TargetHeight, false, out int grading, out why, game.Airport); Price = grading;
                     Circle(outline, point, Radius); Status = why ?? $"Level to {TargetHeight:0.0} m · ${Price:N0}"; break;
                 case CareerTool.Runway:
                     if (!dragging) { Circle(outline, point, 5f); Status = "Drag the first threshold to the other end of your runway."; break; }
@@ -159,29 +187,38 @@ namespace AirCity.Game
                     Status = why ?? $"Passenger reception · ${Price:N0}. R rotates."; break;
             }
             Show(outline);
+            RefreshModelPreviews(point);
         }
         int PickTree()
         {
             var ray = game.view.GetComponent<Camera>().ScreenPointToRay(Mouse.current.position.ReadValue());
-            int best = -1; float near = float.MaxValue;
-            for (int i = 0; i < game.State.world.trees.Count; i++)
-            {
-                var t = game.State.world.trees[i]; if (t.removed || !CareerConstruction.Editable(game.State, t.position)) continue;
-                var centre = new Vector3(t.position.x, game.valley.DisplayHeight(t.position) + t.height * .55f, t.position.y);
-                float along = Vector3.Dot(centre - ray.origin, ray.direction); if (along < 0f || along >= near) continue;
-                if (Vector3.Distance(ray.GetPoint(along), centre) > t.height * .35f) continue;
-                near = along; best = i;
-            }
-            return best;
+            return ForestQuery.Pick(game.State.world, ray, game.valley.DisplayHeight,
+                p => CareerConstruction.Editable(game.State, p));
         }
         void Stamp(Vector2 point)
         {
             if (Tool == CareerTool.ClearTrees && SingleTree && pickedTree < 0) return;
             bool ok; string why;
-            if (Tool == CareerTool.ClearTrees) ok = CareerConstruction.Clear(game.State, point, Radius, out why, SingleTree ? pickedTree : -1);
-            else ok = CareerConstruction.Level(game.State, point, Radius, TargetHeight, true, out _, out why);
+            if (Tool == CareerTool.ClearTrees) ok = CareerConstruction.Clear(game.State, point, Radius, out why,
+                SingleTree ? pickedTree : -1, SingleTree ? null : game.valley.ClearCandidates(point, Radius));
+            else ok = CareerConstruction.Level(game.State, point, Radius, TargetHeight, true, out _, out why, game.Airport);
             if (ok)
             {
+                if (Tool == CareerTool.Level && Mouse.current != null)
+                {
+                    // Raising/cutting terrain changes a perspective ray's ground intersection even
+                    // when the mouse stays still. Keep the completed map spot anchored until the
+                    // player moves the pointer, camera or brush settings; a second click is a no-op.
+                    var camera = game.view.GetComponent<Camera>();
+                    levelPointPinned = true; levelPinnedPoint = point;
+                    levelPinnedPointer = Mouse.current.position.ReadValue();
+                    levelPinnedHeight = TargetHeight; levelPinnedRadius = Radius;
+                    // The camera automatically follows edited terrain vertically. Only deliberate
+                    // pan/orbit/zoom or a changed viewport should release this stationary map anchor.
+                    levelPinnedCamera = new Vector4(game.view.yaw, game.view.pitch, game.view.distance, camera.fieldOfView);
+                    levelPinnedPivot = new Vector2(game.view.pivot.x, game.view.pivot.z);
+                    levelPinnedScreen = new Vector2Int(Screen.width, Screen.height);
+                }
                 var centre = Tool == CareerTool.ClearTrees && SingleTree ? game.State.world.trees[pickedTree].position : point;
                 float radius = Tool == CareerTool.ClearTrees && SingleTree ? 0f : Radius;
                 var area = new Rect(centre.x - radius, centre.y - radius, radius * 2f, radius * 2f);
@@ -191,6 +228,8 @@ namespace AirCity.Game
             }
             else Status = why;
             lastStamp = point; nextStamp = Time.unscaledTime + .16f;
+            // Quotes describe the remaining work, including the zero-cost completed patch.
+            if (ok) Preview(point);
         }
         void FinishStroke()
         {
@@ -199,23 +238,23 @@ namespace AirCity.Game
         }
         void PlaceRunway(Vector2 a, Vector2 b)
         {
-            if (CareerConstruction.Runway(game.State, a, b, true, out _, out string why)) { game.PlayerChanged(CareerTool.Runway); game.Save(false); }
+            if (CareerConstruction.Runway(game.State, a, b, true, out _, out string why)) { game.PlayerChanged(CareerTool.Runway); game.QueueAutosave(); }
             else game.SetMessage(why);
         }
         public void FinishTaxiway()
         {
             if (CareerConstruction.Taxiway(game.State, draft, true, out _, out string why))
-            { game.PlayerChanged(CareerTool.Taxiway); draft.Clear(); game.Save(false); }
+            { game.PlayerChanged(CareerTool.Taxiway); draft.Clear(); game.QueueAutosave(); }
             else game.SetMessage(why);
         }
         void PlaceStand(Vector2 point)
         {
-            if (CareerConstruction.Parking(game.State, point, true, out string why)) { game.PlayerChanged(CareerTool.Stand); game.Save(false); }
+            if (CareerConstruction.Parking(game.State, point, true, out string why)) { game.PlayerChanged(CareerTool.Stand); game.QueueAutosave(); }
             else game.SetMessage(why);
         }
         void PlaceReception(Vector2 point)
         {
-            if (CareerConstruction.Reception(game.State, point, BuildingHeading, true, out string why)) { game.PlayerChanged(CareerTool.Reception); game.Save(false); Choose(CareerTool.Select); }
+            if (CareerConstruction.Reception(game.State, point, BuildingHeading, true, out string why)) { game.PlayerChanged(CareerTool.Reception); game.QueueAutosave(); Choose(CareerTool.Select); }
             else game.SetMessage(why);
         }
         static void Circle(List<Vector2> points, Vector2 centre, float radius)

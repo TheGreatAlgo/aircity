@@ -48,6 +48,20 @@ namespace AirCity.Vehicles
         BaggageLoadVisuals loadVisuals;
         RampCrewRig groundCrew, holdCrew;
         readonly List<RampCrewRig> groundWorkers=new List<RampCrewRig>(),holdWorkers=new List<RampCrewRig>();
+        BaggageCrewPerformance performance;
+        BaggageFleet performed;
+        /// <summary>The crew as the player sees it (presentation only; the simulation never reads it).</summary>
+        public BaggageCrewPerformance Performance => performance;
+        /// <summary>Largest palm-to-bag-grip distance of the bags drawn in hands last frame (m).</summary>
+        public float CarriedPalmGap => loadVisuals != null ? loadVisuals.PalmGap : 0f;
+        /// <summary>The rig showing a performer (ground workers 0-1, the depot bay's hall handler as ground worker 2, hold
+        /// workers 0-1), or null when it has not been made.</summary>
+        public RampCrewRig CrewRig(bool ground, int worker)
+        {
+            if (ground && worker >= 2) return depot != null ? depot.BayHand(depot.Layout.LaneFor(depotBay)).rig : null;
+            var list = ground ? groundWorkers : holdWorkers;
+            return worker < list.Count ? list[worker] : null;
+        }
         public Airport Airport => GetComponentInParent<Airport>();
 
         void OnEnable() => PaintChanged();
@@ -99,25 +113,39 @@ namespace AirCity.Vehicles
             }
             Place(loader, fleet.LoaderPose, fleet.LoaderSpeed, 0f, dt);
             loader.beltFrontHeight = fleet.LoaderHeight; loader.Apply();
+            if (performance == null || performed != fleet) { performance = new BaggageCrewPerformance(fleet,loadVisuals.Sizes()); performed = fleet; }
+            performance.Step(Mathf.Max(0f,dt));
             bool staffed=depot==null || fleet.Workers>=2;
-            if (groundCrew != null) { groundCrew.gameObject.SetActive(staffed); if (staffed) groundCrew.Apply(fleet.Crew.GroundPose); }
-            if (holdCrew != null) { holdCrew.gameObject.SetActive(staffed); if (staffed) holdCrew.Apply(fleet.Crew.HoldPose); }
+            void Pose(RampCrewRig rig,bool ground,int worker,bool show)
+            {
+                rig.gameObject.SetActive(show); if (!show) return;
+                if (performance.TakeSnap(ground,worker)) rig.Snap();
+                rig.Apply(ground ? performance.GroundPose(worker) : performance.HoldPose(worker),dt,airport.timeScale);
+            }
+            if (groundCrew != null) Pose(groundCrew,true,0,staffed && performance.GroundVisible(0));
+            if (holdCrew != null) Pose(holdCrew,false,0,staffed && performance.HoldVisible(0));
             void Helpers(List<RampCrewRig> workers,int count,bool ground)
             {
-                bool working=staffed && fleet.Job!=null && (ground ? fleet.Crew.GroundReady || fleet.Job.DepotTransfer : fleet.Crew.HoldReady);
+                bool working=staffed && fleet.Job!=null && (ground ? performance.GroundVisible(1) : performance.HoldVisible(1));
                 while (working && workers.Count<count)
                 {
                     var worker=Instantiate(crewPrefab,visualRoot).GetComponent<RampCrewRig>();
                     worker.Initialize(workers.Count+2); worker.name=ground ? "Additional cart handler" : "Additional hold handler"; workers.Add(worker);
                 }
-                for (int i=1;i<workers.Count;i++)
-                {
-                    workers[i].gameObject.SetActive(working && i<count);
-                    if (working && i<count) workers[i].Apply(ground ? fleet.Crew.GroundPoseFor(i) : fleet.Crew.HoldPoseFor(i));
-                }
+                for (int i=1;i<workers.Count;i++) Pose(workers[i],ground,i,working && i<count);
             }
             if (groundCrew!=null) { Helpers(groundWorkers,fleet.Crew.GroundWorkers,true); Helpers(holdWorkers,fleet.Crew.HoldWorkers,false); }
-            loadVisuals.Present(fleet,groundCrew,holdCrew,groundWorkers,holdWorkers);
+            // The depot bay's hall handler, while this train stands in its bay.
+            if (depot!=null && performance.GroundVisible(2))
+            {
+                var hand=depot.BayHand(depot.Layout.LaneFor(depotBay));
+                if (hand.rig!=null && hand.owner==(object)performance)
+                {
+                    if (performance.TakeSnap(true,2)) hand.rig.Snap();
+                    hand.rig.Apply(performance.GroundPose(2),dt,airport.timeScale);
+                }
+            }
+            loadVisuals.Present(fleet,performance,groundWorkers,holdWorkers);
         }
 
         BaggageEquipmentRig Spawn(GameObject prefab) => Instantiate(prefab, visualRoot).GetComponent<BaggageEquipmentRig>();
@@ -125,7 +153,7 @@ namespace AirCity.Vehicles
         void Place(BaggageEquipmentRig rig, BaggageVehiclePose pose, float speed, float steer, float dt)
         {
             var a = Airport.transform;
-            rig.GetComponent<Vehicle>().Place(a.TransformPoint(new Vector3(pose.position.x, 0f, pose.position.y)),
+            rig.GetComponent<Vehicle>().Place(a.TransformPoint(new Vector3(pose.position.x,float.IsNaN(pose.elevation)?Airport.PavementElevationAt(pose.position):pose.elevation,pose.position.y)),
                 a.TransformDirection(new Vector3(pose.facing.x, 0f, pose.facing.y)), speed, steer, dt);
             var lights = rig.GetComponent<VehicleLights>();
             if (lights != null) { lights.beacon = Mathf.Abs(speed) > 0f; lights.headlights = Mathf.Abs(speed) > 0f; }

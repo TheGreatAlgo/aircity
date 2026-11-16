@@ -29,6 +29,8 @@ namespace AirCity.Airfield
         [Tooltip("Paved width (metres), without shoulders. See RunwayRules.RunwayWidths.")]
         public float width = 30f;
         public RunwayLighting lighting = RunwayLighting.None;
+        [Tooltip("Terrain supplies the natural runway edges instead of generated grass side strips.")]
+        public bool naturalEdges;
         [Range(0f, 1f)] public float wear;
         [Tooltip("Lying snow (cm). Builds up while it snows (Airport.Simulate); ploughing clears it.")]
         [Min(0f)] public float snow;
@@ -44,6 +46,7 @@ namespace AirCity.Airfield
         [NonSerialized] StripWork work, vergeWork;
         Vector4 stripes = StripWork.Idle, vergeStripes = StripWork.Idle;
         bool dirty;
+        [NonSerialized] internal bool keepElevationWhileHidden;
 
         public Airport Airport => GetComponentInParent<Airport>();
         public float Length => Vector2.Distance(Geo.XZ(start), Geo.XZ(end));
@@ -68,11 +71,21 @@ namespace AirCity.Airfield
         /// <summary>The verges reach this far from the centreline, and this far beyond each end.</summary>
         public float VergeHalfWidth => Mathf.Max(RunwayRules.RunwayVerge(surface, width), HalfWidthTotal + 1f);
         public float VergeOverrun => RunwayRules.RunwayVergeOverrun(surface);
+        public bool HasVerges => !naturalEdges;
 
         /// <summary>Stacking level where runways cross (0..2, by order in the hierarchy): the later one draws on
         /// top instead of flickering.</summary>
         public int Layer => transform.GetSiblingIndex() % 3;
         public float SurfaceHeight => AirfieldHeights.Runway + Layer * AirfieldHeights.RunwayLayerStep;
+        /// <summary>Saved longitudinal rise per horizontal metre. Crossfall is level.</summary>
+        public float Grade => (end.y-start.y)/Mathf.Max(Length,.001f);
+        public Vector2 ElevationGradient => Axis2D*Grade;
+        public float ElevationAt(Vector2 point, bool clamp = true)
+        {
+            float along=Vector2.Dot(point-Geo.XZ(start),Axis2D);
+            if(clamp)along=Mathf.Clamp(along,0f,Length);
+            return start.y+along*Grade;
+        }
 
         /// <summary>Landing bearing at the start threshold, degrees from north (+Z).</summary>
         public float Bearing => RunwayRules.Bearing(Axis);
@@ -294,6 +307,16 @@ namespace AirCity.Airfield
             var paint = new PaintBuilder();
             var lights = new LightBuilder();
             RunwayBuilder.Build(this, surfaceMesh, paint, lights);
+            if(Mathf.Abs(start.y)>.00001f || Mathf.Abs(end.y)>.00001f)
+            {
+                var gradient=ElevationGradient;
+                AirfieldElevation.Warp(surfaceMesh.mesh,p=>ElevationAt(p,false),_=>gradient);
+                AirfieldElevation.Warp(paint.mesh,p=>ElevationAt(p,false),_=>gradient,true);
+                AirfieldElevation.Warp(lights.glows,p=>ElevationAt(p,false),_=>gradient,true);
+                AirfieldElevation.Warp(lights.fixtures,p=>ElevationAt(p,false),_=>gradient,false,true);
+            }
+            surfacePart.constructionPreview = paintPart.constructionPreview = vergePart.constructionPreview =
+                (gameObject.hideFlags & HideFlags.DontSave) != 0;
             surfacePart.Set(surfaceMesh.mesh.Apply(surfacePart.Target, name + " surface"),
                 airport.SurfaceMaterial(surface), airport.asphalt);
             paintPart.Set(paint.Apply(paintPart.Target, name + " paint"), airport.paint);
@@ -304,11 +327,15 @@ namespace AirCity.Airfield
             var verges = new SurfaceBuilder(1) { state = VergeState };
             verges.mesh.owner = 0;
             float over = VergeOverrun;
-            verges.Verges(0, Geo.XZ(start), Axis2D, -over, Length + over, HalfWidthTotal, VergeHalfWidth, AirfieldHeights.RunwayVerge);
+            if(HasVerges)
+            {
+                verges.Verges(0, Geo.XZ(start), Axis2D, -over, Length + over, HalfWidthTotal, VergeHalfWidth, AirfieldHeights.RunwayVerge);
+                AirfieldElevation.Warp(verges.mesh,p=>ElevationAt(p,false),_=>ElevationGradient);
+            }
             vergePart.Set(verges.mesh.Apply(vergePart.Target, name + " verges"), airport.grassStrip);
             vergeState.Capture(vergePart.Mesh, verges.mesh, null, null);
             RefreshState();
-            airport.LayoutChanged();
+            if((gameObject.hideFlags&HideFlags.DontSave)==0)airport.LayoutChanged();
             LightCount = lights.LightCount;
         }
 

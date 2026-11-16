@@ -13,6 +13,8 @@ vehicle models; `python3 ArtSource/Vehicles/crew_profiles.py` refreshes those me
 The same character build exports marshalling wands. `Vehicles/prop_profiles.py` (Blender, `-- --model BaggageProps`)
 exports per-bag dimensions for stacking. `Aircraft/hold_profiles.py` refreshes hold packing envelopes from the
 source compartments without rebaking unchanged aircraft geometry.
+`Aircraft/deicing_profiles.py` (Blender) similarly refreshes main-wing upper-skin sections for full-wing
+deicing passes; normal aircraft exports include them through `Common/deicing.py`.
 
 ## Aircraft
 
@@ -48,7 +50,7 @@ FBX, textures and type data automatically.
 | `Common/pipeline.py` | both stages: UV rules, bakes, registration patch, LODs, collider, ground shadow, FBX, type data |
 | `Common/geom.py`, `shapes.py`, `fuselage.py` | mesh builder, NACA airfoils, lifting surfaces, revolve / tube / wheel, superellipse fuselage loft |
 | `Common/paint.py` | livery composition, detail / dirt / logo maps, registration text (mirrored by the C# compositor) |
-| `Common/airlines.py` | example airlines and their procedural tail logos (written to `Assets/AirCity/Liveries/Logos`) |
+| `Common/airlines.py` | example airlines and their tail logos (written to `Assets/AirCity/Liveries/Logos`): procedural, except BlossomPink's hand-drawn silhouette in `Source/` |
 | `Common/font.py` | registration glyph atlas (Blender's bundled Inter, SIL OFL) |
 | `<Model>/parts.py` | that aircraft's geometry |
 | `<Model>/model.py` | the model definition (below) |

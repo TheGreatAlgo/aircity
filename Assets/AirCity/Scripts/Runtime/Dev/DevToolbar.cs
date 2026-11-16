@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using AirCity.Aircraft;
 using AirCity.Airfield;
 using AirCity.Traffic;
@@ -33,6 +34,7 @@ namespace AirCity.Dev
         DevTrafficControls traffic;
         readonly DevGateDesigner gateDesigner = new DevGateDesigner();
         public DevGateDesigner GateDesigner => gateDesigner;
+        public void ResetWorkspace() { gateDesigner.Close(); CloseDeicingManagement(); openPop = null; }
 
         public void OpenGateDesigner(Stand stand = null)
         {
@@ -68,7 +70,7 @@ namespace AirCity.Dev
             if (!gateDesigner.IsOpen) OpenGateDesigner(stand);
             airfield.SelectStand(stand); gateDesigner.FocusParking(airfield, stand);
         }
-        void OnDisable() => gateDesigner.Close();
+        void OnDisable() { gateDesigner.Close(); CloseDeicingManagement(); }
         void OnDestroy() => gateDesigner.Dispose();
 
         /// <summary>The bottom bar's buttons: the tool (null: the gate designer), its icon (Resources/AirCityIcons), name,
@@ -76,17 +78,21 @@ namespace AirCity.Dev
         static readonly (DevTool? tool, string icon, string label, string tip, string hint, int group)[] Tools =
         {
             (DevTool.Select, "select", "Select", "Select runways, taxiways, roads, depots, stands, aprons and aircraft", "Esc", 0),
-            (DevTool.Runway, "runway", "Runway", "Click one threshold, then the other (or drag); B cycles the build tools", null, 1),
+            (DevTool.ClearTrees, "clear-trees", "Clear land", "Clear trees, rocks and fallen timber, or select one tree", null, 1),
+            (DevTool.Level, "level-ground", "Level ground", "Brush the terrain to the chosen height", null, 1),
+            (DevTool.Runway, "runway", "Runway", "Click or drag runway thresholds; start at an existing threshold to extend it", null, 1),
             (DevTool.Taxiway, "taxiway", "Taxiway", "Click points to lay a taxiway; right-click ends it", null, 1),
             (DevTool.Road, "road", "Road", "Click points to lay an airside service road (across a paved apron it is just paint); right-click ends it", null, 1),
+            (DevTool.Street, "street", "Street", "Click points to lay a public road of the chosen type (2 to 6 lanes, one-way); crossings become junctions with traffic lights; right-click ends it", null, 1),
             (DevTool.Apron, "apron", "Apron", "Click corners to lay an apron of any shape, or drag out a rectangle", null, 1),
             (DevTool.Lights, "lights", "Lights", "Light taxiways and runways: at night aircraft use only what's lit", null, 2),
+            (DevTool.Reception, "terminal", "Reception", "Place passenger reception beside the airport road entrance", null, 3),
             (DevTool.Terminal, "terminal", "Terminal", "Click corners for a terminal building (or drag out a rectangle); select one and Shift+scroll to curve a wall", null, 3),
             (DevTool.Stand, "stand", "Stand", "Click beside a taxiway to add an aircraft stand (it snaps to the stands beside it)", null, 3),
             (DevTool.Bridge, "bridge", "Bridge", "Place jet bridges and bridge heads by hand, starting from a terminal wall", null, 3),
             (null, "gates", "Gates", "Design gate layouts, aircraft stops, bridge families and saved presets", null, 3),
             (DevTool.Baggage, "baggage", "Baggage", "Build baggage halls and connect them to terminals", null, 4),
-            (DevTool.DeIcing, "deice", "De-icing bay", "Click on a taxiway to add a drive-through de-icing bay", null, 4),
+            (DevTool.DeIcing, "deice", "Deicing", "Build deicing pads, supply buildings and vehicle parking; manage the airport fleet", null, 4),
             (DevTool.Depot, "depot", "Depot", "Drag from the doors outwards to build a maintenance depot", null, 4),
         };
 
@@ -111,6 +117,7 @@ namespace AirCity.Dev
 
         void Update()
         {
+            if (airfield?.game != null && airfield.game.State.charterActive) return;
             if (airfield != null && !gateDesigner.IsOpen)
             {
                 if (airfield.Tool == DevTool.Bridge) OpenBridgeBuilder();
@@ -123,6 +130,7 @@ namespace AirCity.Dev
             if (keys.escapeKey.wasPressedThisFrame)
             {
                 openPop = null;
+                if (DeicingManagementOpen) CloseDeicingManagement();
                 if (gateDesigner.IsOpen)
                 {
                     if (airfield.Tool == DevTool.Bridge || airfield.Tool == DevTool.Stand) airfield.SetTool(DevTool.Select);
@@ -135,6 +143,7 @@ namespace AirCity.Dev
         /// <summary>Remove the aircraft or the airfield selection, whichever was made last.</summary>
         void DeleteSelection()
         {
+            if (airfield?.game != null && airfield.game.ToolProblem(DevTool.Delete) != null) return;
             if (gateDesigner.IsOpen) { gateDesigner.DeleteCurrent(); return; }
             bool aircraftFirst = sandbox != null && sandbox.Selected != null &&
                                  (airfield == null || !airfield.HasSelection || sandbox.SelectedFrame >= airfield.SelectedFrame);
@@ -146,9 +155,13 @@ namespace AirCity.Dev
         {
             if (!DevGui.Visible) return;
             DevGui.Begin();
+            bool wasEnabled = GUI.enabled;
+            GUI.enabled &= airfield?.game == null || !airfield.game.State.charterActive;
             ToolBar();
             if (gateDesigner.IsOpen) gateDesigner.Draw(airfield, traffic);
+            else if (DeicingManagementOpen) DrawDeicingManagement();
             else RightColumn();
+            GUI.enabled = wasEnabled;
             DevGui.Tooltip();
         }
 
@@ -163,28 +176,39 @@ namespace AirCity.Dev
         void ToolBar()
         {
             if (airfield == null || airfield.airport == null) return;
+            var game = airfield.game;
+            var available = Tools.Where(t => game != null ? game.ToolProblem(t.tool ?? DevTool.Bridge) == null :
+                t.tool != DevTool.ClearTrees && t.tool != DevTool.Level && t.tool != DevTool.Reception).ToArray();
             float w = U(48f), gap = U(4f), pad = U(7f), split = U(14f);
-            int groups = Tools[Tools.Length - 1].group + 2;   // and delete's
-            float room = Screen.width - U(24f) - pad * 2f - Tools.Length * gap - split * (groups - 1);
-            w = Mathf.Max(U(32f), Mathf.Min(w, Mathf.Floor(room / (Tools.Length + 1))));
-            float width = pad * 2f + (Tools.Length + 1) * w + (Tools.Length - groups + 1) * gap + split * (groups - 1);
+            int groups = available.Select(t => t.group).Distinct().Count() + 1;   // and delete's
+            float room = Screen.width - U(24f) - pad * 2f - available.Length * gap - split * (groups - 1);
+            w = Mathf.Max(U(32f), Mathf.Min(w, Mathf.Floor(room / (available.Length + 1))));
+            float width = pad * 2f + (available.Length + 1) * w + (available.Length - groups + 1) * gap + split * (groups - 1);
             var r = new Rect(Mathf.Round((Screen.width - width) * 0.5f), Screen.height - w - pad * 2f - U(14f), width, w + pad * 2f);
             DevGui.Panel(r);
             float x = r.x + pad, y = r.y + pad;
             var on = default(Rect);
-            for (int i = 0; i < Tools.Length; i++)
+            for (int i = 0; i < available.Length; i++)
             {
-                var (tool, icon, label, tip, hint, group) = Tools[i];
-                if (i > 0 && group != Tools[i - 1].group) x = Split(x, y, w, gap, split);
-                bool active = tool == null ? gateDesigner.IsOpen : airfield.Tool == tool;
+                var (tool, icon, label, tip, hint, group) = available[i];
+                if (i > 0 && group != available[i - 1].group) x = Split(x, y, w, gap, split);
+                bool deicing = tool == DevTool.DeIcing;
+                bool active = tool == null ? gateDesigner.IsOpen : deicing ? IsDeicingTool || DeicingManagementOpen : airfield.Tool == tool;
                 var b = new Rect(x, y, w, w);
                 if (active && tool != null) on = b;
                 if (DevGui.IconButton(b, DevGui.Icon(icon), label, $"<b>{label}</b>   {tip}", active, hint: hint))
                 {
+                    if (!deicing) CloseDeicingManagement();
                     if (tool == null)
                     {
                         if (gateDesigner.IsOpen) gateDesigner.Close(); else OpenGateDesigner();
                         GUIUtility.ExitGUI();
+                    }
+                    else if (deicing)
+                    {
+                        gateDesigner.Close();
+                        if (active) { CloseDeicingManagement(); airfield.SetTool(DevTool.Select); }
+                        else OpenDeicingCatalog();
                     }
                     else if (tool == DevTool.Bridge) OpenBridgeBuilder();
                     else if (tool == DevTool.Stand) OpenStandBuilder();
@@ -205,10 +229,17 @@ namespace AirCity.Dev
                         : "<b>Delete</b>   click anything to remove it; Shift+click: a taxiway's or road's whole run",
                     deleting, danger: true, hint: "X"))
             {
+                CloseDeicingManagement();
                 if (gateDesigner.IsOpen) gateDesigner.DeleteCurrent();
                 else airfield.SetTool(deleting ? DevTool.Select : DevTool.Delete);
             }
-            if (!gateDesigner.IsOpen && on.width > 0f) Tray(on, r);
+            if (!gateDesigner.IsOpen && on.width > 0f)
+            {
+                if (IsDeicingTool) DeicingCatalog(on, r);
+                else if (airfield.Tool == DevTool.ClearTrees || airfield.Tool == DevTool.Level || airfield.Tool == DevTool.Reception)
+                    game.GetComponent<AirCity.Game.CareerHud>().SharedToolTray(on, r);
+                else Tray(on, r);
+            }
         }
 
         /// <summary>A divider between button groups; where the next group starts.</summary>
@@ -268,6 +299,9 @@ namespace AirCity.Dev
                 case DevTool.Road:
                     SurfaceCards(airfield.Surface, false, false);
                     break;
+                case DevTool.Street:
+                    StreetCards();
+                    break;
                 case DevTool.Apron:
                     SurfaceCards(airfield.Surface, true, false);
                     break;
@@ -296,6 +330,58 @@ namespace AirCity.Dev
                 cards.Add(new Card(r => Swatch(r, s), s.ToString(), null, SurfaceTips[i] + " (V)", current == s, true, () => airfield.SetSurface(s)));
             }
             Group("SURFACE   V", 64f, cards.ToArray());
+        }
+
+        /// <summary>A card per public road type: a cross-section drawn to scale (lanes, median, sidewalks), its name and lanes.</summary>
+        void StreetCards()
+        {
+            var types = AirCity.World.RoadTypes.Buildable;
+            var cards = new Card[types.Length];
+            float widest = 0f;
+            foreach (var st in types) widest = Mathf.Max(widest, AirCity.World.RoadTypes.Of(st).FullWidth);
+            for (int i = 0; i < types.Length; i++)
+            {
+                var style = types[i];
+                var t = AirCity.World.RoadTypes.Of(style);
+                string lanes = t.OneWay ? $"{t.forward} lane{(t.forward > 1 ? "s" : "")} one way" : $"{t.Lanes} lanes";
+                cards[i] = new Card(r => RoadSection(r, t, widest), t.name, lanes, $"{t.name}: {t.tip}. {t.Width:0.#} m kerb to kerb, {t.speed:0} km/h",
+                    airfield.StreetStyle == style, true, () => airfield.SetStreetStyle(style));
+            }
+            Group("ROAD TYPE", 70f, cards);
+        }
+
+        /// <summary>A road's cross-section seen from above: sidewalks or shoulders, lanes (arrows show their way), median.</summary>
+        static void RoadSection(Rect r, AirCity.World.RoadType t, float widest)
+        {
+            float scale = (r.height - 8f) / widest;
+            float total = t.FullWidth * scale, x = r.center.y - total * .5f;
+            var pave = new Color(.33f, .34f, .36f);
+            var side = t.edge == AirCity.World.RoadEdge.Kerb ? new Color(.66f, .64f, .6f) : new Color(.55f, .48f, .36f);
+            void Band(float width, Color c)
+            {
+                var band = new Rect(r.x + 4f, x, r.width - 8f, width * scale);
+                DevGui.Fill(band, c);
+                x += width * scale;
+            }
+            Band(t.verge, side);
+            if (t.OneWay)
+            {
+                Band(t.innerShoulder + t.forward * t.laneWidth + t.outerShoulder, pave);
+            }
+            else
+            {
+                Band(t.outerShoulder + t.backward * t.laneWidth + (t.Divided ? t.innerShoulder : 0f), pave);
+                if (t.Divided) Band(t.median, t.medianKind == AirCity.World.RoadMedian.Raised ? new Color(.36f, .5f, .25f) : new Color(.7f, .7f, .68f));
+                Band((t.Divided ? t.innerShoulder : 0f) + t.forward * t.laneWidth + t.outerShoulder, pave);
+            }
+            Band(t.verge, side);
+            // lane lines
+            float y0 = r.center.y - total * .5f + t.verge * scale;
+            foreach (var (cx, forwards) in t.LaneCentres())
+            {
+                float y = y0 + (cx + t.Width * .5f) * scale;
+                DevGui.Fill(new Rect(r.x + r.width * .5f - 4f, y - 1f, 8f, 2f), forwards ? new Color(1f, 1f, 1f, .9f) : new Color(1f, 1f, 1f, .5f));
+            }
         }
 
         /// <summary>A card per width, each a strip of the chosen surface drawn to scale, with the size code it's for.</summary>
@@ -560,7 +646,7 @@ namespace AirCity.Dev
         {
             float s = Mathf.Round(Mathf.Lerp(0.3f, 1f, share) * (r.height - U(6f)));
             DevGui.DrawIcon(new Rect(Mathf.Round(r.center.x - s * 0.5f), Mathf.Round(r.center.y - s * 0.5f), s, s), DevGui.Icon("stand"),
-                on ? new Color(0.1f, 0.08f, 0.04f) : new Color(0.91f, 0.93f, 0.96f));
+                on ? DevGui.Ink : DevGui.Primary);
         }
 
         // ------------------------------------------------------------------ rows (the inspector, its pop-outs, the sidebar)
@@ -595,18 +681,26 @@ namespace AirCity.Dev
         float innerWidth;
         Vector2 sidebarScroll;
 
-        const float ColumnUnits = 260f, PopUnits = 236f;
-        static float Pad => U(10f);
-        static float RowH => U(26f);
-        static float RowGap => U(4f);
-        static float LabelW => U(70f);
+        const float ColumnUnits = 300f, PopUnits = 280f;
+        static float Pad => U(14f);
+        static float RowH => U(32f);
+        static float RowGap => U(6f);
+        static float LabelW => U(78f);
 
         void Add(float h, Action<Rect> draw) => into.Add((h, draw));
 
-        void Title(string text) => Add(U(22f), r => GUI.Label(r, text, DevGui.Title));
+        void Title(string text) => Add(U(34f), r =>
+        {
+            DevGui.Fill(new Rect(r.x, r.y + U(5), U(4), U(24)), DevGui.GUI(DevGui.Primary), U(2));
+            GUI.Label(new Rect(r.x + U(12), r.y, r.width - U(12), r.height), text, DevGui.Title);
+        });
 
         /// <summary>A small caption, with some space above it.</summary>
-        void Section(string caption) => Add(U(24f), r => GUI.Label(new Rect(r.x, r.y + U(8f), r.width, r.height - U(8f)), caption, DevGui.Caption));
+        void Section(string caption) => Add(U(26f), r =>
+        {
+            DevGui.Fill(new Rect(r.x, r.y + U(4), r.width, U(1)), DevGui.GUI(new Color(.78f, .84f, .80f)));
+            GUI.Label(new Rect(r.x, r.y + U(8f), r.width, r.height - U(8f)), caption, DevGui.Caption);
+        });
 
         void Space(float units = 4f) => Add(U(units), _ => { });
 
@@ -679,7 +773,19 @@ namespace AirCity.Dev
             Add(h, r => GUI.Label(r, content, Wrapped));
         }
 
-        void Danger(string text) => Note(text != null ? $"{DevGui.Tag(DevGui.Danger)}{text}</color>" : null);
+        void Danger(string text)
+        {
+            if (string.IsNullOrEmpty(text)) return;
+            text = char.ToUpperInvariant(text[0]) + text.Substring(1);
+            var content = new GUIContent(text);
+            var style = new GUIStyle(Wrapped); style.normal.textColor = DevGui.GUI(DevGui.Danger);
+            float h = style.CalcHeight(content, innerWidth - U(20));
+            Add(h + U(20), r =>
+            {
+                DevGui.Fill(r, DevGui.GUI(Color.Lerp(DevGui.Paper, DevGui.Danger, .08f)), U(9));
+                GUI.Label(new Rect(r.x + U(10), r.y + U(10), r.width - U(20), h), content, style);
+            });
+        }
 
         static float Height(List<(float h, Action<Rect> draw)> rows)
         {
@@ -753,6 +859,7 @@ namespace AirCity.Dev
         string popTitle;
         /// <summary>Where the pop-out and the row that opened it were last drawn (a press elsewhere closes it).</summary>
         Rect popRect, popAnchor;
+        Vector2 inspectorScroll;
 
         void Toggle(string key)
         {
@@ -767,7 +874,8 @@ namespace AirCity.Dev
             if (airfield.Tool != DevTool.Select) return airfield.Tool;
             if (AircraftShown) return sandbox.Selected;
             return (object)airfield.SelectedStand ?? (object)airfield.SelectedRunway ?? (object)airfield.SelectedEdge ??
-                   (object)airfield.SelectedDepot ?? (object)airfield.SelectedBaggageHall ?? (object)airfield.SelectedTerminal ?? airfield.SelectedApron;
+                   (object)airfield.SelectedDepot ?? (object)airfield.SelectedBaggageHall ?? (object)airfield.SelectedDeicingWorkArea ??
+                   (object)airfield.SelectedDeicingParkingBay ?? (object)airfield.SelectedDeicingOutsideAccess ?? (object)airfield.SelectedTerminal ?? airfield.SelectedApron;
         }
 
         bool AircraftShown => sandbox != null && sandbox.Selected != null &&
@@ -797,6 +905,11 @@ namespace AirCity.Dev
             innerWidth = colW - Pad * 2f;
             if (airfield != null && airfield.airport != null) Inspector();
             else if (AircraftShown) AircraftInspector();
+            if (airfield != null && airfield.SupportsPlacementRotation && !IsDeicingTool)
+            {
+                Section("ORIENTATION");
+                Add(RowH, PlacementRotationRow);
+            }
             if (popRow < 0) openPop = null;
             else
             {
@@ -812,22 +925,37 @@ namespace AirCity.Dev
             Sidebar();
 
             float x = Screen.width - margin - colW;
-            var inspector = main.Count > 0 ? new Rect(x, margin, colW, Height(main)) : new Rect(x, margin - U(8f), colW, 0f);
+            float top = airfield?.game != null ? AirCity.Game.CareerHud.ContentTop : margin;
+            var inspector = main.Count > 0 ? new Rect(x, top, colW, Height(main)) : new Rect(x, top - U(8f), colW, 0f);
             float sideH = Height(side);
             var sideRect = new Rect(x, inspector.yMax + U(8f), colW, sideH);
-            if (main.Count > 0 && sideRect.yMax > Screen.height - margin) sideRect = new Rect(x - colW - U(8f), margin, colW, sideH);
+            if (main.Count > 0 && sideRect.yMax > Screen.height - margin) sideRect = new Rect(x - colW - U(8f), top, colW, sideH);
 
-            popAnchor = popRow >= 0 ? new Rect(inspector.x, inspector.y + RowTop(main, popRow), colW, main[popRow].h) : default;
+            float inspectorAvailable = Mathf.Max(U(100), Screen.height - margin - U(110));
+            bool scrollInspector = inspector.height > inspectorAvailable;
+            if (!scrollInspector) inspectorScroll = Vector2.zero;
+            popAnchor = popRow >= 0 ? new Rect(inspector.x, inspector.y + RowTop(main, popRow) - inspectorScroll.y, colW, main[popRow].h) : default;
             popRect = default;
             if (pop.Count > 0)
             {
                 float h = Height(pop);
-                float y = Mathf.Clamp(popAnchor.y - Pad - U(24f) - RowGap, margin, Mathf.Max(margin, Screen.height - margin - h));
+                float y = Mathf.Clamp(popAnchor.y - Pad - U(24f) - RowGap, top, Mathf.Max(top, Screen.height - margin - h));
                 popRect = new Rect(inspector.x - U(8f) - popW, y, popW, h);
             }
             bool repaint = e.type == EventType.Repaint;
             if (!repaint && pop.Count > 0) Draw(pop, popRect);
-            if (main.Count > 0) Draw(main, inspector);
+            if (main.Count > 0)
+            {
+                if (!scrollInspector) Draw(main, inspector);
+                else
+                {
+                    var viewport = new Rect(inspector.x, inspector.y, inspector.width, inspectorAvailable);
+                    DevGui.Panel(viewport);
+                    var content = new Rect(0, 0, inspector.width - scrollbar, inspector.height);
+                    inspectorScroll = GUI.BeginScrollView(viewport, inspectorScroll, content, false, true);
+                    DrawRows(main, content); GUI.EndScrollView();
+                }
+            }
             if (side.Count > 0)
             {
                 float available = Mathf.Max(U(80f), Screen.height - margin - sideRect.y);
@@ -867,8 +995,20 @@ namespace AirCity.Dev
                     if (airfield.RoadProblem != null) Danger(airfield.RoadProblem);
                     else Note(Joins("click points   Shift: 10° and 5 m steps   right-click ends   dashed: stands' front lines"));
                     return;
+                case DevTool.Street:
+                {
+                    var t = AirCity.World.RoadTypes.Of(airfield.StreetStyle);
+                    Title("Street tool");
+                    RoadBuildControls();
+                    if (airfield.StreetProblem != null) Danger(airfield.StreetProblem);
+                    else
+                        Note((airfield.StreetSnapName != null ? $"{DevGui.Tag(Cyan)}joins {airfield.StreetSnapName}</color>   " : "") +
+                             $"{t.name}, {t.Width:0.#} m   click points   Shift: 10° and 5 m steps   right-click ends   crossings get traffic lights");
+                    return;
+                }
                 case DevTool.Road:
                     Title("Road tool");
+                    RoadBuildControls();
                     if (airfield.RoadProblem != null) Danger(airfield.RoadProblem);
                     else
                         Note(Joins($"service road, {RunwayRules.RoadWidth:0} m wide   click points   Shift: 10° and 5 m steps   " +
@@ -891,6 +1031,7 @@ namespace AirCity.Dev
                 case DevTool.Depot:
                     Title("Depot tool");
                     Note("drag from the doors outwards   click a depot to select it");
+                    if (airfield.DepotPreviewProblem != null) Danger(airfield.DepotPreviewProblem);
                     if (airfield.FleetDepot != null)
                     {
                         Section("FLEET  ·  " + airfield.FleetDepot.name.ToUpperInvariant());
@@ -900,12 +1041,22 @@ namespace AirCity.Dev
                 case DevTool.Baggage:
                     BaggageBuildInspector();
                     return;
+                case DevTool.DeicingStorage:
+                    DeicingWorkAreaToolInspector();
+                    return;
+                case DevTool.DeicingParking:
+                    DeicingParkingToolInspector();
+                    return;
+                case DevTool.DeicingOutsideAccess:
+                    DeicingOutsideAccessToolInspector();
+                    return;
                 case DevTool.Stand:
                 case DevTool.DeIcing:
                 {
                     bool bay = airfield.Tool == DevTool.DeIcing;
                     Title(bay ? "De-icing bay tool" : "Stand tool");
                     if (!bay) StandProps(false, airfield.Surface);   // a bay's are in the tray
+                    else SurfaceProp(airfield.Surface.IsPaved() ? airfield.Surface : PavementSurface.Concrete);
                     if (airfield.GhostProblem != null) Danger(airfield.GhostProblem);
                     else if (airfield.GhostNote != null) Note($"{DevGui.Tag(Cyan)}{airfield.GhostNote}</color>");
                     Note(bay ? "click on a taxiway or anywhere   Shift+scroll: turn it"
@@ -925,6 +1076,7 @@ namespace AirCity.Dev
                     if (under == null && sandbox != null && sandbox.Hovered != null) under = sandbox.Hovered.name;
                     Note(under != null ? $"{DevGui.Tag(DevGui.Danger)}click to remove</color> {under}"
                         : "click a runway, taxiway, road, depot, stand, apron or aircraft to remove it   Shift: a taxiway's whole run");
+                    if (airfield.DeicingPadNote != null) Danger(airfield.DeicingPadNote);
                     return;
                 }
             }
@@ -935,6 +1087,12 @@ namespace AirCity.Dev
                 return;
             }
             if (airfield.SelectedRunway != null) RunwayInspector(airfield.SelectedRunway);
+            else if(airfield.SelectedPublicRoad!=null)
+            {
+                Title(airfield.SelectionName);
+                Note("Public road · "+airfield.SelectedPublicRoad.Type.name);
+                Buttons(B("Delete section",()=>airfield.DeleteSelection(),"Remove this section between junctions",hint:"Del",danger:true));
+            }
             else if (airfield.SelectedEdge != null)
             {
                 var edge = airfield.SelectedEdge;
@@ -945,6 +1103,9 @@ namespace AirCity.Dev
                 Buttons(B("Delete", () => airfield.DeleteSelection(), "Remove this section (between junctions)", hint: "Del", danger: true),
                     B("Delete run", airfield.DeleteSelectedRun, "Remove it and the sections running on from it, as far as it goes", danger: true));
             }
+            else if (airfield.SelectedDeicingWorkArea != null) DeicingWorkAreaInspector(airfield.SelectedDeicingWorkArea);
+            else if (airfield.SelectedDeicingParkingBay != null) DeicingParkingInspector(airfield.SelectedDeicingParkingBay);
+            else if (airfield.SelectedDeicingOutsideAccess != null) DeicingOutsideAccessInspector(airfield.SelectedDeicingOutsideAccess);
             else if (airfield.SelectedBaggageHall!=null) BaggageHallInspector(airfield.SelectedBaggageHall);
             else if (airfield.SelectedDepot != null)
             {
@@ -977,7 +1138,7 @@ namespace AirCity.Dev
             else if (airfield.SelectedStand != null) StandInspector(airfield.SelectedStand);
         }
 
-        static readonly Color Cyan = new Color(0.3f, 0.9f, 1f), Green = new Color(0.55f, 1f, 0.55f);
+        static readonly Color Cyan = new Color(.06f, .43f, .49f), Green = DevGui.Success;
 
         /// <summary>The lights tool: what a click does here, how much is lit, and lighting or clearing every taxiway.</summary>
         void LightsInspector()
@@ -1130,6 +1291,7 @@ namespace AirCity.Dev
                 return;
             }
             StandProps(true, st.surface);
+            DeicingInspector(st);
             Space();
             Buttons(B("Delete bay", airfield.DeleteSelectedStand, "Remove this de-icing bay", danger: true));
         }
@@ -1232,17 +1394,20 @@ namespace AirCity.Dev
             var airport = airfield != null ? airfield.airport : null;
             if (airport != null)
             {
-                if (Fold("world", "WORLD"))
+                if ((airfield.game == null || ShowMore) && Fold("world", "WORLD"))
                 {
                     Buttons(Weather(SurfaceCondition.Dry), Weather(SurfaceCondition.Wet), Weather(SurfaceCondition.Snow));
+                    if (airfield.game == null)
+                    {
                     var speeds = new Btn[DevAirfieldTool.TimeScales.Length];
                     for (int i = 0; i < speeds.Length; i++)
                     {
                         float s = DevAirfieldTool.TimeScales[i];
                         speeds[i] = B($"{s:0}x", () => airfield.SetTimeScale(s), $"Game time {s:0}x: weather, grass and the vehicles (Y)",
-                            Mathf.Approximately(airport.timeScale, s));
+                            Mathf.Approximately(airfield.game != null ? (airfield.game.Paused ? 0f : airfield.game.Speed) : airport.timeScale, s));
                     }
                     Buttons(speeds);
+                    }
                     if (sandbox != null) Buttons(B("Night", () => sandbox.Night = !sandbox.Night, "Day / night (+ / - for dusk)", sandbox.Night, "N"));
                     if (ShowMore)
                         Buttons(B("Snowfall", airfield.Snowfall, "2 cm of snow at once", hint: "O"),

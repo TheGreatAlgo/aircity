@@ -1,5 +1,5 @@
-"""Double-deck quadjet (proportions and figures of the A380-800): the model definition the shared pipeline
-(../Common/pipeline.py) builds.
+"""Double-deck quadjet (A380-800-sized, an original shape with a T-tail): the model definition the shared
+pipeline (../Common/pipeline.py) builds.
 
 Stations `s` are metres aft of the nose; Blender Y = s - S_REF. Passenger windows (two decks) and doors are
 painted into the shading map rather than modelled, as on the other airliners.
@@ -29,7 +29,6 @@ def build():
     body.merge(parts.build_windows())
     wing = parts.build_wing()
     body.merge(wing.pop("Wing"))
-    body.merge(parts.build_fences())
     body.merge(parts.build_flap_tracks())
     ht = parts.build_htail()
     body.merge(ht.pop("HStab"))
@@ -76,10 +75,10 @@ COLLIDER_RATIO = 0.3
 # ============================================================== UV atlas
 
 UV_TOP_BOTTOM = {"wing", "wing_flap", "wing_aileron", "wing_filler", "htail", "elevator"}
-UV_SIDE = {"vtail", "rudder", "dorsal", "pylon", "fence"}
+UV_SIDE = {"vtail", "rudder", "dorsal", "pylon", "bullet"}
 DENSITY = {"wing": 0.42, "wing_flap": 0.42, "wing_aileron": 0.42, "wing_filler": 0.32, "htail": 0.5, "elevator": 0.5,
            "wing_cap": 0.1, "htail_cap": 0.2, "vtail_cap": 0.2, "elevator_cap": 0.2, "wing_flap_cap": 0.15,
-           "wing_aileron_cap": 0.15, "wing_filler_cap": 0.15, "rudder_cap": 0.2, "fence_cap": 0.2,
+           "wing_aileron_cap": 0.15, "wing_filler_cap": 0.15, "rudder_cap": 0.2, "bullet": 0.5,
            "nacelle": 0.75, "pylon": 0.5, "wing_track": 0.3, "pylon_cap": 0.2, "gearleg": 0.25, "spinner": 0.5, "satcom": 0.4}
 BOTTOM_DENSITY = 0.5
 
@@ -93,8 +92,8 @@ UPPER_DOORS = [(20.94, 7.87), (44.74, 7.91), (49.19, 7.94)]
 MAIN_DOOR, UPPER_DOOR = (1.07, 1.93), (1.07, 1.92)
 CARGO = [("Cargo_Fwd", 11.73, 3.05, 2.79, 1.75), ("Cargo_Aft", 48.07, 3.11, 2.79, 1.75),
          ("Cargo_Bulk", 51.09, 3.41, 1.13, 1.13)]
-# the radome joint passes ~0.2 m ahead of the windshield's lowest point, leaning forwards at the top
-RADOME_S = 1.80
+# the radome joint, ~2.4 m back from the long nose's tip, leaning forwards at the top
+RADOME_S = 2.40
 RADOME_LEAN = 0.30
 
 
@@ -104,7 +103,8 @@ def _radome(p):
 
 
 def _tail(p):
-    return p.f(p.vt)
+    """The whole T-tail: fin, tailplane and the bullet fairing between them."""
+    return p.f(p.vt | p.ht | p.group("bullet"))
 
 
 def _nacelles(p):
@@ -113,8 +113,8 @@ def _nacelles(p):
 
 def scheme_classic(p):
     """Cheatline under the main-deck windows sweeping up into the fin, a pinstripe below, painted engines."""
-    knots = [(0.6, 5.05), (4.5, 5.45), (9.5, MAIN_WIN_Z - 0.50), (49.0, MAIN_WIN_Z - 0.50), (53.5, 7.0),
-             (56.5, 9.6), (59.5, 13.2), (63.5, 18.4), (68.5, 24.9)]       # up the fin ~1.2 m behind its LE
+    knots = [(0.6, 5.12), (4.5, 5.50), (9.5, MAIN_WIN_Z - 0.50), (49.0, MAIN_WIN_Z - 0.50), (51.5, 6.7),
+             (53.3, 8.6), (54.46, 10.8), (56.55, 13.2), (61.08, 18.4), (64.48, 22.3)]   # up the fin 1.4 m behind its LE
     d = curve_dist(p.s, p.z, knots)
     zone = (p.fus | p.vt) * p.inside(-_radome(p))
     r = p.band(d, -0.52, 0.18) * zone
@@ -146,9 +146,11 @@ def scheme_two_tone(p):
 
 
 def scheme_trainer(p):
-    """Charter / 'eurowhite': coloured nose cone, engine cowls, wingtip fences and fin tip, window-line stripe."""
+    """Charter / 'eurowhite': coloured nose cone, engine cowls, raked wingtips and the T-tail's top (tailplane, bullet
+    and fin tip), window-line stripe."""
     r = np.maximum(p.inside(_radome(p)) * p.fus, _nacelles(p))
-    g = np.maximum(p.f(p.group("fence")), p.inside(21.6 - p.z) * p.vt)
+    top = np.maximum(p.f(p.ht | p.group("bullet")), p.inside(20.2 - p.z) * p.vt)
+    g = np.maximum(p.f(p.wing) * p.inside(parts.RAKE - np.abs(p.x)), top)
     d = p.z - (MAIN_WIN_Z - 0.62)
     b = p.band(d, -0.10, 0.10) * p.fus * p.inside(4.0 - p.s) * p.inside(p.s - 62.0) * (np.abs(p.nx) > 0.35)
     return r, g, b
@@ -164,7 +166,7 @@ REG_FACES_U = (54.6, 62.2)
 REG_FACES_V = (-1.6, 0.5)
 REG_TEX_W = 1024          # ~135 px/m on the patch (the atlas is 28): sharp 0.6 m letters, ~0.36 MB per aircraft
 
-LOGO_BOX = (62.0, 68.0, 13.0, 19.0)
+LOGO_BOX = (60.2, 65.8, 12.9, 18.5)
 
 # ============================================================== shading, dirt
 
@@ -285,17 +287,18 @@ POINTS = [
     ("WheelChock", "Chock_BR", P(-parts.BLG_X, parts.BLG_S + parts.BLG_AXLES[0][1], 0), FWD, (2.1, 0)),
 ]
 
-_tip_z = parts.wing_station(parts.WING_TIP, h=None)["le"].z
-_logo_z = parts.ht_station(parts.LOGO_LIGHT[0], h=None)["le"].z + 0.55
+_nav_y = parts.WING_TIP - 0.25
+_tip_z = parts.wing_station(_nav_y, h=None)["le"].z
+_logo_z = float(Fuselage.top_z(parts.LOGO_LIGHT[1], parts.LOGO_LIGHT[0])) + 0.10
 RED, GREEN, WHITE = (1.0, 0.08, 0.05), (0.15, 1.0, 0.35), (1.0, 0.97, 0.9)
 _tail_z = float(Fuselage.zm(Fuselage.S1))
 
 LIGHTS = [
-    ("Navigation", "Nav_L", (parts.WING_TIP + 0.17, Y(parts.NAV_S), _tip_z + 0.02), (0.82, -0.57, 0), 110, RED),
-    ("Navigation", "Nav_R", (-parts.WING_TIP - 0.17, Y(parts.NAV_S), _tip_z + 0.02), (-0.82, -0.57, 0), 110, GREEN),
+    ("Navigation", "Nav_L", (_nav_y + 0.08, Y(parts.NAV_S), _tip_z + 0.02), (0.82, -0.57, 0), 110, RED),
+    ("Navigation", "Nav_R", (-_nav_y - 0.08, Y(parts.NAV_S), _tip_z + 0.02), (-0.82, -0.57, 0), 110, GREEN),
     ("Navigation", "Nav_Tail", P(0, Fuselage.S1 + 0.1, _tail_z + 0.40), AFT, 140, WHITE),
-    ("Strobe", "Strobe_L", (parts.WING_TIP + 0.14, Y(parts.NAV_S + 0.5), _tip_z + 0.03), UP, 360, WHITE),
-    ("Strobe", "Strobe_R", (-parts.WING_TIP - 0.14, Y(parts.NAV_S + 0.5), _tip_z + 0.03), UP, 360, WHITE),
+    ("Strobe", "Strobe_L", (_nav_y + 0.02, Y(parts.NAV_S + 0.6), _tip_z + 0.05), UP, 360, WHITE),
+    ("Strobe", "Strobe_R", (-_nav_y - 0.02, Y(parts.NAV_S + 0.6), _tip_z + 0.05), UP, 360, WHITE),
     ("Strobe", "Strobe_Tail", P(0, Fuselage.S1 + 0.12, _tail_z + 0.55), AFT, 360, WHITE),
     ("Beacon", "Beacon_Top", P(0, parts.BEACON_TOP_S, float(Fuselage.zt(parts.BEACON_TOP_S)) + 0.14), UP, 360, RED),
     ("Beacon", "Beacon_Bottom", P(0, parts.BEACON_BOTTOM_S, Fuselage.bottom_z(parts.BEACON_BOTTOM_S, 0) - 0.14), DOWN,
@@ -305,8 +308,8 @@ LIGHTS = [
     ("Landing", "Landing_R", (-parts.LANDING[0], Y(parts.LANDING[1]), parts.wing_surface_z(*parts.LANDING) - 0.12),
      (0, -0.98, -0.18), 25, WHITE),
     ("Taxi", "Taxi", P(0, parts.NOSE_S - 0.27, 1.70), (0, -0.97, -0.24), 50, WHITE),
-    ("Logo", "Logo_L", P(parts.LOGO_LIGHT[0], parts.LOGO_LIGHT[1], _logo_z), (-0.45, -0.2, 0.87), 35, WHITE),
-    ("Logo", "Logo_R", P(-parts.LOGO_LIGHT[0], parts.LOGO_LIGHT[1], _logo_z), (0.45, -0.2, 0.87), 35, WHITE),
+    ("Logo", "Logo_L", P(parts.LOGO_LIGHT[0], parts.LOGO_LIGHT[1], _logo_z), (-0.25, 0.45, 0.86), 35, WHITE),
+    ("Logo", "Logo_R", P(-parts.LOGO_LIGHT[0], parts.LOGO_LIGHT[1], _logo_z), (0.25, 0.45, 0.86), 35, WHITE),
 ]
 
 # ============================================================== previews

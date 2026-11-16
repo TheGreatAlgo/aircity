@@ -8,6 +8,9 @@ namespace AirCity.Game
     /// <summary>One career slot, atomic replacement and a previous good backup. Never regenerate a saved landscape.</summary>
     public sealed class CareerSaveStore
     {
+        // A full region can contain hundreds of thousands of saved tree records as well as terrain
+        // and airport data. Keep a finite read bound without rejecting a save the game can produce.
+        const long MaximumSaveBytes = 128L * 1024L * 1024L;
         readonly string path;
         readonly object queueGate = new object(), diskGate = new object();
         Task worker;
@@ -120,7 +123,7 @@ namespace AirCity.Game
             try
             {
                 if (!File.Exists(path)) return false;
-                if (new FileInfo(path).Length > 32000000) { problem = "The career save is too large."; return false; }
+                if (new FileInfo(path).Length > MaximumSaveBytes) { problem = "The career save is too large."; return false; }
                 var candidate = JsonUtility.FromJson<CareerState>(File.ReadAllText(path));
                 if (candidate == null) { problem = "The career save is empty."; return false; }
                 if (!candidate.Validate(out problem)) return false;

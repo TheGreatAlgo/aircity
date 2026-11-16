@@ -4,74 +4,78 @@ using UnityEngine;
 
 namespace AirCity.Vehicles
 {
-    /// <summary>Pooled bag art follows game-time handovers. The baggage ledger remains the owner of every bag.</summary>
+    /// <summary>
+    /// Pooled bag art. Cart piles, the belt and the hold come from <see cref="BaggageBagFlow"/>, which trails the ledger
+    /// during an aircraft transfer and copies it otherwise; bags in a handler's hands come from the
+    /// <see cref="BaggageCrewPerformance"/>, at the aircraft and in depot handovers alike.
+    /// </summary>
     public sealed class BaggageLoadVisuals
     {
         readonly BaggageArtPool art;
-        readonly Dictionary<BaggageStore,BaggageStorageLayout> cartLayouts=new Dictionary<BaggageStore,BaggageStorageLayout>();
-        readonly List<BaggageTurnaround> transfers=new List<BaggageTurnaround>(1);
-        BaggageStore[] previousCarts;
-        BaggageTurnaround lastJob;
+        BaggageBagFlow own;
+        /// <summary>Largest distance this frame between a palm and the grip on the side of the bag drawn in that hand (m).</summary>
+        public float PalmGap { get; private set; }
+        BaggageFleet ownFleet;
         public BaggageLoadVisuals(Transform root,GameObject[] prefabs) { art=new BaggageArtPool(root,prefabs); }
 
-        static int Variant(BaggageBatch batch,int bag) => BaggageHoldPacking.Variant(batch,bag);
+        /// <summary>Drawn size of each bag variant (x across, y along, z height), for the performers' grips.</summary>
+        public Vector3[] Sizes()
+        {
+            var sizes=new Vector3[3];
+            for (int i=0;i<sizes.Length;i++) sizes[i]=art.Size(i);
+            return sizes;
+        }
 
-        public void Present(BaggageFleet fleet, RampCrewRig ground = null, RampCrewRig hold = null,
+        static RampCrewRig Rig(BaggageFleet fleet,IReadOnlyList<RampCrewRig> workers,bool ground,int worker)
+        {
+            if (ground && worker>=2) return fleet.Station.CrewRig(true,2);
+            return workers!=null && worker<workers.Count ? workers[worker] : null;
+        }
+        /// <summary>A bag in someone's hands is drawn between the palms the rig actually shows (the rig eases at screen rate,
+        /// so at a fast clock its hands can trail the performer's targets by a little): moved to the middle of the shown
+        /// palms and turned to the line between them.</summary>
+        void InHands(BaggageCrewPerformance performance,bool ground,int worker,ref Vector3 bottom,ref Quaternion rotation,bool held,RampCrewRig rig)
+        {
+            if (!held || rig==null || !rig.isActiveAndEnabled || !performance.HandTargets(ground,worker,out var l,out var r)) return;
+            var frame=art.Root;
+            var palmL=frame.InverseTransformPoint(rig.LeftPalm); var palmR=frame.InverseTransformPoint(rig.RightPalm);
+            var centre=(l+r)*.5f; var shown=(palmL+palmR)*.5f;
+            var turn=Quaternion.FromToRotation(r-l,palmR-palmL);
+            bottom=shown+turn*(bottom-centre); rotation=turn*rotation;
+            float gap=Mathf.Max(Vector3.Distance(shown+turn*(l-centre),palmL),Vector3.Distance(shown+turn*(r-centre),palmR));
+            if (gap>PalmGap) PalmGap=gap;
+        }
+
+        /// <summary>Draw the fleet's bags. Without a performance the piles copy the ledger (tests, editor previews).</summary>
+        public void Present(BaggageFleet fleet,BaggageCrewPerformance performance=null,
             IReadOnlyList<RampCrewRig> groundWorkers=null,IReadOnlyList<RampCrewRig> holdWorkers=null)
         {
+            BaggageBagFlow flow;
+            if (performance!=null) flow=performance.Flow;
+            else
+            {
+                if (own==null || ownFleet!=fleet) { own=new BaggageBagFlow(fleet,true); ownFleet=fleet; }
+                own.Step(0f); flow=own;
+            }
             art.Begin();
-            if (!ReferenceEquals(previousCarts,fleet.Carts)) { cartLayouts.Clear(); previousCarts=fleet.Carts; }
-            if (fleet.Job != null) lastJob = fleet.Job;
-            var job = fleet.Job ?? lastJob;
-            transfers.Clear(); if (job?.TransferBatch!=null) transfers.Add(job);
-            if (job?.TransferBatch != null)
+            for (int c=0;c<flow.Carts.Count;c++)
+                foreach (var e in flow.Carts[c].entries)
+                    art.Show(flow.CartSlot(c,e.slot)+Vector3.up*BaggageBagFlow.Offset(e.motion,e.anim),flow.CartRotation(c,e.variant),e.variant);
+            foreach (var t in flow.Tokens) art.Show(flow.TokenBottom(t),flow.BeltRotation(t.s),t.variant);
+            foreach (var t in flow.Ghosts) art.Show(flow.GhostBottom(t),flow.GhostRotation,t.variant);
+            var job=flow.Job;
+            if (job?.Plan!=null && job.Aircraft!=null && job.Aircraft.CargoDoors.IsOpen(job.HoldConfiguration.cargoPoint))
             {
-                bool loading = job.TransferTo == job.Hold;
-                float travel = job.BagTravelSeconds, interval = job.TransferInterval;
-                for (int i = 0; i < job.TransferBatch.Count; i++)
-                {
-                    float elapsed = job.TransferSeconds - i * interval;
-                    if (elapsed < 0f) break;
-                    if (elapsed >= travel) continue;
-                    var pose = job.DepotTransfer ? fleet.Station.depot.BagAt(fleet,elapsed,i) : fleet.Crew.BagAt(elapsed,loading,i);
-                    var workers=pose.holder==0 ? groundWorkers : holdWorkers;
-                    var holder=pose.holder<0 ? null : workers!=null && workers.Count>pose.worker ? workers[pose.worker] : pose.holder==0 ? ground : hold;
-                    art.Show(pose.bottom,pose.rotation,Variant(job.TransferBatch,i),holder);
-                }
+                foreach (var e in flow.HoldBags) art.Show(flow.HoldBottom(e),flow.HoldRotation(e),e.variant);
+                foreach (var e in flow.HoldLeaving) art.Show(flow.HoldBottom(e),flow.HoldRotation(e),e.variant);
             }
-            var packing=fleet.CartPacking;
-            for (int cartIndex = 0; cartIndex < fleet.Carts.Length; cartIndex++)
-            {
-                var pose=fleet.Train.CartAt(cartIndex); var store=fleet.Carts[cartIndex];
-                if (!cartLayouts.TryGetValue(store,out var layout)) cartLayouts.Add(store,layout=new BaggageStorageLayout(store.Capacity));
-                layout.Update(store,transfers);
-                foreach (var bag in layout.Bags)
+            PalmGap=0f;
+            if (performance!=null)
+                for (int w=0;w<3;w++)
                 {
-                    var local=packing.Position(bag.slot);
-                    var point=pose.Point(local);
-                    art.Show(new Vector3(point.x,local.y,point.y),Quaternion.LookRotation(new Vector3(pose.facing.x,0,pose.facing.y))*packing.Rotation(bag.variant),bag.variant);
+                    if (performance.Bag(true,w,out var b,out var r,out var v,out bool held)) { InHands(performance,true,w,ref b,ref r,held,Rig(fleet,groundWorkers,true,w)); art.Show(b,r,v); }
+                    if (w<2 && performance.Bag(false,w,out b,out r,out v,out held)) { InHands(performance,false,w,ref b,ref r,held,Rig(fleet,holdWorkers,false,w)); art.Show(b,r,v); }
                 }
-            }
-
-            if (job?.Plan != null && job.Aircraft != null && job.Aircraft.CargoDoors.IsOpen(job.HoldConfiguration.cargoPoint))
-            {
-                foreach (var allocation in job.Packing.Allocations)
-                {
-                    var batch = allocation.Key;
-                    for (int i = 0; i < allocation.Value.Length; i++)
-                    {
-                        int slot = allocation.Value[i]; if (slot < 0) continue;
-                        bool show = batch.Location == job.Hold;
-                        if (batch == job.TransferBatch)
-                        {
-                            float elapsed = job.TransferSeconds-i*job.TransferInterval;
-                            if (job.TransferFrom == job.Hold && elapsed >= 0) show = false;
-                            if (job.TransferTo == job.Hold && elapsed >= job.BagTravelSeconds) show = true;
-                        }
-                        if (show) art.Show(job.Packing.WorldSlot(slot),job.Packing.BagRotation(batch,i),Variant(batch,i));
-                    }
-                }
-            }
             art.End();
         }
     }

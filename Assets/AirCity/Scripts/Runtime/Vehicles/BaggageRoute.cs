@@ -1,4 +1,7 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
+using AirCity.Airfield.Building;
 using AirCity.Airfield;
 using UnityEngine;
 
@@ -19,7 +22,7 @@ namespace AirCity.Vehicles
             bool Heading(TaxiwayEdge edge, int node, Vector2? facing, bool arriving)
             {
                 if (!facing.HasValue || (edge.a != node && edge.b != node)) return true;
-                var direction = (network.At(TaxiwayNetwork.Other(edge, node)) - network.At(node)).normalized;
+                var direction = Geo.XZ(network.Path(edge).Tangent(edge.a==node?0:1))*(edge.a==node?1:-1);
                 return Vector2.Dot(direction * (arriving ? -1f : 1f), facing.Value.normalized) > 0.7f;
             }
             var nodes = network.FindRoute(from, to,
@@ -30,10 +33,29 @@ namespace AirCity.Vehicles
             if (nodes == null) { reason = "no open service-road route for baggage"; return false; }
             path = new VehiclePath();
             path.Start(network.At(nodes[0]), speed);
-            var points = nodes.ConvertAll(network.At);
-            points.RemoveAt(0);
-            path.Through(points, radius, speed);
+            var points=new List<Vector2>();var edges=new List<TaxiwayEdge>();
+            for(int i=1;i<nodes.Count;i++)
+            {
+                int a=nodes[i-1],b=nodes[i];var edge=network.edges.Find(e=>e.a==a&&e.b==b||e.a==b&&e.b==a);edges.Add(edge);
+                var alignment=network.Path(edge);bool reverse=edge.b==a;
+                int count=edge.alignment.curved?Mathf.Max(1,Mathf.CeilToInt(alignment.Length/6f)):1;
+                for(int k=1;k<=count;k++)points.Add(Geo.XZ(alignment.Position(reverse?1-k/(float)count:k/(float)count)));
+            }
+            path.Through(points,radius,speed);
+            BindElevation(network,path,edges);
             return true;
+        }
+
+        internal static void BindElevation(TaxiwayNetwork network,VehiclePath path,IEnumerable<TaxiwayEdge> source)
+        {
+            var edges=source.Where(e=>e!=null).Distinct().ToArray();
+            var builder=new TaxiwayBuilder(network,network.Airport!=null?network.Airport.Runways:System.Array.Empty<Runway>());
+            path.BindElevation(p=>
+            {
+                TaxiwayEdge nearest=null;float best=float.MaxValue;
+                foreach(var edge in edges){float d=network.Path(edge).DistanceTo(p);if(d<best){best=d;nearest=edge;}}
+                return nearest!=null?builder.RoadHeight(nearest,p):0f;
+            });
         }
 
         /// <summary>Validate the whole moving train, including the cart's offtracking, before reserving a job.</summary>

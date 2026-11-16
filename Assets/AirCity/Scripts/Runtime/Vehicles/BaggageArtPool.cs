@@ -8,6 +8,7 @@ namespace AirCity.Vehicles
     sealed class BaggageArtPool
     {
         readonly Transform root;
+        public Transform Root => root;
         readonly GameObject[] prefabs;
         readonly List<Transform>[] pools;
         readonly int[] counts;
@@ -18,6 +19,14 @@ namespace AirCity.Vehicles
             for (int i=0;i<pools.Length;i++) pools[i]=new List<Transform>();
         }
         public void Begin() => System.Array.Clear(counts,0,counts.Length);
+        /// <summary>Drawn size of a variant: x across, y along (the bag's length, its local forward), z height.</summary>
+        public Vector3 Size(int variant)
+        {
+            if (pools.Length==0) return new Vector3(.44f,.67f,.29f);
+            var prefab=prefabs[variant%pools.Length];
+            var filter=prefab!=null ? prefab.GetComponent<MeshFilter>() : null;
+            return filter!=null && filter.sharedMesh!=null ? filter.sharedMesh.bounds.size : new Vector3(.44f,.67f,.29f);
+        }
         public void Show(Vector3 position,Quaternion rotation,int variant,RampCrewRig holder=null)
         {
             if (pools.Length==0) return;

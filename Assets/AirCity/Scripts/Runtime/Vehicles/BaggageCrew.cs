@@ -136,16 +136,7 @@ namespace AirCity.Vehicles
             if (work && groundRoute.Count == 0)
             {
                 loading = load;
-                var seat = Workstation(fleet.Equipment.Tractor, fleet.Train.Tractor); groundRoute.Add(seat);
-                var local = fleet.Equipment.Tractor.crew?.position ?? Vector3.zero;
-                local.x = CartSide > 0 ? fleet.Equipment.Tractor.bounds.max.x + .30f : fleet.Equipment.Tractor.bounds.min.x - .30f; local.y = .25f;
-                var step = RampCrewPose.Standing(World(fleet.Train.Tractor, local), CartSide * Vector3.Cross(Vector3.up, Direction(fleet.Train.Tractor)));
-                step.hipHeight = .70f; groundRoute.Add(step);
-                step.position.y = 0; step.hipHeight = .94f; groundRoute.Add(step);
-                // Walk outside the drawbar and the cart rather than through either vehicle.
-                var corner = CartStand; corner += Direction(fleet.CartPose) * (fleet.Equipment.Cart.bounds.max.z - CartLocal.z + .55f);
-                groundRoute.Add(RampCrewPose.Standing(corner, (CartStand - corner).normalized));
-                groundRoute.Add(ReadyGround(load));
+                GroundBoarding(groundRoute, load);
                 groundDuration = Duration(groundRoute);
             }
             groundTime = Mathf.MoveTowards(groundTime, work ? groundDuration : 0, dt);
@@ -159,34 +150,7 @@ namespace AirCity.Vehicles
             if (fleet.Station.accessBlocked) return work ? HoldReady : HoldSeated;
             if (work && holdRoute.Count == 0)
             {
-                holdRoute.Add(Workstation(fleet.Equipment.Loader, fleet.LoaderPose));
-                var b = fleet.Equipment.Loader.baggage;
-                var exit = fleet.Equipment.Loader.crew?.position ?? Vector3.zero;
-                exit.x = fleet.Equipment.Loader.bounds.min.x - .25f; exit.y = .30f;
-                var step = RampCrewPose.Standing(World(fleet.LoaderPose, exit), -Vector3.Cross(Vector3.up, Direction(fleet.LoaderPose)));
-                step.hipHeight = .72f; holdRoute.Add(step);
-                exit.y = 0; holdRoute.Add(RampCrewPose.Standing(World(fleet.LoaderPose, exit), -Direction(fleet.LoaderPose)));
-                var station = fleet.Equipment.Loader.crew;
-                var access = station?.accessSteps;
-                exit.z = access != null && access.Length > 0 ? access[0].z - .4f : b.beltRear.z - .48f;
-                holdRoute.Add(RampCrewPose.Standing(World(fleet.LoaderPose, exit), -Direction(fleet.LoaderPose)));
-                var walkway = station != null && station.walkway != Vector3.zero ? station.walkway : new Vector3(.54f,0,.6f);
-                exit.x = b.beltRear.x + walkway.x;
-                holdRoute.Add(RampCrewPose.Standing(World(fleet.LoaderPose, exit), Direction(fleet.LoaderPose)));
-                if (access != null)
-                    foreach (var tread in access) holdRoute.Add(RampCrewPose.Standing(World(fleet.LoaderPose,tread),Direction(fleet.LoaderPose)));
-                var top = b.beltRear + new Vector3(0, fleet.LoaderHeight - b.beltRear.y,
-                    Mathf.Sqrt(b.beltLength * b.beltLength - Mathf.Pow(fleet.LoaderHeight - b.beltRear.y,2)));
-                // The stationary loader's authored access strip runs along the right edge of the belt.
-                for (int i = 0; i <= 8; i++)
-                {
-                    float t = Mathf.Lerp(walkway.z / b.beltLength,.91f,i/8f); var at = Vector3.Lerp(b.beltRear,top,t); at.x += walkway.x; at.y += walkway.y;
-                    var p = RampCrewPose.Standing(World(fleet.LoaderPose,at), Direction(fleet.LoaderPose));
-                    if (i >= 7) { var crouch = ReadyHold(); p.hipHeight = crouch.hipHeight; p.lean = crouch.lean; p.kneeling = true; }
-                    holdRoute.Add(p);
-                }
-                var enter = ReadyHold(); enter.position = Plan.door - Plan.inward * .12f; holdRoute.Add(enter);
-                holdRoute.Add(ReadyHold());
+                HoldBoarding(holdRoute);
                 holdDuration = Duration(holdRoute);
             }
             holdTime = Mathf.MoveTowards(holdTime, work ? holdDuration : 0, dt);
@@ -194,6 +158,96 @@ namespace AirCity.Vehicles
             if (!work && done) holdRoute.Clear();
             return done;
         }
+
+        /// <summary>The tractor driver's route from the seat to the cart: seat, step, ground, the corner outside the drawbar,
+        /// the cart stand. The simulation walks it in compressed time; the performance reuses the same points.</summary>
+        public void GroundBoarding(List<RampCrewPose> route, bool load)
+        {
+            route.Clear();
+            var seat = Workstation(fleet.Equipment.Tractor, fleet.Train.Tractor); route.Add(seat);
+            var local = fleet.Equipment.Tractor.crew?.position ?? Vector3.zero;
+            local.x = CartSide > 0 ? fleet.Equipment.Tractor.bounds.max.x + .30f : fleet.Equipment.Tractor.bounds.min.x - .30f; local.y = .25f;
+            var step = RampCrewPose.Standing(World(fleet.Train.Tractor, local), CartSide * Vector3.Cross(Vector3.up, Direction(fleet.Train.Tractor)));
+            step.hipHeight = .70f; route.Add(step);
+            step.position.y = 0; step.hipHeight = .94f; route.Add(step);
+            // Walk outside the drawbar and the cart rather than through either vehicle.
+            var corner = CartStand; corner += Direction(fleet.CartPose) * (fleet.Equipment.Cart.bounds.max.z - CartLocal.z + .55f);
+            route.Add(RampCrewPose.Standing(corner, (CartStand - corner).normalized));
+            route.Add(ReadyGround(load));
+        }
+
+        /// <summary>The loader operator's route from the seat into the hold: seat, step, ground, round the rear, up the
+        /// treads and the walkway beside the belt, through the door, kneeling at the hold stand.</summary>
+        public void HoldBoarding(List<RampCrewPose> route)
+        {
+            route.Clear();
+            route.Add(Workstation(fleet.Equipment.Loader, fleet.LoaderPose));
+            var b = fleet.Equipment.Loader.baggage;
+            var exit = fleet.Equipment.Loader.crew?.position ?? Vector3.zero;
+            exit.x = fleet.Equipment.Loader.bounds.min.x - .25f; exit.y = .30f;
+            var step = RampCrewPose.Standing(World(fleet.LoaderPose, exit), -Vector3.Cross(Vector3.up, Direction(fleet.LoaderPose)));
+            step.hipHeight = .72f; route.Add(step);
+            exit.y = 0; route.Add(RampCrewPose.Standing(World(fleet.LoaderPose, exit), -Direction(fleet.LoaderPose)));
+            var station = fleet.Equipment.Loader.crew;
+            var access = station?.accessSteps;
+            exit.z = access != null && access.Length > 0 ? access[0].z - .4f : b.beltRear.z - .48f;
+            route.Add(RampCrewPose.Standing(World(fleet.LoaderPose, exit), -Direction(fleet.LoaderPose)));
+            var walkway = station != null && station.walkway != Vector3.zero ? station.walkway : new Vector3(.54f,0,.6f);
+            exit.x = b.beltRear.x + walkway.x;
+            route.Add(RampCrewPose.Standing(World(fleet.LoaderPose, exit), Direction(fleet.LoaderPose)));
+            if (access != null)
+                foreach (var tread in access) route.Add(RampCrewPose.Standing(World(fleet.LoaderPose,tread),Direction(fleet.LoaderPose)));
+            var top = b.beltRear + new Vector3(0, fleet.LoaderHeight - b.beltRear.y,
+                Mathf.Sqrt(b.beltLength * b.beltLength - Mathf.Pow(fleet.LoaderHeight - b.beltRear.y,2)));
+            // The stationary loader's authored access strip runs along the right edge of the belt.
+            for (int i = 0; i <= 8; i++)
+            {
+                float t = Mathf.Lerp(walkway.z / b.beltLength,.91f,i/8f); var at = Vector3.Lerp(b.beltRear,top,t); at.x += walkway.x; at.y += walkway.y;
+                var p = RampCrewPose.Standing(World(fleet.LoaderPose,at), Direction(fleet.LoaderPose));
+                if (i >= 7) { var crouch = ReadyHold(); p.hipHeight = crouch.hipHeight; p.lean = crouch.lean; p.kneeling = true; }
+                route.Add(p);
+            }
+            var enter = ReadyHold(); enter.position = Plan.door - Plan.inward * .12f; route.Add(enter);
+            route.Add(ReadyHold());
+        }
+
+        /// <summary>Kneeling working posture inside the hold (hip height and trunk lean) for the configured door height.</summary>
+        public void HoldPosture(out float hipHeight, out float lean) { var p = ReadyHold(); hipHeight = p.hipHeight; lean = p.lean; }
+        /// <summary>Lower end of the belt, where bags are put on and taken off.</summary>
+        public Vector3 BeltFoot => Belt;
+        /// <summary>Top of the belt at the door sill.</summary>
+        public Vector3 BeltTop => Front;
+        /// <summary>Spacing between handlers sharing the cart post (worker 1 stands this far along the cart).</summary>
+        public Vector3 GroundOffsetFor(int worker) => GroundOffset(worker);
+        public Vector3 HoldOffsetFor(int worker) => -Side*(.7f*worker);
+        /// <summary>Simulated seconds of the ground / hold boarding walk (the time a recall takes in the simulation).</summary>
+        public float GroundDuration => groundDuration;
+        public float HoldDuration => holdDuration;
+        /// <summary>The hold handler's kneeling ready pose (worker 0 or 1).</summary>
+        public RampCrewPose HoldIdlePose(int worker) => HoldReadyPose(worker);
+        /// <summary>+1 when the belt is on the cart's right, -1 on its left: the side handlers work from.</summary>
+        public float CartSideOf(int cart)
+        {
+            var pose = fleet.Train.CartAt(cart);
+            return Vector2.Dot(BaggageServicePlan.XZ(Belt) - pose.position, pose.Right) >= 0 ? 1f : -1f;
+        }
+        /// <summary>Ground point beside cart <paramref name="cart"/>, <paramref name="outset"/> metres outside its body on the
+        /// working side, level with cart-local depth <paramref name="localZ"/>.</summary>
+        public Vector3 CartSideStand(int cart, float localZ, float outset = .30f)
+        {
+            var pose = fleet.Train.CartAt(cart); var type = fleet.Equipment.Cart;
+            var local = new Vector3(CartSideOf(cart) > 0 ? type.bounds.max.x + outset : type.bounds.min.x - outset, 0, localZ);
+            return World(pose, local);
+        }
+        /// <summary>Cart-local depth of the part of cart <paramref name="cart"/> nearest the belt foot.</summary>
+        public float CartReachDepth(int cart)
+        {
+            var pose = fleet.Train.CartAt(cart); var c = fleet.Equipment.Cart.baggage;
+            return Mathf.Clamp(Vector2.Dot(BaggageServicePlan.XZ(Belt) - pose.position, pose.facing), c.loadMin.z + .40f, c.loadMax.z - .40f);
+        }
+        public Vector3 CartStandAt(int cart) => CartSideStand(cart, CartReachDepth(cart));
+        /// <summary>Where a handler coming from <paramref name="cartStand"/> stands to use the belt foot.</summary>
+        public Vector3 BeltStandFrom(Vector3 cartStand) => Flat(Belt) + Flat(cartStand - Belt).normalized * .64f;
 
         float Segment(RampCrewPose a, RampCrewPose b) => (Mathf.Max(.35f, Vector3.Distance(a.position,b.position) /
             (Type != null ? Type.boardingSpeed : .9f)) + Quaternion.Angle(a.rotation,b.rotation) / 180f * .3f)/BaggagePacing.WorkRate;

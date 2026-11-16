@@ -86,7 +86,8 @@ namespace AirCity.Airfield
     ///   airport.RunwaysFor(type)              // the runways an aircraft type can use now
     ///
     /// Everything is in the Airport's local space and generated from its data when enabled, so scenes and saves
-    /// only store the layout. The ground is flat for now; terrain flattening comes with the terrain system.
+    /// only store the layout. Runways retain longitudinal grades; connected pavement and ground actors share
+    /// their airport-local support height through PavementElevationAt.
     /// </summary>
     [ExecuteAlways, DisallowMultipleComponent]
     public class Airport : MonoBehaviour
@@ -112,6 +113,14 @@ namespace AirCity.Airfield
         public List<Terminal> terminals = new List<Terminal>();
         [Tooltip("The aircraft types that come here: jet bridges are checked and parked against the ones each stand takes.")]
         public List<AircraftType> aircraftTypes = new List<AircraftType>();
+        [Tooltip("Deicing equipment, storage and fluid deliveries for the drive-through bays.")]
+        public List<DeicingFacility> deicingFacilities = new List<DeicingFacility>();
+        [Tooltip("Shared fluid storage and refill areas, placed separately from the deicing pads.")]
+        public List<DeicingWorkArea> deicingWorkAreas = new List<DeicingWorkArea>();
+        public List<DeicingParkingBay> deicingParkingBays = new List<DeicingParkingBay>();
+        public List<DeicingOutsideAccess> deicingOutsideAccess = new List<DeicingOutsideAccess>();
+        [Tooltip("Deicing purchases, payroll and running costs. Unlimited spending is the sandbox default.")]
+        public DeicingAccounts deicingAccounts = new DeicingAccounts();
 
         [Header("Weather")]
         [SerializeField] SurfaceCondition condition;
@@ -120,6 +129,8 @@ namespace AirCity.Airfield
         [Tooltip("Game seconds per real second while playing (until the game clock exists): weather, grass growth and " +
                  "the depot's vehicles all run on it, so a higher value fast-forwards everything together.")]
         public float timeScale = 1f;
+        // A shared session can step the simulation while presenters still read the common clock speed.
+        [System.NonSerialized] public bool externallySimulated;
         [Tooltip("Where the wind blows from (degrees clockwise from north). Aircraft take off and land into it, so it " +
                  "picks which way each runway is used (AirTraffic.UsedFromStart).")]
         [Range(0f, 360f)] public float windFrom = 270f;
@@ -132,8 +143,104 @@ namespace AirCity.Airfield
         AirportMarshalling marshalling;
         AirportBridges bridges;
         AirportBaggage baggage;
+        AirportDeicing deicing;
         Pavement pavement;
         int layoutVersion, pavementVersion = -1;
+        int elevationVersion = -1;
+        Runway[] elevatedRunways = Array.Empty<Runway>();
+        TaxiwayElevation taxiwayElevation,serviceRoadElevation;
+        TaxiwayBuilder roadElevationBuilder;
+        bool elevatedTaxiways, hasElevatedRunways;
+        StandLayout[] elevatedStands = Array.Empty<StandLayout>();
+        bool hasElevatedStands;
+
+        void CacheElevation()
+        {
+            if(elevationVersion==layoutVersion)return;
+            elevatedRunways=GetComponentsInChildren<Runway>(true).Where(r=>
+                (r.isActiveAndEnabled || r.keepElevationWhileHidden) && (r.gameObject.hideFlags&HideFlags.DontSave)==0).ToArray();
+            hasElevatedRunways=elevatedRunways.Any(r=>Mathf.Abs(r.start.y)>.00001f || Mathf.Abs(r.end.y)>.00001f);
+            elevatedTaxiways=Taxiways.nodes.Any(n=>Mathf.Abs(n.position.y)>.00001f);
+            roadElevationBuilder=new TaxiwayBuilder(Taxiways,elevatedRunways);
+            taxiwayElevation=elevatedTaxiways?roadElevationBuilder.Elevation():null;
+            serviceRoadElevation=roadElevationBuilder.Elevation(true,true);
+            elevatedStands=Taxiways.Layouts().ToArray();
+            hasElevatedStands=elevatedStands.Any(l=>Mathf.Abs(l.stand.position.y)>.00001f);
+            elevationVersion=layoutVersion;
+        }
+        [NonSerialized] public Func<Vector2,float> TerrainHeight;
+        public bool HasElevatedPavement { get {CacheElevation();return hasElevatedRunways || elevatedTaxiways || hasElevatedStands;} }
+
+        /// <summary>Airport-local support height, shared by runway/taxiway meshes, aircraft and vehicles.</summary>
+        public float PavementElevationAt(Vector2 p)
+        {
+            CacheElevation();
+            if(!hasElevatedRunways && !elevatedTaxiways && !hasElevatedStands)return 0f;
+            return SupportElevation(p,taxiwayElevation,elevatedRunways,elevatedStands);
+        }
+
+        internal static float SupportElevation(Vector2 p, TaxiwayElevation profile, IReadOnlyList<Runway> runways,
+            IReadOnlyList<StandLayout> stands = null)
+        {
+            float height=0f;
+            if(profile!=null)profile.TryHeight(p,out height);
+            // The grade has a real terrain collar, not a vertical pavement edge. Its blend also
+            // gives a taxiway leaving the upper threshold a continuous, level apron connection.
+            foreach(var runway in runways)
+                if(runway!=null)
+                {
+                    runway.Locate(new Vector3(p.x,0f,p.y),out float along,out float across);
+                    const float support=14.5f,feather=30f; // Saved region spacing (12.5 m) plus interpolation support.
+                    float half=runway.HalfWidthTotal+(runway.Paved?1f:3f)+support,end=runway.WorkMargin+support;
+                    float away=Mathf.Max(Mathf.Abs(across)-half,-end-along,along-runway.Length-end,0f);
+                    if(away>=feather)continue;
+                    float weight=1f-Mathf.SmoothStep(0f,1f,away/feather);
+                    height=Mathf.Lerp(height,runway.ElevationAt(p,false),weight);
+                }
+            if(stands!=null && stands.Count>0 && (profile==null || !profile.TryHeight(p,out _,0f)))
+                foreach(var stand in stands)
+                {
+                    // Test the convex pad in its own frame; this is also queried by moving actors.
+                    var delta=p-stand.entry;
+                    float across=Vector2.Dot(delta,Geo.Right(stand.axis)),along=Vector2.Dot(delta,stand.axis);
+                    float nearEdge=Mathf.LerpUnclamped(stand.near0,stand.near1,(across-stand.x0)/Mathf.Max(.001f,stand.x1-stand.x0));
+                    const float margin=SurfaceBuilder.Fringe*2f;
+                    if(across<stand.x0-margin || across>stand.x1+margin || along<nearEdge-margin || along>stand.far+margin)continue;
+                    float level=stand.stand.position.y;
+                    if(stand.edge!=null)
+                    {
+                        // A short approach blends the level parking pad into a graded taxilane.
+                        var front=stand.entry+stand.along*Vector2.Dot(p-stand.entry,stand.along);
+                        float near=SupportElevation(front,profile,runways);
+                        float distance=Mathf.Max(0f,Mathf.Abs(Geo.Cross(stand.along,p-stand.entry))-stand.halfWidth);
+                        level=Mathf.Lerp(near,level,Mathf.SmoothStep(0f,1f,distance/12f));
+                    }
+                    return level;
+                }
+            return height;
+        }
+        /// <summary>Service vehicles retain their chosen deck through a crossing. Aircraft use the separate
+        /// ground-pavement query above; an underground road cannot pull an aircraft below its taxiway.</summary>
+        public bool TryRoadElevation(Vector2 p,out float height,float hint=float.NaN)
+        {CacheElevation();return serviceRoadElevation.TryHeight(p,out height,.75f,hint);}
+        public float RoadElevationAt(Vector2 p,float hint=float.NaN)
+        {return TryRoadElevation(p,out float height,hint)?height:PavementElevationAt(p);}
+        public Vector2 RoadGradientAt(Vector2 p,float height)
+        {
+            const float d=.25f;
+            return new Vector2(RoadElevationAt(p+Vector2.right*d,height)-RoadElevationAt(p-Vector2.right*d,height),
+                RoadElevationAt(p+Vector2.up*d,height)-RoadElevationAt(p-Vector2.up*d,height))/(d*2);
+        }
+        public float RoadEdgeElevation(TaxiwayEdge edge,Vector2 p)
+        {CacheElevation();return roadElevationBuilder.RoadHeight(edge,p);}
+
+        public Vector2 PavementGradientAt(Vector2 p)
+        {
+            if(!HasElevatedPavement)return Vector2.zero;
+            const float d=.5f;
+            return new Vector2(PavementElevationAt(p+Vector2.right*d)-PavementElevationAt(p-Vector2.right*d),
+                PavementElevationAt(p+Vector2.up*d)-PavementElevationAt(p-Vector2.up*d))/(d*2f);
+        }
 
         static readonly int WetnessId = Shader.PropertyToID("_AirfieldWetness");
         static readonly int SnowId = Shader.PropertyToID("_AirfieldSnow");
@@ -199,6 +306,9 @@ namespace AirCity.Airfield
 
         /// <summary>Baggage manifests, equipment, stand service and turnaround departure clearance.</summary>
         public AirportBaggage Baggage => baggage ??= new AirportBaggage(this);
+
+        /// <summary>Pad equipment, fluid stocks, deliveries and aircraft spraying.</summary>
+        public AirportDeicing Deicing => deicing ??= new AirportDeicing(this);
 
         /// <summary>Bumped whenever runways, taxiways, stands, aprons or terminals are rebuilt.</summary>
         public int LayoutVersion => layoutVersion;
@@ -401,8 +511,8 @@ namespace AirCity.Airfield
             go.transform.SetParent(transform, false);
             go.SetActive(false);
             var r = go.AddComponent<Runway>();
-            r.start = new Vector3(start.x, 0f, start.z);
-            r.end = new Vector3(end.x, 0f, end.z);
+            r.start = start;
+            r.end = end;
             r.surface = surface;
             r.width = width;
             r.lighting = surface.IsPaved() ? lighting : RunwayLighting.None;
@@ -529,13 +639,14 @@ namespace AirCity.Airfield
             foreach (var r in Runways) r.Simulate(seconds, rate, grow, verges);
             var t = GetComponentInChildren<TaxiwayNetwork>();
             if (t != null) t.Simulate(seconds, rate, grow, verges);
-            if (Baggage.NeedsSimulation)
+            if (Baggage.NeedsSimulation || Deicing.NeedsSimulation)
             {
                 // Arrivals, baggage and departures see each other's progress at the same game-time boundary.
                 for (float left = seconds; left > 0.00001f;)
                 {
                     float dt = Mathf.Min(left, 0.05f); left -= dt;
-                    Maintenance.Simulate(dt); Baggage.Simulate(dt); Traffic.Simulate(dt); Bridges.Simulate(dt);
+                    Maintenance.Simulate(dt); Baggage.Simulate(dt); Deicing.Simulate(dt);
+                    Traffic.Simulate(dt); Bridges.Simulate(dt);
                 }
             }
             else
@@ -555,6 +666,8 @@ namespace AirCity.Airfield
         {
             ApplyGlobals();
             BuildGround();
+            if ((deicingFacilities.Count > 0 || deicingWorkAreas.Count > 0 || deicingParkingBays.Count > 0 || deicingOutsideAccess.Count > 0) && GetComponent<DeicingRig>() == null)
+                gameObject.AddComponent<DeicingRig>();
         }
 
         void OnDisable()
@@ -574,7 +687,7 @@ namespace AirCity.Airfield
                 ApplyGlobals();
                 BuildGround();
             }
-            if (Application.isPlaying) Simulate(Time.deltaTime * timeScale);
+            if (Application.isPlaying && !externallySimulated) Simulate(Time.deltaTime * timeScale);
         }
 
         /// <summary>Shader globals: ground snow depth (cm) and how wet surfaces look (rain, falling or melting

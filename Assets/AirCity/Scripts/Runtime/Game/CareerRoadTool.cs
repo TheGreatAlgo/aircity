@@ -27,7 +27,7 @@ namespace AirCity.Game
             if (!game.State.handsOn) points.Add(game.State.Site.Entrance);
             Status = "Click road corners, then finish on the existing public road. Esc cancels; right-click undoes.";
             var entrance = game.State.Site.Entrance;
-            game.view.FrameRoad(entrance, new Vector2(ValleyWorld.RoadX, entrance.y), game.State.Site.elevation);
+            game.view.FrameRoad(entrance, new Vector2(game.State.world.RoadAt(entrance.y), entrance.y), game.State.Site.elevation);
             if (line == null)
             {
                 var go = new GameObject("Access road preview"); go.transform.SetParent(transform, false);
@@ -56,7 +56,7 @@ namespace AirCity.Game
             {
                 Status = "Click the airport end of your road, beside the future reception building.";
                 Price = 0; line.enabled = false;
-                if (mouse.leftButton.wasPressedThisFrame && game.State.Site.Parcel.Contains(p)) { points.Add(p); line.enabled = true; }
+                if (mouse.leftButton.wasPressedThisFrame && game.State.BuildableBounds.Contains(p)) { points.Add(p); line.enabled = true; }
                 return;
             }
             bool snapped = PublicRoadLayout.TrySnap(game.State.world, p, 22f, out var snap);

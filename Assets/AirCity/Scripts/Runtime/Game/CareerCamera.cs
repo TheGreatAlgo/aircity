@@ -12,8 +12,12 @@ namespace AirCity.Game
         public ValleyView valley;
         public bool PointerOverHud { get; set; }
         public bool KeyboardCaptured { get; set; }
+        public bool PlacementTakesScroll { get; set; }
         float targetDistance;
         Camera cam;
+
+        public void FocusPoint(Vector3 point, float range, float tilt = 50f, float bearing = 0f)
+        { pivot = point; distance = targetDistance = range; pitch = tilt; yaw = bearing; Apply(); }
 
         public void Frame(AirportSite site)
         {
@@ -40,7 +44,8 @@ namespace AirCity.Game
                 if (mouse.rightButton.isPressed) { yaw += delta.x * .23f; pitch = Mathf.Clamp(pitch - delta.y * .2f, 18f, 85f); }
                 if (mouse.middleButton.isPressed) Pan(-delta.x * distance * .0014f, -delta.y * distance * .0014f);
                 float scroll = Mathf.Clamp(mouse.scroll.ReadValue().y, -4f, 4f);
-                targetDistance = Mathf.Clamp(targetDistance * Mathf.Pow(1.22f, -scroll), 35f, 7500f);
+                if (!PlacementTakesScroll)
+                    targetDistance = Mathf.Clamp(targetDistance * Mathf.Pow(1.22f, -scroll), 35f, 7500f);
             }
             if (keys != null && !KeyboardCaptured)
             {

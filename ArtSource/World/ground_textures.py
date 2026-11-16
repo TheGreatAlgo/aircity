@@ -35,14 +35,15 @@ def save(name, maps, tint=(1, 1, 1)):
 def main():
     OUT.mkdir(parents=True, exist_ok=True)
     save("ForestFloor", shared.source_maps("polyhaven", "forest_leaves_02"), (.8, .8, .8))
-    save("RockSurface", shared.source_maps("polyhaven", "rock_01"), (.85, .85, .85))
+    save("RockSurface", shared.source_maps("polyhaven", "rock_face_03"), (.84, .88, .94))
     grass = shared.source_maps("ambientcg", "Grass004")
     save("Meadow", grass, (.78, .82, .8))
     save("DryMeadow", grass, (.95, .84, .66))
     (OUT / "sources.json").write_text(json.dumps({
         "license": "CC0-1.0", "license_url": "https://polyhaven.com/license",
         "ForestFloor": "https://polyhaven.com/a/forest_leaves_02",
-        "RockSurface": "https://polyhaven.com/a/rock_01",
+        "RockSurface": "https://polyhaven.com/a/rock_face_03",
+        "RockSurface_authors": "Dario Barresi (photography), Rico Cilliers (processing)",
         "Meadow": "https://ambientcg.com/view?id=Grass004",
         "DryMeadow": "Grass004 with restrained dry-grass exposure tint",
         "generator": "ArtSource/World/ground_textures.py",

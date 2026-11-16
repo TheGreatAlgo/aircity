@@ -54,10 +54,10 @@ namespace AirCity.Vehicles
         }
 
         public static VehiclePath Vehicle(BaggageVehiclePose from,BaggageVehiclePose to,VehicleType type,
-            Func<BaggageVehiclePose,VehicleType,bool> clear) => Search(from,to,type.turnRadius,type.transitSpeed,type,clear,null);
+            Func<BaggageVehiclePose,VehicleType,bool> clear,int maximumExpansions=6000) => Search(from,to,type.turnRadius,type.transitSpeed,type,clear,null,maximumExpansions);
 
         static VehiclePath Search(BaggageVehiclePose from,BaggageVehiclePose to,float radius,float speed,VehicleType type,
-            Func<BaggageVehiclePose,VehicleType,bool> clear,BaggageTrain train)
+            Func<BaggageVehiclePose,VehicleType,bool> clear,BaggageTrain train,int maximumExpansions=6000)
         {
             var queue=new Queue(); var best=new Dictionary<(int,int,int,int,int),float>();
             float margin=Mathf.Max(radius*6f,train != null ? StandEquipmentLayout.TrainBounds(train.TractorType,train.CartType,train.CartCount).size.z*2 : type.Length*2);
@@ -96,7 +96,7 @@ namespace AirCity.Vehicles
             }
             var root=new Node { pose=from,train=train,score=Heuristic(from) }; queue.Add(root); best[Key(root)]=0;
             // A bounded apron neighbourhood keeps an impossible local manoeuvre from searching the airport graph.
-            int remaining=6000;
+            int remaining=Mathf.Max(0,maximumExpansions);
             while (queue.Count>0 && remaining-->0)
             {
                 var node=queue.Take(); if (best.TryGetValue(Key(node),out float cost) && cost<node.cost-.01f) continue;

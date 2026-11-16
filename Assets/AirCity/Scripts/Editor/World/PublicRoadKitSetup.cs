@@ -86,7 +86,9 @@ namespace AirCity.EditorTools.World
             Part("Asphalt", geometry.pavement, rural.asphalt); Part("Shoulders", geometry.shoulders, rural.shoulder);
             Part("Lanes", geometry.markings, rural.markings);
             Part("Structures", geometry.structures, WorldAssetSetup.SolidMaterial("BridgeConcrete", new Color(.43f, .45f, .43f)));
-            root.AddComponent<PublicRoadSignalsView>().Build(graph, AssetDatabase.LoadAssetAtPath<GameObject>(WorldAssetSetup.SignalPath));
+            Part("Kerbs", geometry.kerbMesh, WorldAssetSetup.KerbMaterial());
+            Part("Median islands", geometry.medianGrass, WorldAssetSetup.SolidMaterial("MedianGrass", new Color(.33f, .45f, .22f)));
+            root.AddComponent<PublicRoadSignalsView>().Build(graph, AssetDatabase.LoadAssetAtPath<GameObject>(WorldAssetSetup.SignalPath), geometry.StopLine);
             return root;
         }
     }

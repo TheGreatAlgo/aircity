@@ -87,11 +87,15 @@ namespace AirCity.Dev
             SetPaused(pause);
         }
 
+        bool previousSessionPause;
+        AirCity.Game.CareerGame Session => Airport != null ? Airport.GetComponentInParent<AirCity.Game.CareerGame>() : null;
+
         public void Close()
         {
             if (tool != null && (tool.Tool == DevTool.Bridge || tool.Tool == DevTool.Stand)) tool.SetTool(DevTool.Select);
             preview.Dispose(); handles.Clear();
-            if (pausedByUs && Airport != null && Mathf.Approximately(Airport.timeScale, 0f)) Airport.timeScale = previousSpeed;
+            if (pausedByUs && Session != null) { if (Session.Paused) Session.Paused = previousSessionPause; }
+            else if (pausedByUs && Airport != null && Mathf.Approximately(Airport.timeScale, 0f)) Airport.timeScale = previousSpeed;
             pausedByUs = false;
             IsOpen = false; DevGui.GateDesignerOpen = false; DevGui.KeyboardCaptured = false;
         }
@@ -100,6 +104,12 @@ namespace AirCity.Dev
         {
             pause = value;
             if (Airport == null) return;
+            if (Session != null)
+            {
+                if (value && !pausedByUs) { previousSessionPause = Session.Paused; Session.Paused = true; pausedByUs = true; }
+                else if (!value && pausedByUs) { if (Session.Paused) Session.Paused = previousSessionPause; pausedByUs = false; }
+                return;
+            }
             if (value && !pausedByUs) { previousSpeed = Airport.timeScale; Airport.timeScale = 0f; pausedByUs = true; }
             else if (!value && pausedByUs)
             { if (Mathf.Approximately(Airport.timeScale, 0f)) Airport.timeScale = previousSpeed; pausedByUs = false; }

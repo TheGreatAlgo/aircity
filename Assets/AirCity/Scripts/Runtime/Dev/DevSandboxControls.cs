@@ -43,7 +43,7 @@ namespace AirCity.Dev
         /// <summary>Why the last push-back or park didn't happen (cleared when the selection changes).</summary>
         public string Message { get; private set; }
 
-        public Airport Airport => airport != null ? airport : airport = FindAnyObjectByType<Airport>();
+        public Airport Airport => GetComponent<DevAirfieldTool>()?.game is AirCity.Game.CareerGame game ? game.Airport : airport != null ? airport : airport = FindAnyObjectByType<Airport>();
 
         /// <summary>On a flight (taxiing, flying): its flight moves it and sets its lights.</summary>
         bool Flying(Aircraft.Aircraft a) => a != null && Airport != null && Airport.Traffic.FlightOf(a) != null;

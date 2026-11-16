@@ -1,0 +1,34 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9bb4dca75c402445da52604d2b0934a6, type: 3}
+  m_Name: DeicingAssets
+  m_EditorClassIdentifier: AirCity.Runtime::AirCity.Vehicles.DeicingAssets
+  truckType: {fileID: -3326733738379100494, guid: 649bb9f49d90948c8956a6d38926361c, type: 3}
+  tankType: {fileID: -3326733738379100494, guid: df906b853c1c64ebb8ad9124a2e05569, type: 3}
+  truckPrefab: {fileID: 1798952940571378760, guid: 627111e57978a4990a1b42f7cb20504b, type: 3}
+  tankPrefab: {fileID: 750417164747023286, guid: cf0b298ff800842f28becf0ae735eb6e, type: 3}
+  tankerType: {fileID: -3326733738379100494, guid: 14545edd1cfa54697a3f77d9475a69f0, type: 3}
+  recyclerType: {fileID: -3326733738379100494, guid: 2e908cea18bd543308ec09e00a1d2e22, type: 3}
+  tankerPrefab: {fileID: 6255772187898620471, guid: f55265cdbf9ff42f98ed6c990573f9b1, type: 3}
+  recyclerPrefab: {fileID: 8428026810950407294, guid: c44658acf91204e63a7bd5ce915e7cae, type: 3}
+  sprayMaterial: {fileID: 2100000, guid: ab5847705c2794121880f17672bafde4, type: 2}
+  boomRestReach: 7.4242845
+  boomLowerLength: 4.0447497
+  boomUpperLength: 3.4
+  boomLowerRestAngle: 8.5307665
+  boomLiftPivot: {x: 0, y: 2.8, z: 1.2}
+  cabinNozzleOffset: {x: 0, y: 0.85, z: 0.85}
+  refillPoint: {x: -1.35, y: 1.42, z: -0.85}
+  tankPumpPoint: {x: -2.12, y: 1.43, z: 6.02}
+  tankerHosePoint: {x: -1.25, y: 1, z: -2}
+  tankDeliveryPoint: {x: 2.42, y: 0.86, z: 1.51}
+  boomExtension: 3

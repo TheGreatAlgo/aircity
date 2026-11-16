@@ -10,7 +10,6 @@ namespace AirCity.World
     {
         public struct Weights { public float grass, earth, road, dry, rock, litter; }
         struct Cover { public Vector2 point; }
-        struct Road { public Vector2 a, b; public float halfWidth; }
 
         public static float[,,] Paint(ValleyWorld world, PublicRoadGeometry roads, int resolution)
             => PaintRegion(world, roads, resolution, new RectInt(0, 0, resolution, resolution));
@@ -33,8 +32,8 @@ namespace AirCity.World
                 Mathf.Max(0, Mathf.Min(resolution, region.yMax) - Mathf.Max(0, region.yMin)));
             if (region.width == 0 || region.height == 0) return new float[0, 0, 6];
             using var heights = new NativeArray<float>(world.heights, Allocator.TempJob);
-            using var edits = world.disturbance != null && world.disturbance.Length == world.heights.Length ? new NativeArray<float>(world.disturbance, Allocator.TempJob) :
-                new NativeArray<float>(world.heights.Length, Allocator.TempJob);
+            using var waterHeights = world.HasInlandWater ? new NativeArray<float>(world.InlandSurfaceHeights, Allocator.TempJob) :
+                new NativeArray<float>(0, Allocator.TempJob);
             using var canopy = new NativeArray<float>(world.heights.Length, Allocator.TempJob);
             var treeList = new System.Collections.Generic.List<Cover>();
             float metres = ValleyWorld.Size / (resolution - 1);
@@ -47,14 +46,11 @@ namespace AirCity.World
             foreach (var tree in world.trees)
                 if (!tree.removed && coverBounds.Contains(tree.position)) treeList.Add(new Cover { point = tree.position });
             using var treeData = new NativeArray<Cover>(treeList.ToArray(), Allocator.TempJob);
-            var roadList = new System.Collections.Generic.List<Road>();
-            foreach (var link in roads.links) if (link.structure == RoadStructure.Ground) roadList.Add(new Road { a = link.a, b = link.b, halfWidth = link.halfWidth });
-            using var roadData = new NativeArray<Road>(roadList.ToArray(), Allocator.TempJob);
             using var weights = new NativeArray<Weights>(region.width * region.height, Allocator.TempJob);
             var cover = new CanopyJob { trees = treeData, canopy = canopy }.Schedule();
-            new PaintJob { heights = heights, edits = edits, canopy = canopy, roads = roadData, output = weights,
+            new PaintJob { heights = heights, waterHeights = waterHeights, canopy = canopy, output = weights,
                 resolution = resolution, width = region.width, x0 = region.x, z0 = region.y,
-                seed = world.seed }.Schedule(weights.Length, 256, cover).Complete();
+                seed = world.seed, river = world.River, preset = world.preset, hasRiver = world.HasRiver, hasOcean = world.HasOcean, seaLevel = world.SeaLevel }.Schedule(weights.Length, 256, cover).Complete();
             var result = new float[region.height, region.width, 6];
             for (int z = 0; z < region.height; z++)
             for (int x = 0; x < region.width; x++)
@@ -91,15 +87,18 @@ namespace AirCity.World
         [BurstCompile]
         struct PaintJob : IJobParallelFor
         {
-            [ReadOnly] public NativeArray<float> heights, edits, canopy;
-            [ReadOnly] public NativeArray<Road> roads;
+            [ReadOnly] public NativeArray<float> heights, waterHeights, canopy;
             [WriteOnly] public NativeArray<Weights> output;
             public int resolution, seed, width, x0, z0;
+            public RiverCourse river;
+            public bool hasRiver, hasOcean;
+            public float seaLevel;
+            public RegionPreset preset;
             public void Execute(int index)
             {
                 var p = new Vector2((index % width + x0) / (float)(resolution - 1) * ValleyWorld.Size - ValleyWorld.Size * .5f,
                     (index / width + z0) / (float)(resolution - 1) * ValleyWorld.Size - ValleyWorld.Size * .5f);
-                float h = Sample(heights, p), cut = Sample(edits, p), woods = Sample(canopy, p);
+                float h = Sample(heights, p), woods = Sample(canopy, p);
                 const float spacing = ValleyWorld.Size / (ValleyWorld.Resolution - 1);
                 float dx = (Sample(heights, p + Vector2.right * spacing) - Sample(heights, p - Vector2.right * spacing)) / (spacing * 2f);
                 float dz = (Sample(heights, p + Vector2.up * spacing) - Sample(heights, p - Vector2.up * spacing)) / (spacing * 2f);
@@ -109,24 +108,44 @@ namespace AirCity.World
                 float broad = Noise((p + warp) / 270f), patches = Noise((p + warp) / 38f + new Vector2(51f, 12f));
                 float rock = Mathf.Clamp01(steep * .9f + Smooth(240f, 440f, h) * .65f);
                 rock *= Mathf.Lerp(.65f, 1f, patches);
-                float riverX = -1530f + Mathf.Sin(p.y * .0011f + (seed % 97) * .02f) * 130f;
-                float bank = 1f - Smooth(110f, 180f, Mathf.Abs(p.x - riverX));
-                float earth = Mathf.Clamp01(cut * .85f + bank * .65f + Smooth(.62f, .85f, patches) * .25f) * (1f - rock);
+                float bank = hasRiver ? 1f - Smooth(river.halfWidth + 40f, river.halfWidth + 110f, Mathf.Abs(p.x - river.X(p.y))) : 0f;
+                if (hasOcean) bank = Mathf.Max(bank, 1f - Smooth(seaLevel + 1f, seaLevel + 11f, h));
+                float inland = WaterLevel(waterHeights, p);
+                if (inland > 0f) bank = Mathf.Max(bank, 1f - Smooth(inland + .5f, inland + 5f, h));
+                float earth = Mathf.Clamp01(bank * .65f + Smooth(.62f, .85f, patches) * .25f) * (1f - rock);
                 float remaining = 1f - rock - earth;
-                float litter = woods * Mathf.Lerp(.62f, .94f, patches) * (1f - cut) * remaining;
+                float litter = woods * Mathf.Lerp(.62f, .94f, patches) * remaining;
                 remaining -= litter;
                 float dry = Mathf.Clamp01(Smooth(.25f, .8f, broad) * .45f + Smooth(.4f, .8f, patches) * .35f) * remaining;
-                float grass = remaining - dry, road = 0f;
-                foreach (var link in roads)
+                float grass = remaining - dry;
+                if (preset == RegionPreset.Desert)
                 {
-                    var d = link.b - link.a;
-                    float t = Mathf.Clamp01(Vector2.Dot(p - link.a, d) / Mathf.Max(.001f, d.sqrMagnitude));
-                    float distance = Vector2.Distance(p, link.a + d * t);
-                    road = Mathf.Max(road, 1f - Smooth(link.halfWidth - .5f, link.halfWidth + 2f, distance));
+                    // Sand and weathered sandstone dominate arid land; no blanket of meadow grass.
+                    earth += grass * .52f + litter * .7f;
+                    dry += grass * .48f + litter * .3f;
+                    grass = 0f; litter = 0f;
                 }
-                float land = 1f - road;
-                output[index] = new Weights { grass = grass * land, earth = earth * land, road = road, dry = dry * land, rock = rock * land, litter = litter * land };
+                else if (preset == RegionPreset.Tropical)
+                {
+                    grass += dry * .72f; dry *= .28f;
+                }
+                output[index] = new Weights { grass = grass, earth = earth, road = 0f, dry = dry, rock = rock, litter = litter };
             }
+            static float WaterLevel(NativeArray<float> field, Vector2 point)
+            {
+                if (field.Length == 0) return 0f;
+                const int res = ValleyWorld.Resolution;
+                float x = Mathf.Clamp((point.x + ValleyWorld.Size*.5f)/ValleyWorld.Size*(res-1), 0f, res-1.001f);
+                float z = Mathf.Clamp((point.y + ValleyWorld.Size*.5f)/ValleyWorld.Size*(res-1), 0f, res-1.001f);
+                int ix = (int)x, iz = (int)z; float u = x-ix, v = z-iz;
+                float a = field[iz*res+ix], b = field[iz*res+ix+1];
+                float c = field[(iz+1)*res+ix], d = field[(iz+1)*res+ix+1];
+                float wa = a > 0f ? (1f-u)*(1f-v) : 0f, wb = b > 0f ? u*(1f-v) : 0f;
+                float wc = c > 0f ? (1f-u)*v : 0f, wd = d > 0f ? u*v : 0f;
+                float weight = wa+wb+wc+wd;
+                return weight > .000001f ? (a*wa+b*wb+c*wc+d*wd)/weight : 0f;
+            }
+
             static float Sample(NativeArray<float> field, Vector2 point)
             {
                 const int res = ValleyWorld.Resolution;

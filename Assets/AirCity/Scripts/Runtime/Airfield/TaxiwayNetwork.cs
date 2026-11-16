@@ -1,11 +1,18 @@
 using System;
+using System.Linq;
 using System.Collections.Generic;
 using AirCity.Aircraft;
 using AirCity.Airfield.Building;
+using AirCity.World;
 using UnityEngine;
 
 namespace AirCity.Airfield
 {
+    public interface IVehicleRouteBlocker
+    {
+        bool Blocked(Vector3 from, Vector3 to);
+    }
+
     [Serializable]
     public class TaxiwayNode
     {
@@ -33,6 +40,10 @@ namespace AirCity.Airfield
                  "airport's own vehicles, with white markings and no lights or verges; streets and highways come with " +
                  "road traffic. Across a paved apron a road is only its paint.")]
         public RoadClass road;
+        [Tooltip("Keep the surrounding natural ground instead of drawing mown grass bands.")]
+        public bool naturalEdges;
+        public RoadStructure structure;
+        public AlignmentShape alignment;
         [Tooltip("Grass length (cm) on the verges either side (paved taxiways). Grows; the mowers cut it.")]
         [Min(0f)] public float vergeGrass = RunwayRules.CutGrass;
         /// <summary>The ploughs or mowers assigned to this edge (strip coordinates from node a), or null.</summary>
@@ -45,13 +56,13 @@ namespace AirCity.Airfield
         public bool IsRoad => road != RoadClass.None;
 
         /// <summary>Paved taxiways have mown verges; roads and unpaved taxiways don't.</summary>
-        public bool HasVerges => !IsRoad && surface.IsPaved();
+        public bool HasVerges => !naturalEdges && !IsRoad && surface.IsPaved();
         public float VergeHalfWidth => RunwayRules.TaxiwayVerge(width);
 
         internal TaxiwayEdge CopyState(int id, int a, int b) => new TaxiwayEdge
         {
             id = id, a = a, b = b, width = width, surface = surface, lit = lit, wear = wear, snow = snow, grass = grass,
-            road = road, vergeGrass = vergeGrass,
+            road = road, naturalEdges = naturalEdges, vergeGrass = vergeGrass,structure=structure,alignment=alignment,
         };
     }
 
@@ -82,13 +93,16 @@ namespace AirCity.Airfield
         public List<Stand> stands = new List<Stand>();
         [SerializeField] int nextId = 1;
 
-        AirfieldPart surfacePart, paintPart, glowPart, fixturePart, vergePart;
+        AirfieldPart surfacePart, paintPart, glowPart, fixturePart, vergePart,structurePart;
+        Material structureMaterial;
+        public IReadOnlyList<BuiltSurfaceMap.Triangle> GroundOwnership {get;private set;}
         readonly SurfaceState state = new SurfaceState(), vergeState = new SurfaceState();
         List<Owner> owners = new List<Owner>();
         List<TaxiwayEdge> vergeOwners = new List<TaxiwayEdge>();
         bool dirty;
 
-        public Airport Airport => GetComponentInParent<Airport>();
+        [NonSerialized] internal Airport constructionAirport;
+        public Airport Airport => constructionAirport!=null ? constructionAirport : GetComponentInParent<Airport>();
 
         // ------------------------------------------------------------------ graph
 
@@ -101,7 +115,14 @@ namespace AirCity.Airfield
                 if (e.a == node || e.b == node) yield return e;
         }
 
-        public float EdgeLength(TaxiwayEdge e) => Vector2.Distance(Geo.XZ(Node(e.a).position), Geo.XZ(Node(e.b).position));
+        readonly Dictionary<int,(Vector3 a,Vector3 b,AlignmentShape shape,Alignment3D path)> paths=new Dictionary<int,(Vector3,Vector3,AlignmentShape,Alignment3D)>();
+        public Alignment3D Path(TaxiwayEdge e)
+        {
+            var a=Node(e.a).position;var b=Node(e.b).position;
+            if(paths.TryGetValue(e.id,out var old)&&old.a==a&&old.b==b&&old.shape.Equals(e.alignment))return old.path;
+            var path=new Alignment3D(a,b,e.alignment);paths[e.id]=(a,b,e.alignment,path);return path;
+        }
+        public float EdgeLength(TaxiwayEdge e)=>Path(e).Length;
 
         /// <summary>A node's ground position (x, z).</summary>
         public Vector2 At(int node) => Geo.XZ(Node(node).position);
@@ -111,9 +132,51 @@ namespace AirCity.Airfield
         public int AddNode(Vector3 position, Runway runway = null)
         {
             if (runway != null) position = runway.ClosestOnCentreline(position);
-            var n = new TaxiwayNode { id = nextId++, position = new Vector3(position.x, 0f, position.z), runway = runway };
+            var n = new TaxiwayNode { id = nextId++, position = position, runway = runway };
             nodes.Add(n);
             return n.id;
+        }
+
+        internal TaxiwayNetwork ConstructionCopy()
+        {
+            var go = new GameObject("Construction graph") { hideFlags = HideFlags.HideAndDontSave };
+            go.SetActive(false);
+            var copy = go.AddComponent<TaxiwayNetwork>();
+            copy.nextId = nextId; copy.constructionAirport=Airport;
+            foreach (var n in nodes) copy.nodes.Add(new TaxiwayNode { id = n.id, position = n.position, runway = n.runway });
+            foreach (var e in edges) copy.edges.Add(e.CopyState(e.id, e.a, e.b));
+            copy.stands.AddRange(stands);
+            return copy;
+        }
+
+        internal sealed class GraphSnapshot
+        {
+            public readonly List<TaxiwayNode> nodes=new List<TaxiwayNode>();
+            public readonly List<TaxiwayEdge> edges=new List<TaxiwayEdge>();
+            public int next;
+        }
+        internal GraphSnapshot Snapshot()
+        {
+            var data=new GraphSnapshot {next=nextId};
+            foreach(var n in nodes)data.nodes.Add(new TaxiwayNode {id=n.id,position=n.position,runway=n.runway});
+            foreach(var e in edges)data.edges.Add(e.CopyState(e.id,e.a,e.b));return data;
+        }
+        internal void Apply(GraphSnapshot data)
+        {
+            var oldNodes=nodes.ToDictionary(n=>n.id);var oldEdges=edges.ToDictionary(e=>e.id);
+            nodes.Clear();edges.Clear();
+            foreach(var n in data.nodes)
+            {
+                if(!oldNodes.TryGetValue(n.id,out var node))node=new TaxiwayNode {id=n.id};
+                node.position=n.position;node.runway=n.runway;nodes.Add(node);
+            }
+            foreach(var e in data.edges)
+            {
+                if(!oldEdges.TryGetValue(e.id,out var edge))edge=e.CopyState(e.id,e.a,e.b);
+                else{edge.a=e.a;edge.b=e.b;edge.width=e.width;edge.surface=e.surface;edge.lit=e.lit;edge.road=e.road;edge.naturalEdges=e.naturalEdges;edge.structure=e.structure;edge.alignment=e.alignment;}
+                edges.Add(edge);
+            }
+            nextId=data.next;paths.Clear();
         }
 
         /// <summary>The nearest node within radius (metres), or null.</summary>
@@ -143,13 +206,13 @@ namespace AirCity.Airfield
             {
                 var a = Geo.XZ(Node(e.a).position);
                 var b = Geo.XZ(Node(e.b).position);
-                var c = Geo.ClosestOnSegment(Geo.XZ(p), a, b, out _);
+                var path=Path(e);float t=path.ClosestParameter(Geo.XZ(p));var c=path.Horizontal(t);
                 float d = Vector2.Distance(c, Geo.XZ(p));
                 if (d <= bestD)
                 {
                     bestD = d;
                     edge = e;
-                    point = Geo.X0Z(c);
+                    point = path.Position(t);
                 }
             }
             return edge != null;
@@ -158,13 +221,17 @@ namespace AirCity.Airfield
         /// <summary>Split an edge at a point (projected onto it); returns the new node's id.</summary>
         public int SplitEdge(TaxiwayEdge e, Vector3 at)
         {
-            var a = Geo.XZ(Node(e.a).position);
-            var b = Geo.XZ(Node(e.b).position);
-            var c = Geo.ClosestOnSegment(Geo.XZ(at), a, b, out _);
-            int mid = AddNode(Geo.X0Z(c));
-            edges.Remove(e);
-            edges.Add(e.CopyState(nextId++, e.a, mid));
-            edges.Add(e.CopyState(nextId++, mid, e.b));
+            var path=Path(e);float t=path.ClosestParameter(Geo.XZ(at));var c=path.Horizontal(t);float height=path.Height(t);
+            var airport=Airport;
+            if(airport!=null && !e.alignment.curved && !e.alignment.smooth && e.structure==RoadStructure.Ground)
+            {
+                var profile=new TaxiwayBuilder(this,airport.Runways).Elevation();
+                if(profile.TryHeight(c,out float engineered))height=engineered;
+            }
+            if(t<.00001f)return e.a;if(t>.99999f)return e.b;
+            int mid=AddNode(Geo.X0Z(c,height));edges.Remove(e);
+            var left=e.CopyState(nextId++,e.a,mid);left.alignment=path.Slice(0,t);edges.Add(left);
+            var right=e.CopyState(nextId++,mid,e.b);right.alignment=path.Slice(t,1);edges.Add(right);
             return mid;
         }
 
@@ -174,7 +241,7 @@ namespace AirCity.Airfield
         /// matches the pavement. Returns the edges made (a crossing makes several).
         /// </summary>
         public List<TaxiwayEdge> Connect(int a, int b, float width, PavementSurface surface, bool lit = false,
-            RoadClass road = RoadClass.None)
+            RoadClass road = RoadClass.None, bool naturalEdges = false,RoadStructure structure=RoadStructure.Ground,AlignmentShape alignment=default)
         {
             var made = new List<TaxiwayEdge>();
             var na = Node(a);
@@ -185,26 +252,41 @@ namespace AirCity.Airfield
             float length = Vector2.Distance(pa, pb);
             if (length < 1f) return made;
 
-            var stops = new List<(float t, int node)> { (0f, a), (1f, b) };
-            foreach (var e in edges.ToArray())
+            var path=new Alignment3D(na.position,nb.position,alignment);
+            var crossings=new List<(TaxiwayEdge edge,float t,Vector3 point)>();
+            foreach(var edge in edges)
             {
-                if (e.a == a || e.a == b || e.b == a || e.b == b) continue;
-                var ea = Geo.XZ(Node(e.a).position);
-                var eb = Geo.XZ(Node(e.b).position);
-                if (!Geo.Segments(pa, pb, ea, eb, 0.5f, out var at)) continue;
-                stops.Add((Vector2.Distance(pa, at) / length, SplitEdge(e, Geo.X0Z(at))));
-            }
-            var airport = Airport;
-            if (airport != null)
-                foreach (var r in airport.Runways)
+                if(edge.a==a||edge.a==b||edge.b==a||edge.b==b)continue;
+                var existing=Path(edge);
+                foreach(var span in path.Spans())foreach(var other in existing.Spans())
                 {
-                    if (na.runway == r || nb.runway == r) continue;
-                    var ra = Geo.XZ(r.start);
-                    var rb = Geo.XZ(r.end);
-                    if (!Geo.Lines(pa, pb - pa, ra, rb - ra, out float t, out float u)) continue;
-                    if (t * length < 1f || (1f - t) * length < 1f || u < 0f || u > 1f) continue;
-                    stops.Add((t, AddNode(Geo.X0Z(Vector2.Lerp(pa, pb, t)), r)));
+                    if(!Geo.Segments(Geo.XZ(span.a),Geo.XZ(span.b),Geo.XZ(other.a),Geo.XZ(other.b),.001f,out var at))continue;
+                    float t=path.ClosestParameter(at),u=existing.ClosestParameter(at);
+                    if(t<.0001f||t>.9999f||u<.0001f||u>.9999f)continue;
+                    float h=path.Height(t),height=existing.Height(u),gap=Mathf.Abs(h-height);
+                    if(gap>.35f){if(gap<PublicRoadNetwork.CrossingClearance)return made;continue;}
+                    if(!crossings.Exists(c=>c.edge==edge&&Mathf.Abs(c.t-t)*path.Length<.1f))crossings.Add((edge,t,Geo.X0Z(at,height)));
                 }
+            }
+            var runwayCrossings=new List<(float t,Runway runway,Vector3 point)>();var airport=Airport;
+            if(airport!=null)foreach(var runway in airport.Runways)
+            {
+                if(na.runway==runway||nb.runway==runway)continue;
+                foreach(var span in path.Spans())
+                {
+                    if(!Geo.Segments(Geo.XZ(span.a),Geo.XZ(span.b),Geo.XZ(runway.start),Geo.XZ(runway.end),.001f,out var at))continue;
+                    float t=path.ClosestParameter(at),gap=Mathf.Abs(path.Height(t)-runway.ElevationAt(at));
+                    if(gap>.35f){if(gap<PublicRoadNetwork.CrossingClearance)return made;continue;}
+                    runwayCrossings.Add((t,runway,Geo.X0Z(at,path.Height(t))));
+                }
+            }
+            var stops=new List<(float t,int node)> {(0,a),(1,b)};
+            foreach(var crossing in crossings)
+            {
+                var edge=edges.Contains(crossing.edge)?crossing.edge:edges.Find(e=>Path(e).DistanceTo(Geo.XZ(crossing.point))<.1f && Mathf.Abs(Path(e).Height(Path(e).ClosestParameter(Geo.XZ(crossing.point)))-crossing.point.y)<.35f);
+                if(edge!=null)stops.Add((crossing.t,SplitEdge(edge,crossing.point)));
+            }
+            foreach(var crossing in runwayCrossings)stops.Add((crossing.t,AddNode(crossing.point,crossing.runway)));
             stops.Sort((x, y) => x.t.CompareTo(y.t));
             for (int i = 0; i < stops.Count - 1; i++)
             {
@@ -216,16 +298,168 @@ namespace AirCity.Airfield
                     existing.width = width;
                     existing.surface = surface;
                     existing.road = road;
+                    existing.naturalEdges = naturalEdges;
+                    existing.structure=structure;existing.alignment=path.Slice(stops[i].t,stops[i+1].t);
                     existing.lit = lit && surface.IsPaved() && road == RoadClass.None;
                     made.Add(existing);
                     continue;
                 }
-                var edge = new TaxiwayEdge { id = nextId++, a = from, b = to, width = width, surface = surface, road = road,
+                var edge = new TaxiwayEdge { id = nextId++, a = from, b = to, width = width, surface = surface, road = road, naturalEdges = naturalEdges,
+                    structure=structure,alignment=path.Slice(stops[i].t,stops[i+1].t),
                     lit = lit && surface.IsPaved() && road == RoadClass.None };
                 edges.Add(edge);
                 made.Add(edge);
             }
             return made;
+        }
+
+        /// <summary>The smallest angle (degrees) at which a new taxiway or road may meet another section, or bend.</summary>
+        public const float MinJoinAngle = 15f;
+
+        /// <summary>
+        /// Why a new taxiway or road from a to b (this wide) would make a poor junction, or null. It is laid out the way
+        /// Connect would lay it (ends on a node, or splitting the section they're on; crossings split), without changing
+        /// anything. Each junction it makes or changes must have its sections meeting at least MinJoinAngle apart, and
+        /// every section must be long enough for the junctions at both its ends (JunctionShape), so a road crossing
+        /// a couple of metres from a junction is refused instead of overlapping it. Nodes on runways aren't checked.
+        /// </summary>
+        public string JoinProblem(Vector2 a, int nodeA, TaxiwayEdge edgeA, Vector2 b, int nodeB, TaxiwayEdge edgeB, float width,
+            RoadClass road = RoadClass.None)
+        {
+            if (Vector2.Distance(a, b) < 1f) return null;
+            var pos = new Dictionary<int, Vector2>();
+            var runwayNode = new HashSet<int>();
+            var removed = new HashSet<TaxiwayEdge>();
+            var added = new List<(int a, int b, float width, bool road, bool fresh)>();
+            int next = -1;
+            Vector2 P(int id) => id < 0 ? pos[id] : At(id);
+
+            int End(Vector2 p, int node, TaxiwayEdge edge)
+            {
+                if (node >= 0 && Node(node) != null) return node;
+                int id = next--;
+                pos[id] = p;
+                if (edge != null && edges.Contains(edge) && !removed.Contains(edge))
+                {
+                    var c = Geo.ClosestOnSegment(p, At(edge.a), At(edge.b), out _);
+                    pos[id] = c;
+                    removed.Add(edge);
+                    added.Add((edge.a, id, edge.width, edge.IsRoad, false));
+                    added.Add((id, edge.b, edge.width, edge.IsRoad, false));
+                }
+                return id;
+            }
+
+            int ia = End(a, nodeA, edgeA), ib = End(b, nodeB, edgeB);
+            if (ia == ib) return null;
+            var pa = P(ia);
+            var pb = P(ib);
+            float length = Vector2.Distance(pa, pb);
+            var stops = new List<(float t, int node)> { (0f, ia), (1f, ib) };
+            foreach (var e in edges)
+            {
+                if (removed.Contains(e) || e.a == ia || e.b == ia || e.a == ib || e.b == ib) continue;
+                if (!Geo.Segments(pa, pb, At(e.a), At(e.b), 0.5f, out var at)) continue;
+                int id = next--;
+                pos[id] = at;
+                removed.Add(e);
+                added.Add((e.a, id, e.width, e.IsRoad, false));
+                added.Add((id, e.b, e.width, e.IsRoad, false));
+                stops.Add((Vector2.Distance(pa, at) / length, id));
+            }
+            var airport = Airport;
+            if (airport != null)
+                foreach (var r in airport.Runways)
+                {
+                    if ((ia >= 0 && Node(ia).runway == r) || (ib >= 0 && Node(ib).runway == r)) continue;
+                    var ra = Geo.XZ(r.start);
+                    var rb = Geo.XZ(r.end);
+                    if (!Geo.Lines(pa, pb - pa, ra, rb - ra, out float t, out float u)) continue;
+                    if (t * length < 1f || (1f - t) * length < 1f || u < 0f || u > 1f) continue;
+                    int id = next--;
+                    pos[id] = Vector2.Lerp(pa, pb, t);
+                    runwayNode.Add(id);
+                    stops.Add((t, id));
+                }
+            stops.Sort((x, y) => x.t.CompareTo(y.t));
+            for (int i = 0; i + 1 < stops.Count; i++)
+            {
+                int from = stops[i].node, to = stops[i + 1].node;
+                if (from == to) continue;
+                // laid over an existing section, Connect reuses it (new width / surface): judge it as replaced
+                var same = edges.Find(e => !removed.Contains(e) && ((e.a == from && e.b == to) || (e.a == to && e.b == from)));
+                if (same != null) removed.Add(same);
+                added.Add((from, to, width, road != RoadClass.None, true));
+            }
+
+            // the sections at a node after the change: (direction, half width, length, road, new, section key)
+            List<(Vector2 dir, float hw, float len, bool road, bool fresh, object key)> ArmsAt(int id)
+            {
+                var at = P(id);
+                var list = new List<(Vector2, float, float, bool, bool, object)>();
+                foreach (var e in edges)
+                    if (!removed.Contains(e) && (e.a == id || e.b == id))
+                    {
+                        var d = At(Other(e, id)) - at;
+                        if (d.sqrMagnitude > 1e-4f) list.Add((d.normalized, e.width * 0.5f, d.magnitude, e.IsRoad, false, e));
+                    }
+                for (int k = 0; k < added.Count; k++)
+                {
+                    var e = added[k];
+                    if (e.a != id && e.b != id) continue;
+                    var d = P(e.a == id ? e.b : e.a) - at;
+                    if (d.sqrMagnitude > 1e-4f) list.Add((d.normalized, e.width * 0.5f, d.magnitude, e.road, e.fresh, k));
+                }
+                list.Sort((x, y) => Geo.Angle(x.Item1).CompareTo(Geo.Angle(y.Item1)));
+                return list;
+            }
+            bool OnRunway(int id) => runwayNode.Contains(id) || (id >= 0 && Node(id).runway != null);
+
+            // angles: at the line's own stops, between a new section and its neighbours
+            foreach (var stop in stops)
+            {
+                if (OnRunway(stop.node)) continue;
+                var arms = ArmsAt(stop.node);
+                for (int i = 0; arms.Count >= 2 && i < arms.Count; i++)
+                {
+                    var x = arms[i];
+                    var y = arms[(i + 1) % arms.Count];
+                    if (!x.fresh && !y.fresh) continue;
+                    float angle = Vector2.Angle(x.dir, y.dir);
+                    if (angle >= MinJoinAngle) continue;
+                    var other = x.fresh ? y : x;
+                    string what = other.fresh ? "itself" : other.road ? "the road" : "the taxiway";
+                    return $"would meet {what} at {angle:0}° (at least {MinJoinAngle:0}°)";
+                }
+            }
+
+            // room: every new or shortened section must be long enough for what its two ends need (JunctionShape.Needs:
+            // how far out its strip must start to clear the other sections there)
+            var needs = new Dictionary<int, Dictionary<object, float>>();
+            float Need(int id, object key)
+            {
+                if (OnRunway(id)) return 0f;
+                if (!needs.TryGetValue(id, out var map))
+                {
+                    map = new Dictionary<object, float>();
+                    var arms = ArmsAt(id);
+                    if (arms.Count >= 2)
+                    {
+                        var need = JunctionShape.Needs(arms.ConvertAll(x => new JunctionArm(x.dir, x.hw, x.len, x.len)));
+                        for (int i = 0; i < arms.Count; i++) map[arms[i].key] = need[i];
+                    }
+                    needs[id] = map;
+                }
+                return map.TryGetValue(key, out float v) ? v : 0f;
+            }
+            for (int k = 0; k < added.Count; k++)
+            {
+                var e = added[k];
+                float sectionLength = Vector2.Distance(P(e.a), P(e.b));
+                if (Need(e.a, k) + Need(e.b, k) > sectionLength + 0.01f)
+                    return "would leave a section too short for the junctions at its ends (put the point on the junction, or further from it)";
+            }
+            return null;
         }
 
         public void RemoveEdge(int id)
@@ -333,7 +567,7 @@ namespace AirCity.Airfield
             var stand = new Stand
             {
                 kind = kind, code = code, surface = surface, exit = exit,
-                position = new Vector3(onCentreline.x, 0f, onCentreline.z), heading = Mathf.Repeat(bearing, 360f),
+                position = onCentreline, heading = Mathf.Repeat(bearing, 360f),
             };
             return FrameFromTaxiway(stand) ? Add(stand) : null;
         }
@@ -346,7 +580,6 @@ namespace AirCity.Airfield
             if (stand.DeIcing && !stand.surface.IsPaved()) stand.surface = PavementSurface.Concrete;
             stand.id = nextId++;
             stand.heading = Mathf.Repeat(stand.heading, 360f);
-            stand.position = new Vector3(stand.position.x, 0f, stand.position.z);
             int number = 1;
             while (stands.Exists(x => x.kind == stand.kind && x.number == number)) number++;
             stand.number = number;
@@ -365,7 +598,8 @@ namespace AirCity.Airfield
                 if (na == null || nb == null) continue;
                 var l = StandLayout.Of(stand, e, Geo.XZ(na.position), Geo.XZ(nb.position));
                 if (l == null) continue;
-                stand.position = Geo.X0Z(l.entry);
+                Geo.ClosestOnSegment(l.entry, Geo.XZ(na.position), Geo.XZ(nb.position), out float along);
+                stand.position = Geo.X0Z(l.entry, Mathf.Lerp(na.position.y, nb.position.y, along));
                 stand.Frame(l.along, e.width);
                 return true;
             }
@@ -403,7 +637,17 @@ namespace AirCity.Airfield
             return best;
         }
 
-        public void RemoveStand(Stand stand) => stands.Remove(stand);
+        public void RemoveStand(Stand stand)
+        {
+            var airport = Airport;
+            if (airport != null && airport.Deicing.PadRemovalProblem(stand) != null) return;
+            if (!stands.Remove(stand)) return;
+            if (airport != null)
+            {
+                airport.deicingFacilities.RemoveAll(f => f != null && f.standId == stand.id);
+                foreach (var bay in airport.deicingParkingBays) if (bay.standId == stand.id) bay.standId = 0;
+            }
+        }
 
         /// <summary>Where a stand lies (its taxiway section, pad, stop bar...), or null if no taxiway carries it.</summary>
         public StandLayout Layout(Stand stand)
@@ -610,7 +854,7 @@ namespace AirCity.Airfield
 
         /// <summary>Where stands cover the sides of each taxiway section (its s from node a, and the side), so the
         /// section leaves out its verges and edge lights there.</summary>
-        Dictionary<TaxiwayEdge, List<(float s0, float s1, int side)>> Frontages(List<StandLayout> layouts)
+        internal Dictionary<TaxiwayEdge, List<(float s0, float s1, int side)>> Frontages(List<StandLayout> layouts)
         {
             var map = new Dictionary<TaxiwayEdge, List<(float, float, int)>>();
             foreach (var e in edges)
@@ -816,7 +1060,17 @@ namespace AirCity.Airfield
             var links = Links(e => true, r => true, e => e.IsRoad ? 1f : VehicleTaxiwayCost, VehicleRunwayCost, VehicleApronCost);
             if (blocked != null)
                 foreach (var l in links.Values)
-                    l.RemoveAll(x => blocked(At(x.from), At(x.node)));
+                    l.RemoveAll(x =>
+                    {
+                        if (!(blocked.Target is IVehicleRouteBlocker spatial)) return blocked(At(x.from), At(x.node));
+                        var edge = edges.Find(e => e.a == x.from && e.b == x.node || e.b == x.from && e.a == x.node);
+                        if (edge == null) return spatial.Blocked(Node(x.from).position, Node(x.node).position);
+                        var path = Path(edge);
+                        int count = Mathf.Max(1, Mathf.CeilToInt(path.Length / 3f));
+                        for (int i = 0; i < count; i++)
+                            if (spatial.Blocked(path.AtDistance(path.Length*i/count), path.AtDistance(path.Length*(i+1)/count))) return true;
+                        return false;
+                    });
             return Search(links, starts, targets);
         }
 
@@ -977,6 +1231,8 @@ namespace AirCity.Airfield
         void OnDisable()
         {
             equipmentPaintPart?.Destroy();
+            structurePart?.Destroy();structurePart=null;
+            if(structureMaterial!=null){AirfieldPart.DestroyAny(structureMaterial);structureMaterial=null;}
             surfacePart?.Destroy();
             paintPart?.Destroy();
             glowPart?.Destroy();
@@ -1000,7 +1256,7 @@ namespace AirCity.Airfield
         /// <summary>Parking paint changes independently of operational geometry and must not invalidate service plans.</summary>
         public void RefreshEquipmentPaint() => RefreshEquipmentPaint(true);
 
-        static List<StandMarkings.EquipmentBay> DepotPaintExclusions(Airport airport)
+        internal static List<StandMarkings.EquipmentBay> DepotPaintExclusions(Airport airport)
         {
             var masks=new List<StandMarkings.EquipmentBay>();
             foreach (var depot in airport.GetComponentsInChildren<AirCity.Vehicles.BaggageDepot>())
@@ -1026,6 +1282,8 @@ namespace AirCity.Airfield
                 var stands = new StandBuilder();
                 foreach (var l in layouts) stands.Build(l,surface,roadPaint,airport.Bridges.TypesFor(l.stand));
                 owners = roads.owners;
+                if(airport.HasElevatedPavement || edges.Any(e=>e.alignment.curved||e.alignment.smooth||e.structure!=RoadStructure.Ground))
+                {roads.Warp(surface.mesh,layouts);roads.Warp(roadPaint.mesh,layouts,true);}
                 paintPart.Set(roadPaint.Apply(paintPart.Target,"Taxiway paint"),airport.paint);
                 state.Capture(surfacePart.Mesh,surface.mesh,paintPart.Mesh,roadPaint.mesh);
                 RefreshState();
@@ -1037,13 +1295,40 @@ namespace AirCity.Airfield
             equipmentPaintPart.Set(paint.Apply(equipmentPaintPart.Target,"Equipment parking paint"),airport.paint);
         }
 
+        ulong structureTerrainSignature;
+        ulong StructureTerrainSignature()
+        {
+            ulong hash=1469598103934665603UL;
+            var terrain=Airport?.TerrainHeight;
+            foreach(var edge in edges)if(edge.structure!=RoadStructure.Ground)
+            {
+                var path=Path(edge);int count=Mathf.Max(1,Mathf.CeilToInt(path.Length/4f));
+                for(int i=0;i<=count;i++)for(int side=-1;side<=1;side++)
+                {
+                    var p=Geo.XZ(path.Offset(path.Length*i/count,side*edge.width*.5f));
+                    unchecked{hash^=(uint)BitConverter.SingleToInt32Bits(terrain?.Invoke(p)??0f);hash*=1099511628211UL;}
+                }
+            }
+            return hash;
+        }
+        public void RefreshStructures()
+        {
+            if(edges.Any(e=>e.structure!=RoadStructure.Ground)&&StructureTerrainSignature()!=structureTerrainSignature)Rebuild();
+        }
+
         public void Rebuild()
         {
             var airport = Airport;
             if (airport == null || !isActiveAndEnabled) return;
             airport.LayoutChanged();
+            // re-snap a node that has come off its runway's centreline; one already on it stays put (projecting it again
+            // moves it a float ulp each time, which would make every rebuild look like a change of layout)
             foreach (var n in nodes)
-                if (n.runway != null) n.position = n.runway.ClosestOnCentreline(n.position);
+                if (n.runway != null)
+                {
+                    var snapped = n.runway.ClosestOnCentreline(n.position);
+                    if ((snapped - n.position).sqrMagnitude > 1e-6f) n.position = snapped;
+                }
 
             surfacePart ??= new AirfieldPart(transform, "Surface");
             paintPart ??= new AirfieldPart(transform, "Paint");
@@ -1063,6 +1348,17 @@ namespace AirCity.Airfield
             surface.state = paint.state = SurfaceValues.Initial;
             var standBuilder = new StandBuilder();
             foreach (var l in layouts) standBuilder.Build(l, surface, paint, airport.Bridges.TypesFor(l.stand));
+            if(airport.HasElevatedPavement || edges.Any(e=>e.alignment.curved||e.alignment.smooth||e.structure!=RoadStructure.Ground))
+            {
+                builder.Warp(surface.mesh,layouts);builder.Warp(paint.mesh,layouts,true);builder.Warp(lights.glows,layouts,true);
+                builder.Warp(lights.fixtures,layouts,false,true);builder.Warp(verges.mesh,layouts);
+            }
+            var ownership=AirfieldRoadGeometry.Ownership(surface.mesh,builder.owners);
+            var structures=AirfieldRoadGeometry.Structures(airport,this,builder,ownership);GroundOwnership=ownership;
+            structurePart??=new AirfieldPart(transform,"Road structures");
+            if(structureMaterial==null)structureMaterial=RoadStructureBuilder.Material(null);
+            structurePart.Set(structures.Create("Airside bridges and tunnels",structurePart.Target),structureMaterial);
+            if(structurePart.Renderer!=null)structurePart.Renderer.shadowCastingMode=UnityEngine.Rendering.ShadowCastingMode.On;
             owners = builder.owners;
             vergeOwners = builder.vergeOwners;
             vergePart.Set(verges.mesh.Apply(vergePart.Target, "Taxiway verges"), airport.grassStrip);
@@ -1077,6 +1373,13 @@ namespace AirCity.Airfield
             RefreshState();
             LightCount = lights.LightCount;
             RefreshEquipmentPaint(false);
+            structureTerrainSignature=StructureTerrainSignature();
+        }
+
+        internal void ShowCommittedGeometry(bool visible)
+        {
+            foreach(var part in new[]{surfacePart,paintPart,vergePart,glowPart,fixturePart,structurePart})
+                if(part?.Renderer!=null)part.Renderer.enabled=visible && part.Mesh!=null && part.Mesh.vertexCount>0;
         }
 
         public int LightCount { get; private set; }

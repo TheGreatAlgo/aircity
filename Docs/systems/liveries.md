@@ -131,6 +131,7 @@ accent / cheatline / tips, and zone 3 as trim / tail. What each mask actually pa
 | FlightSchool | Trainer | `#F7F7F5` `#C62026` `#C62026` `#1F2F57` | `#1F2F57` N35FS | none |
 | RegionalAir | TwoTone | `#F7F7F4` `#B8BEC6` `#0F6B4F` `#0F6B4F` | `#0F6B4F` N208RA | RegionalAir (disc with leaf) |
 | BushYellow | TwoTone | `#F1B91C` `#1E1E1E` `#F7F7F4` `#1E1E1E` | `#1E1E1E` C-FBSH | none |
+| BlossomPink | Swoosh | `#F8F6F5` `#E2457F` `#7D1A45` `#E2457F` | `#7D1A45` N520BP | BlossomPink (cameo: the hand-drawn head-and-ponytail silhouette `ArtSource/Aircraft/Source/BlossomPink.png` in colour 1 on a white disc; the only logo not drawn in code. Kept square: `nPOTScale` would stretch a non-square logo) |
 
 ## Runtime flow
 
@@ -246,8 +247,8 @@ logo covers 0.1–5 % of the atlas.
   `aircraft.GetComponent<AircraftLiveryApplier>().SetLivery(livery, "N123AB")`. Nothing else is needed: it works on
   every type.
 - As an asset: **Create ▸ AirCity ▸ Aircraft Livery** in `Assets/AirCity/Liveries/`. `AircraftSetup.AllLiveries()`
-  only searches that folder, and the sandbox and thumbnails use it. An existing sandbox isn't updated: rebuild it
-  with **AirCity ▸ Dev ▸ Rebuild Sandbox Scene**.
+  only searches that folder, and the sandbox and thumbnails use it. The sandbox keeps one aircraft per type at
+  stands; change an aircraft's livery directly to inspect a new one, or render thumbnails for every combination.
 - As a shipped example: add an entry to `airlines.LIVERIES`
   `name: (style, base, c1, c2, c3, regcol, default reg, logo name | None)`. Re-run `finish.py` for **every** model
   (each `.aircraft` carries the examples), then **AirCity ▸ Aircraft ▸ Create Missing Prefabs and Example

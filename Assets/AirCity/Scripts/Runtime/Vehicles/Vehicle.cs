@@ -78,8 +78,30 @@ namespace AirCity.Vehicles
         /// Put the vehicle on the ground: world position of the rear axle's centre, facing `forward`, moving at
         /// speed (m/s) with the front wheels steered by `steer` degrees (positive = right). dt animates the wheels.
         /// </summary>
-        public void Place(Vector3 position, Vector3 forward, float speed, float steer, float dt)
+        AirCity.Airfield.Airport supportAirport;
+        bool supportPlaced;
+        Vector2 supportPoint;
+        float supportHeight;
+        public void Place(Vector3 position, Vector3 forward, float speed, float steer, float dt,bool followRoad=true)
         {
+            if(followRoad)
+            {
+                if(supportAirport==null)supportAirport=GetComponentInParent<AirCity.Airfield.Airport>();
+                if(supportAirport!=null)
+                {
+                    var local=supportAirport.transform.InverseTransformPoint(position);var point=new Vector2(local.x,local.z);
+                    float hint=supportPlaced?supportHeight:local.y;
+                    float travelled=supportPlaced?Vector2.Distance(point,supportPoint):0f;
+                    float allowed=travelled<50f?Mathf.Max(2f,travelled*.25f+.5f):2f;
+                    bool road=supportAirport.TryRoadElevation(point,out float level,hint)&&Mathf.Abs(level-hint)<=allowed;
+                    if(!road)level=supportAirport.PavementElevationAt(point);
+                    local.y=level;position=supportAirport.transform.TransformPoint(local);
+                    var planar=supportAirport.transform.InverseTransformDirection(forward);var facing=new Vector2(planar.x,planar.z).normalized;
+                    var grade=road?supportAirport.RoadGradientAt(point,level):supportAirport.PavementGradientAt(point);
+                    forward=supportAirport.transform.TransformDirection(new Vector3(facing.x,Vector2.Dot(grade,facing),facing.y));
+                    supportPlaced=true;supportPoint=point;supportHeight=level;
+                }
+            }
             transform.SetPositionAndRotation(position, Quaternion.LookRotation(forward, Vector3.up));
             if (roll == null || roll.Length != wheels.Length) roll = new float[wheels.Length];
             for (int i = 0; i < wheels.Length; i++)

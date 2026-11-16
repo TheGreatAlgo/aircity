@@ -66,6 +66,7 @@ Stands, 2026-10-24:
 | `Building/LightBuilder.cs` | Light glows plus fixture hardware (elevated / inset lights, PAPI units, barrettes, cones) |
 | `Building/RunwayBuilder.cs` | ICAO Annex 14 runway layout: surface, shoulders, blast pads, markings, lights |
 | `Building/TaxiwayBuilder.cs` | Graph to geometry: curves, junction fillets, centrelines, holding positions, edge lights, stop bars; road markings and give-way lines; taxiway verges (left out where stands open onto a side) |
+| `Building/JunctionShape.cs` | The junction solver shared with public roads: cuts each section back clear of the others, kerb fillets, flares, star-shaped outline (see "Junctions at any angle") |
 | `Building/StandBuilder.cs` | Stand and de-icing bay pads and paint: lead-in / lead-out lines, stop bars, red boundaries, numbers and code letters |
 | `Shaders/AirfieldCommon.hlsl` | Shared lighting wrapper, weather globals, `TouchdownRubber`, `SnowCoverage`, `StripWorked` |
 | `Shaders/AirfieldSurface.shader` | Pavement, dirt, grass: world-space photo textures, joints, rubber, wear, wet, snow, grass length / stripes |
@@ -152,6 +153,33 @@ now; their lanes and widths are in `RunwayRules.Road`: street 2 × 3.25 m, highw
   metre costs 1, a taxiway 1.25, an apron crossing 1.4 and a runway 1.6.
 - **Geometry:** the same strips, curves and junctions as taxiways. Corners where a road meets anything use an 8 m
   radius (`RoadCornerRadius`), not the aircraft-sized taxiway fillets. Curves between two road arms use 2.5 × width.
+
+### Junctions at any angle
+
+`JunctionShape.Solve` lays out every taxiway, road and public-road junction (2026-11-13; it replaced a fixed-fillet
+outline that folded or left holes at shallow angles and on short sections):
+
+- **Cuts:** each section's straight strip starts where it no longer overlaps any other section's rectangle (whole
+  section, so a wide neighbour or a shallow angle pushes it back far enough), and past its kerb fillets.
+- **Corners** under 180° get a fillet of the radius asked for, shrunk to fit the section's share. Where one section
+  is much wider, the kerbs meet behind the node and the narrow one flares into the wide one's edge. Outside corners
+  are mitred (if the kerbs meet close by) or chamfered, and very wide gaps are rounded about the node.
+- **Sharing a section:** the builders lay out in two passes. First every node's needs (`JunctionShape.Needs`: how far
+  out each section's strip must start to clear the others), then the shapes, each end of a section reaching
+  `JunctionShape.Reach(length, needHere, needThere)`: its own need plus 45% of what's left after both needs. So a
+  short section between two junctions is split fairly, and a bend's curve shrinks to fit.
+- **Outline:** the union of the sections' mouths and those corner pieces, traced as the farthest boundary seen from the
+  node, so it is always star-shaped and `SurfaceBuilder.Fan` fills it without folding. Each arm's `gap` is its kerb
+  to the next arm (paint and lights follow it).
+- **Fits:** `ok` is false when a section is shorter than the needs at its two ends. `TaxiwayNetwork.JoinProblem`
+  lays a new line out as `Connect` would (without changing the graph) and refuses one that would meet a section under
+  `MinJoinAngle` (15°) or leave a new or shortened section shorter than its two ends' needs; the taxiway and road
+  tools show it in red with that reason. A point that fails only because it's a few metres from a junction (within
+  12 m or two widths) snaps onto that junction instead.
+- **Checks:** `JunctionShapeTests` samples odd cases and 400 seeded random junctions (2–5 arms, widths 6.5–23 m,
+  sections at least 2.5 widths, arms 15° apart) for overlapping strips, holes and folds;
+  `RoadJunctionReview.FromCommandLine` (Editor/Airfield) captures the awkward layouts top-down to
+  `Captures/RoadJunctions`.
 - **Paint** (paved roads): white edge lines 0.3 m in, white centre dashes (3 m dash, 6 m gap). Where a road meets
   a taxiway (`GiveWayAt`), the approach lane gets a double dashed give-way line and a give-way triangle pointing at
   the driver. Before a runway, a solid stop line at the holding distance. Taxiway centrelines never connect across
@@ -584,6 +612,97 @@ below the 3 cm aircraft contact shadow:
 | Paint | 0.031 |
 | Vehicle light pools | 0.045 |
 
+## Runway terrain grades
+
+`Runway.start` and `end` retain their airport-local Y values. `Grade`, `ElevationAt` and `ElevationGradient`
+describe the straight longitudinal profile; the across-runway surface remains level. The shared placement
+tool samples natural threshold elevations and builds a detached `RunwayTerrainPlan`. Smooth hills need no
+grading, while bumps and crossfall produce a cut/fill volume and a $0.055/m³ quote. The game accepts grades
+up to 20% as a gameplay bound for short hillside strips; this is not an operational certification model.
+The planner reserves interpolation support and a 30 m feather outside the pavement/work margin, protects
+existing airport construction and the full engineered public-road bed, and requires natural obstacles to be
+cleared first. `TryCommit` checks funds and every observed height sample before applying or charging anything;
+one quote can only commit once. Extensions retain the existing runway's incline and airport datum.
+
+The first runway in an otherwise empty airport moves the airport datum to its higher threshold and subtracts
+that offset from the runway's saved local Y values. Its world position/profile is unchanged. Taxiways, stands
+and other flat facilities can then use the upper plateau. Existing geometry, including disconnected taxiway
+nodes, prevents this automatic datum move. Portable full-airport saves already store the root pose and runway
+vectors, so no parallel career-only slope representation is needed.
+
+`AirfieldElevation.Warp` lifts the runway surface, shoulders, paint, light glows and fixture origins onto the
+same grade, with the correct surface normals and paint expansion directions. Runway nodes snap to the 3D
+centreline; taxiway rendering interpolates node elevations through `Airport.PavementElevationAt` and its
+gradient. The same support field includes the graded terrain collar and is used by construction checks,
+ground aircraft and service vehicles. Arrival support stays above both the touchdown datum and the current
+runway station so a downhill approach cannot intersect the high threshold; takeoff blends grade pitch out
+over the first 30 m of climb.
+An extension ghost never supplies actor support: the temporarily hidden original keeps a nonserialized
+support tag until commit/cancel, so vehicles retain the existing height while the proposed end moves.
+
+`naturalEdges` omits generated runway verges for new placements. New Game explicitly sets this saved flag
+when creating or restoring its runways, so existing New Game strips also lose the artificial side bands;
+`HasVerges` prevents invisible verge-mowing jobs. Legacy review/sandbox fixtures retain their authored verge
+visuals and maintenance contract independently of whether they render a grass base.
+
+`RunwayTerrainTests` covers preserved inclines, cut/fill charges, stale/unaffordable atomicity, road-bed and
+rock/log runway clearance, upper-plateau anchoring and taxiway construction, all mesh/light elevations, portable
+save/restore, downhill approach clearance, smooth liftoff pitch and stable support during extension previews.
+
+## Taxiway and service-road terrain grades
+
+The shared New Game line tools raycast the actual terrain. A free node keeps its sampled local Y; a snapped
+node, edge or runway keeps its engineered elevation. `SplitEdge` preserves the rendered approach height,
+including the shortened straight beside a graded bend. `TaxiwayElevation` shares the builder's trimmed
+straights, level bends and level junctions with `Airport.PavementElevationAt`; surface, paint, lighting,
+aircraft and service vehicles consume the same support field. Flat development fixtures retain the zero-height
+fast path. Full-airport saves already serialize the node vectors.
+
+`AirsideTerrainPlan` quotes a detached construction graph and the actual generated pavement triangles.
+Every heightfield cell touched by that pavement receives formation limits at all four corners; this covers
+narrow/diagonal sections and the insides of curves, where centreline-only grading leaves terrain clipping
+through. Automatic cut/fill preserves the surrounding terrain palette instead of painting exposed-soil bands. The surrounding soil feathers back over 30 m plus interpolation support. Joining a new bend can
+also reshape its previous approach, so its earthwork is included. Prices combine $8/m taxiway or $12/m service
+road construction with the runway earthwork rate. Limits are 15% for taxiways, 20% for service roads; the
+actual trimmed pavement must fit, not just the raw graph endpoints. Crossings must agree within 0.35 m.
+
+Trees and clearable ground props may remain in a road/taxiway draft. The accepted transaction removes
+its roots/obstacle IDs with clearance included in the construction price. Dry-land, region, building/apron
+and public-road formation conflicts still refuse the preview. Before committing, the plan checks the source graph, airport version,
+every observed height sample and available funds; a rejected or reused plan writes nothing and charges
+nothing. The accepted transaction applies terrain, nodes and edges, then refreshes local land/surface tiles
+and the shared saved airport. The UI uses the same decision and presents refusals before clicking.
+
+`TaxiwayEdge.naturalEdges` omits mown verge geometry and maintenance. New Game sets it for both new and
+restored layouts; authored legacy fixtures retain their existing grass verges. `TaxiwayDraft` builds the
+complete detached candidate network using the real frontage, stand, bend, junction and elevation builders.
+The quote and preview share that geometry, including the previous approach's new trim. Its outline follows
+actual opaque boundary edges; crowned joins and duplicate seams are excluded. The map label shows only
+the total price, or a refusal reason. Grading remains included in the construction transaction.
+
+Stand and de-icing placement uses `AirsideTerrainPlan.TryCreateStand` and the same formation, clearing,
+price and stale-quote transaction. `Stand.position.y` is its saved local support level, retained when adding,
+copying or rotating. Free stands use the local terrain height; attached stands use the taxilane height at
+their entry, with a 12 m blend onto the level pad. `Airport.PavementElevationAt` includes those pads for
+meshes, aircraft and vehicles. Pad earthwork retains the existing pavement's foundations. The ghost runs
+the complete quote, including funds and terrain constraints; the click commits it and rebuilds the network
+before refreshing built ownership. Its world label shows the total price or a refusal.
+
+The [built-surface map](built-surfaces.md) uses committed opaque geometry to preserve soil support through
+later terrain updates, mask terrain rendering in every pass and keep vegetation off actual pavement.
+It rebuilds from the full airport on load, including old taxiways and service roads. Runway ghosts have no
+ownership and their construction boundaries use the overlay.
+
+Road/taxiway and runway ghosts also use temporary construction materials for their surface and paint.
+Their forward pass draws above still-ungraded terrain without writing depth or participating in depth/normal
+passes. Source materials remain unchanged and preview copies are destroyed on commit/cancel. Ordinary
+committed pavement retains the standard depth test and terrain ownership; only drafts use the overlay.
+
+`AirsideTerrainTests` covers sloped taxiways and service roads, paid crossfall correction, supported bends,
+exact cut/fill, graph/sample staleness, obstacle/steep-slope refusals, elevation-preserving splits and portable saves.
+`AirsideBuildReview.RunFromCommandLine` drives the real shared tools in an isolated graphics editor and writes
+Game-view captures under `Captures/NewGame/AirsideBuild`, using its own save directory under `Logs`.
+
 ## Vertex layouts (keep in sync with the shaders)
 
 **Surface (AirfieldSurface)**
@@ -699,7 +818,8 @@ taxiway.
 **Rebuild the sandbox airport.** Run **AirCity ▸ Airfield ▸ Add Sandbox Airport**, or the batch command in
 [dev-tools.md](dev-tools.md). It contains:
 
-- 09/27: 3,400 m x 60 m, concrete, precision lighting: every type up to code F. Taxiway A parallel to it, 25 m
+- 09/27: 3,600 m x 60 m, concrete, precision lighting: every type up to code F, with enough takeoff roll left
+  after the supersonic aircraft lines up. Taxiway A parallel to it, 25 m
   (code F) like every taxiway jets use, with entrances at both thresholds, three straight exits and a rapid exit
   each way.
 - 13/31: 1,600 m, asphalt, basic lighting, crossed by a taxiway.
@@ -707,25 +827,25 @@ taxiway.
   grass stands, two code A asphalt taxi-out stands). The GA apron joins A by two 15 m links.
 - Verges at various lengths (the main runway's at 14 cm, nearly due).
 - The terminal apron: taxilane T1, 25 m, 100 m south of A and joined to it at both ends (no dead end). South of it,
-  contact stands pulled against each other: four code C, one code E, two code F. From T1's east end a 15 m lane bends
+  contact stands pulled against each other: four code D, one code E, two code F. From T1's east end a 15 m lane bends
   round the terminal's half-circle east end with three code C stands facing into it, and leaves north-east to A.
 - The terminal: two floors, a half-circle at each end, its landside wall bowed. Jet bridges: L1 on every stand (R1
-  as well on the first code C stand), L1 + L2 on a head on the code E stand and the second code F stand, L1 + L2 +
+  as well on the first code D stand), L1 + L2 on a head on the code E stand and the second code F stand, L1 + L2 +
   UL1 on a two-storey head on the first code F stand (UL1 only once a double-deck type exists), and one long bridge
   per fan stand.
-- Parked, ready to leave: narrow-bodies on two contact stands and a fan stand, a wide-body on the code E stand, the
-  double-deck and long-haul quadjet types on the code F stands, and the regional turboprop on the third code C contact
-  stand (a code B type on a code C stand, nose on the design nose line). The trijet has no code D stand to park on and shows
-  on the display ramp only.
+- Exactly one aircraft of each type: the supersonic airliner, turboprop and trijet on code D contact stands,
+  the widebody on code E, the double-deck and quadjet on code F, the light single on a GA taxi-out stand, and
+  the narrowbody at the working baggage stand. The supersonic stop leaves room for a tug to turn in from the
+  service road while its tail stays clear of the taxilane. The other stands stay free for arrivals and building.
 - Two code E de-icing bays (D1, D2) on a bypass beside A at the 09 end, for westbound departures.
 - The depot west of the GA apron (3 ploughs, 1 mower, 2 small and 2 large tugs) on a small pad, with service roads
-  east onto the GA apron, north across the dirt taxiway to A, and round the GA apron to the heads of the code C
+  east onto the GA apron, north across the dirt taxiway to A, and round the GA apron to the heads of the code D
   contact stands (their tugs come that way).
-- A display ramp south-east, off every taxiway, where Add Sandbox Airport moves the scene's showcase rows of every
-  type and livery. After adding an aircraft type, **AirCity ▸ Airfield ▸ Refresh Sandbox Aircraft** (batch:
-  `-executeMethod AirCity.EditorTools.Airfield.AirfieldSetup.RefreshSandboxAircraft -quit`) lists it in the saved
-  sandbox's `Airport.aircraftTypes`, adds its showcase rows behind the others and parks the turboprop, without
-  rebuilding the airport (`AircraftSetup.AddMissingShowcaseRows`).
+- No livery showcase rows or separate display apron. **AirCity ▸ Airfield ▸ Refresh Sandbox Aircraft**
+  (batch: `-executeMethod AirCity.EditorTools.Airfield.AirfieldSetup.RefreshSandboxAircraft -quit`) lists every
+  type in `Airport.aircraftTypes`, removes duplicates and parks missing aircraft on free compatible stands.
+  Existing parked aircraft keep their liveries; the working baggage aircraft takes priority over duplicates.
+  Create a suitable free stand before refreshing a newly added larger type. Adding liveries never adds aircraft.
 
 ## Invariants and gotchas
 
@@ -794,3 +914,34 @@ Baggage depots provide a separate `PaintArea` mask for road paint. `PaintBuilder
 connector edge/centre strokes inside the forecourt while preserving stand boundaries and aircraft guidance.
 The depot draws its own bay outlines and circulation arrows. These masks never alter the service-road graph
 or physical pavement; road paint refresh remains independent of operational layout versions.
+
+
+### Rounded road ends and road finish (2026-11-15)
+
+Terminal service roads have rounded corners within their original footprint, with matching edge paint.
+The corner cap disappears when another segment joins the endpoint. `AirfieldKind.Road` (8) selects broad
+asphalt discoloration and fine tonal variation, shared by service-road straights, bends and road junctions.
+It leaves aircraft pavement materials and maintenance state unchanged.
+
+`TaxiwayPreview` temporarily hides only the committed network renderers while showing the detached full
+candidate. `ValleyView.PreviewBuiltSurfaces` swaps only the GPU terrain footprint. Saved terrain, the live
+graph, collider, routing, nature exclusions and funds retain the committed state until accepted. Hide/cancel
+restores the original renderers and mask; acceptance restores them before rebuilding the real network.
+Equipment-paint rebuilds also retain their support grade.
+
+
+Construction performance (2026-11-15): elevation links/junctions are spatially indexed, runway lists and
+protected spans are cached per quote, and nearest grading targets run in Burst. Draft runway rebuilds do
+not change the committed layout version. Preview footprint storage and GPU buffers are reused. Automatic
+road/runway/stand grading changes height and clears nature without painting dirt into the adjoining land.
+The native 17-road fixture measured warm moving updates of 16.80 ms for roads and 2.58 ms for runways,
+versus 144.34 ms and 16.33 ms before these changes.
+
+
+## 3D road integration (2026-11-15)
+
+Service-road edges now retain shared `AlignmentShape` and `RoadStructure`. `TaxiwayBuilder` samples curved
+and smooth profiles, warps each owner's geometry onto its own deck, and builds common bridge/tunnel structures.
+`Elevation()` excludes structured roads from aircraft support; the separate road elevation cache includes them.
+Height-separated crossings remain disconnected, including deep roads below taxiways/runways. Detached quotes
+retain an exact graph snapshot for commit. See [public roads](public-roads.md#shared-3d-construction-2026-11-15).

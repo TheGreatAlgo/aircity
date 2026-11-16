@@ -142,6 +142,11 @@ namespace AirCity.Dev
         {
             if (Station == null) return;
             var orbit = GetComponent<DevOrbitCamera>();
+            if (orbit == null && GetComponent<AirCity.Game.CareerCamera>() is AirCity.Game.CareerCamera shared)
+            {
+                var centre = station.depot != null ? station.depot.PaintArea.centre : station.loaderParking;
+                shared.FocusPoint(Airport.transform.TransformPoint(new Vector3(centre.x, 0, centre.y)), 180f, 50f, 215f); return;
+            }
             if (orbit == null) return;
             var at = Airport.Taxiways.Node(station.dispatchNode) != null ? Airport.Taxiways.At(station.dispatchNode) : station.loaderParking;
             if (station.depot!=null)

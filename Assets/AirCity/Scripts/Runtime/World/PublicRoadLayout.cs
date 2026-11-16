@@ -11,9 +11,43 @@ namespace AirCity.World
         public static List<Vector2> Suggested(AirportSite site) => new List<Vector2> {
             site.Entrance, new Vector2(ValleyWorld.RoadX, site.Entrance.y)
         };
+        public static List<Vector2> Suggested(ValleyWorld world, AirportSite site)
+        {
+            var start = site.Entrance;
+            if (world.RoadAt(start.y) >= start.x)
+                return new List<Vector2> { start, new Vector2(world.RoadAt(start.y), start.y) };
+            // A western connection goes behind reception instead of crossing its reserved footprint.
+            float z = site.centre.y - 190f;
+            return new List<Vector2> { start, new Vector2(start.x, z), new Vector2(world.RoadAt(z), z) };
+        }
         public static float Length(IList<Vector2> points)
         { float length = 0f; for (int i = 1; i < points.Count; i++) length += Vector2.Distance(points[i - 1], points[i]); return length; }
         public static int Price(IList<Vector2> points) => 1500 + Mathf.CeilToInt(Length(points) * 9f);
+
+        /// <summary>Why a route's shape would make a poor junction or bend, or null: it must meet the region road at least
+        /// TaxiwayNetwork.MinJoinAngle off its line, and never turn back on itself sharper than that.</summary>
+        public static string ShapeProblem(ValleyWorld world, IList<Vector2> points)
+        {
+            float min = AirCity.Airfield.TaxiwayNetwork.MinJoinAngle;
+            for (int i = 1; i + 1 < points.Count; i++)
+            {
+                var back = points[i - 1] - points[i]; var on = points[i + 1] - points[i];
+                if (back.sqrMagnitude > 1e-4f && on.sqrMagnitude > 1e-4f && Vector2.Angle(back, on) < min)
+                    return $"Turn the road less sharply: it doubles back at {Vector2.Angle(back, on):0}° (at least {min:0}°).";
+            }
+            if (points.Count < 2 || world == null) return null;
+            var end = points[points.Count - 1]; var last = points[points.Count - 2] - end;
+            float best = float.MaxValue; Vector2 along = Vector2.zero;
+            for (int i = 1; i < world.publicRoad.Count; i++)
+            {
+                var a = world.publicRoad[i - 1]; var b = world.publicRoad[i];
+                float d = Vector2.Distance(Geo.ClosestOnSegment(end, a, b, out _), end);
+                if (d < best && (b - a).sqrMagnitude > 1e-4f) { best = d; along = (b - a).normalized; }
+            }
+            if (best > 1f || last.sqrMagnitude < 1e-4f) return null;
+            float angle = Vector2.Angle(last, along); angle = Mathf.Min(angle, 180f - angle);
+            return angle < min ? $"Meet the public road at a wider angle: {angle:0}° (at least {min:0}°)." : null;
+        }
 
         public static bool TrySnap(ValleyWorld world, Vector2 requested, float radius, out Vector2 point)
         {
@@ -66,7 +100,8 @@ namespace AirCity.World
                     if (Mathf.Abs(p.x - world.RiverX(p.y)) < 105f || world.Height(p) < world.WaterHeight(p.y) + 1f) return false;
                 }
             }
-            problem = null; return true;
+            problem = ShapeProblem(world, points);
+            return problem == null;
         }
 
         public static void Clear(ValleyWorld world, IList<Vector2> points)

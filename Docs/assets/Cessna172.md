@@ -39,7 +39,7 @@ and the EditMode test log.
 | `…/Textures/Cessna172_*.png` | `Body_Default`, `Registration_Default`, `Detail`, `Dirt`, `RegistrationDirt`, `LogoUV`, `GroundShadow`, `Mask_{Classic,Swoosh,TwoTone,Trainer}`, `UV_Template` |
 | `…/Cessna172.aircraft` | Type data (imported as `AircraftType`) |
 | `…/Cessna172.prefab` | Created once by `AircraftSetup`, hand-editable |
-| `…/Thumbnails/Cessna172_<Livery>.png` | Menu thumbnails (6 liveries) |
+| `…/Thumbnails/Cessna172_<Livery>.png` | Menu thumbnails (7 liveries) |
 
 ## Parts and movers
 

@@ -10,8 +10,8 @@ using UnityEngine;
 
 namespace AirCity.Game
 {
-    /// <summary>Owns the guided career scene. Existing sandbox tools and their scene are deliberately independent.</summary>
-    public class CareerGame : MonoBehaviour
+    /// <summary>Shared world/session host. The historical name is retained for scene and save compatibility.</summary>
+    public partial class CareerGame : MonoBehaviour
     {
         public Airport airportTemplate;
         public GameObject aircraftPrefab;
@@ -23,8 +23,9 @@ namespace AirCity.Game
         public string Message { get; private set; }
         public bool InMenu { get; private set; } = true;
         public bool Paused { get; set; }
-        public int Speed { get; set; } = 5;
+        public int Speed { get; set; } = 1;
         public int SurveyedSite { get; private set; }
+        public RegionPreset RegionChoice { get; private set; }
         public Flight ActiveFlight => flight;
         public bool HasSave => Store.Exists;
         public string SaveDirectory => Path.Combine(Application.persistentDataPath, "Career");
@@ -45,16 +46,20 @@ namespace AirCity.Game
         public void Initialize(CareerState state, bool enableSaving = true)
         {
             if (!state.Validate(out string problem)) throw new ArgumentException(problem);
+            if (state.airport != null && state.airport.nodes != null && state.airport.nodes.Count > 0 && !state.airport.AssetsAvailable(GameAssetCatalog.Load(), out problem))
+                throw new ArgumentException(problem);
             ClearAirport();
-            State = state; persist = enableSaving; Paused = false; accumulated = 0f; saveTimer = 0f;
+            State = state; RegionChoice = state.world.preset; persist = enableSaving; Paused = false; accumulated = 0f; saveTimer = 0f;
             var builder = GetComponent<CareerBuildTool>(); if (builder != null) builder.ResetTool();
             var roadTool = GetComponent<CareerRoadTool>(); if (roadTool != null) roadTool.Cancel();
             access = reception = null; InMenu = state.Site == null; SurveyedSite = Mathf.Max(0, state.selectedSite);
             valley.Build(state.world, State.RoadNetwork(), false); BuildAirport();
-            if (State.HasAccess) access = valley.BuildAccess(State.Site, State.RoadNetwork(), false);
+            UpgradeNaturalLandscape();
+            if (State.HasAccess && (State.airport == null || State.airport.nodes.Count == 0)) access = valley.BuildAccess(State.Site, State.RoadNetwork(), false);
             if (State.IsOpen) reception = BuildReception();
             RefreshGroundCover();
-            if (State.Site != null) view.Frame(State.Site); else view.Frame(State.world.sites[0]);
+            BindSharedTools();
+            if (State.Site != null) view.Frame(State.Site); else view.Region();
             if (State.charterActive)
             {
                 float elapsed = State.charterElapsed;
@@ -72,10 +77,66 @@ namespace AirCity.Game
             Message = null;
         }
 
-        public void NewWorld(int seed)
+        void UpgradeNaturalLandscape()
         {
-            Initialize(CareerState.New(seed), false);
-            Message = "Choose a site. Survey its ground and access before buying.";
+            var world = State.world;
+            bool coast = world.generatorVersion == 4 && world.HasOcean;
+            bool inland = world.generatorVersion >= 4 && world.generatorVersion < 6 && world.HasInlandWater;
+            bool forest = world.generatorVersion >= 4 && world.forestVersion < ForestPopulation.Version;
+            if (!coast && !inland && !forest) return;
+            Rect? airportBounds = null;
+            if (Airport != null)
+                foreach (var renderer in Airport.GetComponentsInChildren<Renderer>(true))
+                {
+                    var bounds = renderer.bounds;
+                    if (!ValleyWorld.Finite(bounds.min.x) || !ValleyWorld.Finite(bounds.min.z) ||
+                        !ValleyWorld.Finite(bounds.max.x) || !ValleyWorld.Finite(bounds.max.z)) continue;
+                    var area = Rect.MinMaxRect(bounds.min.x - 100f, bounds.min.z - 100f, bounds.max.x + 100f, bounds.max.z + 100f);
+                    airportBounds = airportBounds.HasValue ? Rect.MinMaxRect(
+                        Mathf.Min(airportBounds.Value.xMin, area.xMin), Mathf.Min(airportBounds.Value.yMin, area.yMin),
+                        Mathf.Max(airportBounds.Value.xMax, area.xMax), Mathf.Max(airportBounds.Value.yMax, area.yMax)) : area;
+                }
+            var roads = State.RoadNetwork();
+            bool Protected(Vector2 point)
+            {
+                if (airportBounds.HasValue && airportBounds.Value.Contains(point)) return true;
+                foreach (var segment in roads.segments)
+                {
+                    var a = PublicRoadNetwork.XZ(roads.Node(segment.a).position);
+                    var b = PublicRoadNetwork.XZ(roads.Node(segment.b).position);
+                    if (CareerConstruction.Distance(point, a, b) < 100f) return true;
+                }
+                return false;
+            }
+            bool changed = coast && RegionCoastline.Upgrade(world, Protected);
+            changed |= inland && RegionInlandShore.Upgrade(world, Protected);
+            bool denser = forest && ForestPopulation.Upgrade(world, Protected);
+            if (changed) valley.RefreshLand();
+            else if (denser) valley.RefreshForest(false);
+        }
+
+        public void NewWorld(int seed, RegionPreset preset = RegionPreset.Woodland)
+        {
+            var state = CareerState.New(seed, preset: preset); state.mode = State != null ? State.mode : GameMode.Career;
+            Initialize(state, false);
+            RegionChoice = preset;
+            Message = "Explore the region. The whole map is available for your airport.";
+        }
+
+        public void NewLocation(RegionTerrainData data)
+        {
+            var state = CareerState.NewLocation(data); state.mode = State != null ? State.mode : GameMode.Career;
+            Initialize(state, false); RegionChoice = state.world.preset;
+            Message = "Explore this location. The whole map is available for your airport.";
+        }
+
+        public bool BeginRegion()
+        {
+            if (!State.StartRegion(out string problem)) { Message = problem; return false; }
+            InMenu = false; persist = true; Paused = false; Speed = 1;
+            BuildAirport(); BindSharedTools(); RefreshGroundCover();
+            Message = "Your region is ready. Build anywhere; longer road connections cost more.";
+            Save(false); return true;
         }
 
         public void Survey(int index)
@@ -86,17 +147,28 @@ namespace AirCity.Game
 
         public bool Construct(IList<Vector2> accessRoute = null)
         {
+            if (State.wholeRegion && State.Site == null) return BeginRegion();
             var step = State.Step;
+            int balance = State.funds;
+            if (Sandbox && step == CareerStep.ChooseSite) State.funds = CareerState.StartingFunds;
             if (!State.Build(out string problem, SurveyedSite, accessRoute)) { Message = problem; return false; }
+            if (Sandbox) State.funds = balance;
             InMenu = false; persist = true;
-            if (step == CareerStep.ChooseSite) { BuildAirport(); view.Frame(State.Site); }
+            if (step == CareerStep.ChooseSite) { BuildAirport(); BindSharedTools(); view.Frame(State.Site); }
             if (step == CareerStep.ClearTrees || step == CareerStep.GradeLand || step == CareerStep.Expansion) valley.RefreshLand();
             if (step == CareerStep.Runway || step == CareerStep.Parking || step == CareerStep.Expansion) BuildAirport();
-            if (State.HasAccess && access == null) access = valley.BuildAccess(State.Site, State.RoadNetwork());
+            if (State.HasAccess && access == null)
+            {
+                access = valley.BuildAccess(State.Site, State.RoadNetwork());
+                // the original-save route clears trees along it; a hand-placed road never does (it refuses trees)
+                if (!State.handsOn && step == CareerStep.AccessRoad) valley.RefreshForest(false);
+            }
             if (State.IsOpen && reception == null) reception = BuildReception();
             RefreshGroundCover();
             Message = step == CareerStep.Reception ? "Your airfield is open. A local charter is ready to visit." : "Construction complete.";
-            Save(false);
+            // a road placed by hand saves in the background (snapshot now, JSON and disk off the main thread), so placing
+            // it doesn't stall a frame; the other steps keep their synchronous save
+            if (accessRoute != null) QueueAutosave(); else Save(false);
             return true;
         }
 
@@ -104,15 +176,23 @@ namespace AirCity.Game
         {
             ClearAirport();
             if (State.Site == null) return;
+            if (State.airport != null && State.airport.nodes != null && State.airport.nodes.Count > 0)
+            {
+                Airport = State.airport.Restore(transform, GameAssetCatalog.Load());
+                NaturalRunwayEdges();
+                return;
+            }
             var go = Instantiate(airportTemplate.gameObject, transform);
             go.name = State.Site.name + " Airfield";
             go.transform.position = new Vector3(State.Site.centre.x, State.handsOn && State.HasRunway ? State.layout.elevation : State.Site.elevation, State.Site.centre.y);
             Airport = go.GetComponent<Airport>(); Airport.timeScale = 0f; Airport.groundSize = 0f; Airport.windFrom = 270f;
             go.SetActive(true);
+            NaturalRunwayEdges();
             if (!State.HasRunway) return;
             if (State.handsOn) { BuildPlayerAirport(); return; }
             float half = State.RunwayLength * .5f;
             var runway = Airport.AddRunway(new Vector3(-half, 0f, 0f), new Vector3(half, 0f, 0f), PavementSurface.Grass, 18f);
+            NaturalRunwayEdges();
             if (State.HasParking)
             {
                 var net = Airport.Taxiways;
@@ -139,6 +219,7 @@ namespace AirCity.Game
             var layout = State.layout; var origin = State.Site.centre;
             Vector3 Local(Vector2 p) => new Vector3(p.x - origin.x, 0f, p.y - origin.y);
             var runway = Airport.AddRunway(Local(layout.runwayA), Local(layout.runwayB), PavementSurface.Grass, 18f);
+            NaturalRunwayEdges();
             var net = Airport.Taxiways;
             int Node(Vector2 p)
             {
@@ -156,44 +237,47 @@ namespace AirCity.Game
             runway.SetWear(State.completedCharters * 2f * RunwayRules.WearPerMovement(PavementSurface.Grass, type.maxTakeoffMass, SurfaceCondition.Dry));
         }
 
+        void NaturalRunwayEdges()
+        {
+            bool taxiwayChanged=false;
+            foreach(var edge in Airport.Taxiways.edges)
+                if(!edge.naturalEdges){edge.naturalEdges=true;taxiwayChanged=true;}
+            if(taxiwayChanged)Airport.Taxiways.Rebuild();
+            foreach(var runway in Airport.Runways)
+            {
+                if(runway.naturalEdges)continue;
+                runway.naturalEdges=true;runway.Rebuild();
+            }
+        }
+
         GameObject BuildReception() => State.handsOn ? valley.BuildReception(State.layout.reception, State.layout.elevation, State.layout.receptionHeading) : valley.BuildReception(State.Site);
 
         void RefreshGroundCover()
         {
-            var exclusions = new List<GroundCoverExclusion>();
-            if (State.Site != null && State.HasRunway)
+            valley.SetBuiltAirport(Airport);
+            var builtChange=valley.ConsumeBuiltSurfaceChange();
+            if(builtChange.HasValue && State?.world!=null && valley.BuiltSurfaces!=null)
             {
-                var c = State.Site.centre;
-                void Strip(Vector2 a, Vector2 b, float radius) => exclusions.Add(new GroundCoverExclusion { a = a, b = b, radius = radius });
-                if (State.handsOn)
+                var area=builtChange.Value;
+                var candidates=valley.ConsumeBuiltSurfaceProps();
+                int removed=valley.BuiltSurfaces.ClearVegetation(State.world,candidates,area);
+                if(State.layout!=null)State.layout.clearedTrees+=removed;
+                // The accepted airside plan may already have marked its roots before this render update.
+                valley.RefreshForest(false,area);
+                valley.RefreshClearedGround(area);
+            }
+            // Airport and public pavement use their actual mesh ownership, including standalone service roads
+            // and free stands. Only the separate tutorial reception needs a non-pavement exclusion here.
+            var exclusions=new List<GroundCoverExclusion>();
+            if(State.Site!=null)
+            {
+                if(State.handsOn && State.layout.receptionBuilt)
+                    exclusions.Add(new GroundCoverExclusion(State.layout.reception,State.layout.reception,18f));
+                else if(!State.handsOn && State.IsOpen)
                 {
-                    var l = State.layout;
-                    Strip(l.runwayA, l.runwayB, 13f);
-                    foreach (var e in l.TaxiSegments()) Strip(e.a, e.b, RunwayRules.TaxilaneClearance(7.5f));
-                    if (l.receptionBuilt) Strip(l.reception, l.reception, 18f);
+                    var reception=State.Site.centre+new Vector2(80f,-150f);
+                    exclusions.Add(new GroundCoverExclusion(reception,reception,18f));
                 }
-                else
-                {
-                    Strip(c + Vector2.left * State.RunwayLength * .5f, c + Vector2.right * State.RunwayLength * .5f, 13f);
-                    if (State.HasParking)
-                    {
-                        float entry = State.RunwayLength * .5f - 20f;
-                        float clearance = RunwayRules.TaxilaneClearance(7.5f);
-                        Strip(c + new Vector2(-entry, -65f), c + new Vector2(entry, -65f), clearance);
-                        Strip(c + new Vector2(-entry, 0f), c + new Vector2(-entry, -65f), clearance);
-                        Strip(c + new Vector2(entry, 0f), c + new Vector2(entry, -65f), clearance);
-                        Strip(c, c + new Vector2(0f, -65f), clearance);
-                    }
-                    if (State.IsOpen) Strip(c + new Vector2(80f, -150f), c + new Vector2(80f, -150f), 18f);
-                }
-                // Use the real pad, including the taxi-out turnaround beyond its front-line anchor.
-                if (Airport != null)
-                    foreach (var stand in Airport.Taxiways.stands)
-                    {
-                        var pad = StandLayout.Of(stand); float radius = 0f;
-                        foreach (var corner in pad.Pad) radius = Mathf.Max(radius, Vector2.Distance(corner, pad.Centre));
-                        var centre = c + pad.Centre; Strip(centre, centre, radius + 2f);
-                    }
             }
             valley.SetGroundCoverExclusions(exclusions);
         }
@@ -201,8 +285,21 @@ namespace AirCity.Game
         public void PlayerChanged(CareerTool tool, Rect? terrainBounds = null)
         {
             persist = true;
-            if (tool == CareerTool.ClearTrees) valley.RefreshForest(false);
-            else if (tool == CareerTool.Level) valley.RefreshLand(terrainBounds ?? State.Site.Parcel);
+            if (tool == CareerTool.ClearTrees)
+            {
+                valley.RefreshForest(false, terrainBounds);
+                valley.RefreshClearedGround(terrainBounds);
+            }
+            else if (tool == CareerTool.Level)
+            {
+                valley.RefreshLand(terrainBounds ?? State.BuildableBounds);
+                if (Airport != null && Airport.Runways.Count == 0 && Airport.terminals.Count == 0 && Airport.aprons.Count == 0 &&
+                    Airport.Taxiways.edges.Count == 0 && Airport.Taxiways.stands.Count == 0 && Airport.Depots.Count == 0)
+                {
+                    var p = Airport.transform.position; p.y = GetComponent<CareerBuildTool>().TargetHeight; Airport.transform.position = p;
+                    State.layout.elevation = p.y;
+                }
+            }
             else if (tool == CareerTool.Runway || tool == CareerTool.Taxiway || tool == CareerTool.Stand) BuildAirport();
             else if (tool == CareerTool.Reception && reception == null) reception = BuildReception();
             if (tool != CareerTool.ClearTrees && tool != CareerTool.Level) RefreshGroundCover();
@@ -221,6 +318,7 @@ namespace AirCity.Game
         {
             saveTimer = 0f;
             if (!persist || replaying) return false;
+            if (!CaptureAirport()) return false;
             bool ok = Store.QueueSave(State, out string problem);
             if (!ok) Message = problem;
             return ok;
@@ -288,6 +386,7 @@ namespace AirCity.Game
         public bool Save(bool showMessage = true)
         {
             if (!persist || replaying) return false;
+            if (!CaptureAirport()) return false;
             saveTimer = 0f;
             bool ok = Store.Save(State, out string problem);
             if (!ok || showMessage) Message = ok ? "Career saved." : problem;
@@ -298,20 +397,29 @@ namespace AirCity.Game
         {
             if (!Store.Load(out var state, out string problem)) { Message = problem; return false; }
             state.UpgradeToPlayerConstruction();
-            Initialize(state); Message = problem ?? "Career resumed."; return true;
+            try { Initialize(state); Message = problem ?? "Airport resumed."; return true; }
+            catch (Exception e) when (e is ArgumentException || e is InvalidOperationException)
+            { Message = "Could not load the airport: " + e.Message; return false; }
         }
 
         void Update()
         {
+            UpdateSharedTools();
             if (store != null && store.TryTakeSaveProblem(out string problem)) Message = problem;
-            if (State == null || InMenu) return;
+            if (State == null) return;
+            if (InMenu) { valley.SetRoadClock(Time.unscaledTime); return; }
+            if (SharedTools && Airport != null) { Airport.externallySimulated = true; Airport.timeScale = Paused ? 0f : Speed; }
             saveTimer += Time.unscaledDeltaTime;
             if (saveTimer >= 15f) QueueAutosave();
             if (Paused) return;
             if (!State.charterActive)
             {
-                State.roadTrafficSeconds += Time.unscaledDeltaTime * Speed;
-                valley.SetRoadClock(State.roadTrafficSeconds); return;
+                float seconds = Time.unscaledDeltaTime * Speed;
+                State.operatingSeconds += seconds;
+                State.roadTrafficSeconds += seconds;
+                valley.SetRoadClock(State.roadTrafficSeconds);
+                if (Airport != null) Airport.Simulate(seconds);
+                return;
             }
             accumulated += Time.unscaledDeltaTime * Speed;
             int steps = Mathf.FloorToInt(accumulated / StepSeconds);

@@ -1,11 +1,12 @@
-"""Double-deck quadjet, built procedurally. Proportions and figures follow the Airbus A380-800 "Aircraft
-Characteristics - Airport and Maintenance Planning" document (rev. Dec 2025): the side, plan and front views
-of its general-dimensions sheet were traced into the profiles below (heights above the ground at maximum ramp
-weight, forward CG).
+"""Double-deck quadjet, built procedurally. An original design: a full-length double-deck fuselage with a long,
+pointed nose that carries the flight deck at upper-deck level, a slim wing-to-body fairing, raked wingtips and a
+T-tail. Door stations and sills, gear positions, span and runway figures are the code F double-decker's, taken
+from an airport-planning document (A380-800, rev. Dec 2025) so stands, bridges and service vehicles see a real
+code F double-decker; the shape is not traced from it.
 
 Stations `s` are metres aft of the nose tip. Blender Y = s - S_REF, so the model origin sits on the ground
-under the effective main-gear centre (the turn centre of the A380's turning-radii table). Nose points -Y,
-port wing is +X, Z up.
+under the effective main-gear centre (the turn centre of the turning-radii table). Nose points -Y, port wing is
++X, Z up.
 """
 import math
 
@@ -33,42 +34,53 @@ def P(x, s, z):
 KEEL = 2.38             # keel of the constant section (7.14 m wide x 8.41 m tall)
 CROWN = 10.79
 HALF_WIDTH = 3.57
-TIP_Z = 4.78            # radome tip, just under the main-deck floor
+TIP_Z = 5.15            # radome tip, at the main-deck window belt
 ZM = 6.33               # widest line of the constant section (main-deck window belt)
 
-# Traced from the side / plan views (A380 general dimensions sheet), heights above the ground. The top line was
-# smoothed through the windshield frame, the keel scaled to the 8.41 m section height.
-TOP = [(0.008, 4.90), (0.03, 5.01), (0.08, 5.15), (0.2, 5.34), (0.3, 5.45), (0.5, 5.75), (0.75, 6.06), (1.0, 6.33),
-       (1.5, 6.79), (2.0, 7.21), (2.5, 7.60), (3.0, 7.97), (3.5, 8.33), (4.0, 8.66), (4.5, 8.96), (5.0, 9.22),
-       (6.0, 9.65), (7.0, 9.96), (8.0, 10.19), (9.0, 10.37), (10.0, 10.51), (11.0, 10.62), (12.0, 10.70),
-       (13.0, 10.755), (14.5, CROWN), (52.0, CROWN), (54.0, 10.72), (56.0, 10.56), (58.0, 10.35), (60.0, 10.13),
-       (62.0, 9.90), (64.0, 9.72), (66.0, 9.55), (68.0, 9.30), (69.0, 9.17), (70.0, 9.03), (70.3, 8.98)]
-BOTTOM = [(0.008, 4.67), (0.03, 4.57), (0.08, 4.45), (0.2, 4.28), (0.3, 4.18), (0.5, 3.98), (0.75, 3.80),
-          (1.0, 3.64), (1.5, 3.44), (2.0, 3.26), (2.5, 3.13), (3.0, 3.03), (3.5, 2.95), (4.0, 2.88), (4.5, 2.81),
-          (5.0, 2.76), (6.0, 2.67), (7.0, 2.59), (8.0, 2.53), (9.0, 2.48), (10.0, 2.44), (11.0, 2.41), (12.5, 2.39),
-          (14.0, KEEL), (17.0, KEEL),
-          # wing-to-body fairing: 1.85 m at its lowest (A380 belly fairing BF1 1.82 m)
-          (20.0, 2.30), (23.0, 2.10), (26.0, 1.93), (29.0, 1.86), (33.0, 1.85), (37.0, 1.88), (40.0, 1.98),
-          (43.0, 2.15), (46.0, 2.40), (48.0, 2.58),
-          # tail upsweep to the APU exhaust
-          (50.0, 2.83), (52.0, 3.18), (54.0, 3.57), (56.0, 3.93), (58.0, 4.39), (60.0, 4.81), (62.0, 5.24),
-          (64.0, 5.73), (66.0, 6.30), (68.0, 6.86), (69.0, 7.18), (70.0, 7.46), (70.3, 7.55)]
-HALF = [(0.008, 0.15), (0.03, 0.29), (0.08, 0.47), (0.2, 0.73), (0.3, 0.81), (0.4, 0.94), (0.5, 1.04), (0.65, 1.16),
-        (0.8, 1.30), (1.0, 1.40), (1.25, 1.54), (1.5, 1.68), (1.75, 1.79), (2.0, 1.89), (2.5, 2.10), (3.0, 2.25),
-        (3.5, 2.39), (4.0, 2.51), (4.5, 2.63), (5.0, 2.74), (5.5, 2.84), (6.0, 2.93), (7.0, 3.10), (8.0, 3.22),
-        (9.0, 3.33), (10.0, 3.41), (11.0, 3.48), (12.0, 3.535), (13.0, 3.565), (14.0, HALF_WIDTH),
-        (50.0, HALF_WIDTH), (52.0, 3.48), (54.0, 3.28), (56.0, 3.03), (58.0, 2.58), (60.0, 2.24), (62.0, 1.90),
-        (64.0, 1.57), (66.0, 1.25), (68.0, 0.95), (69.0, 0.68), (70.0, 0.36), (70.3, 0.30)]
-# height of the widest line: the radome tip, climbing to the main-deck window belt; the tail cone's middle
-WIDEST = [(0.008, TIP_Z), (1.0, 4.90), (2.0, 5.12), (4.0, 5.60), (6.0, 5.92), (8.0, 6.13), (11.0, 6.27), (14.0, ZM),
+# A long, pointed nose (not traced from any aircraft). Each nose line rises from the tip (0) to the constant
+# section (1) as 1 - (1 - t^a)^b, t = s / length: a < 1 gives a pointed tip, b sets how soon the line levels
+# off. The top line climbs in one long sweep past the upper-deck windshield to the crown; the keel line drops
+# away quickly under the radome, so the nose reads as a beak rather than a rounded face.
+NOSE_UP = (18.0, 0.86, 2.45)    # (length, a, b): side view, tip -> crown
+NOSE_LO = (12.5, 0.66, 3.10)    # side view, tip -> keel
+NOSE_W = (16.0, 0.64, 2.50)     # plan view, centre line -> full width
+
+
+def _rise(s, shape):
+    length, a, b = shape
+    t = min(max(s / length, 0.0), 1.0)
+    return 1.0 - (1.0 - t ** a) ** b
+
+
+def _nose_samples(length):
+    """Stations for sampling a nose profile, dense at the tip where it curves fastest."""
+    return [0.008] + [length * (1.0 - math.cos(a)) for a in np.linspace(0.05, math.pi / 2, 30)]
+
+
+TOP = ([(s, TIP_Z + (CROWN - TIP_Z) * _rise(s, NOSE_UP)) for s in _nose_samples(NOSE_UP[0])] +
+       [(52.0, CROWN), (54.0, 10.72), (56.0, 10.56), (58.0, 10.35), (60.0, 10.13), (62.0, 9.90), (64.0, 9.72),
+        (66.0, 9.55), (68.0, 9.30), (69.0, 9.17), (70.0, 9.03), (70.3, 8.98)])
+BOTTOM = ([(s, TIP_Z - (TIP_Z - KEEL) * _rise(s, NOSE_LO)) for s in _nose_samples(NOSE_LO[0])] +
+          [(14.0, KEEL), (17.0, KEEL),
+           # a shallow wing-to-body fairing, 2.05 m above the ground at its lowest
+           (20.0, 2.33), (23.0, 2.20), (26.0, 2.10), (29.0, 2.06), (33.0, 2.05), (37.0, 2.08), (40.0, 2.15),
+           (43.0, 2.27), (46.0, 2.45), (48.0, 2.60),
+           # tail upsweep to the APU exhaust
+           (50.0, 2.83), (52.0, 3.18), (54.0, 3.57), (56.0, 3.93), (58.0, 4.39), (60.0, 4.81), (62.0, 5.24),
+           (64.0, 5.73), (66.0, 6.30), (68.0, 6.86), (69.0, 7.18), (70.0, 7.46), (70.3, 7.55)])
+HALF = ([(s, max(HALF_WIDTH * _rise(s, NOSE_W), 0.15)) for s in _nose_samples(NOSE_W[0])] +
+        [(50.0, HALF_WIDTH), (52.0, 3.48), (54.0, 3.28), (56.0, 3.03), (58.0, 2.58), (60.0, 2.24), (62.0, 1.90),
+         (64.0, 1.57), (66.0, 1.25), (68.0, 0.95), (69.0, 0.68), (70.0, 0.36), (70.3, 0.30)])
+# height of the widest line: the radome tip, settling to the main-deck window belt; the tail cone's middle
+WIDEST = [(0.008, TIP_Z), (2.0, 5.45), (5.0, 5.75), (9.0, 6.08), (12.0, 6.25), (15.0, ZM),
           (47.0, ZM), (52.0, 6.55), (56.0, 7.05), (60.0, 7.45), (64.0, 7.75), (68.0, 8.05), (70.3, 8.27)]
 
-# The belly fairing is far wider than the fuselage's lower lobe (4.35 m half width over a flat bottom, A380
-# front view), so it is a box-like superellipse merged into the lower lobe with a smooth max.
-FAIRING = (14.5, 21.0, 41.0, 47.0)      # ramps in from s 14.5 to 21, out from 41 to 47
-FAIRING_HW = 4.35
-FAIRING_TOP = 5.2
-FAIRING_N = 4.0
+# The wing-to-body fairing is a little wider than the fuselage's lower lobe (3.95 m half width over a gently
+# rounded bottom): a superellipse merged into the lower lobe with a smooth max.
+FAIRING = (15.5, 22.0, 40.0, 46.5)      # ramps in from s 15.5 to 22, out from 40 to 46.5
+FAIRING_HW = 3.95
+FAIRING_TOP = 5.0
+FAIRING_N = 3.0
 
 
 def _fairing_weight(s):
@@ -204,11 +216,11 @@ def _top_reaches(h):
     return 0.5 * (lo + hi)
 
 
-# Six-pane flight deck between the decks (pilot eye 7.17 m above the ground, A380 visibility sheet): a wide
+# Six-pane flight deck on the upper deck, set into the long top line of the nose: a wide, steeply raked
 # windshield pane either side of a thin centre post, a raked post, a sliding side window and a smaller rear
-# window whose top edge drops aft. The band runs from SILL 6.75 m to HEAD 7.48 m above the ground.
-SILL = 6.75 - KEEL
-HEAD = 7.48 - KEEL
+# window whose top edge drops aft. The band runs from SILL 8.95 m to HEAD 9.70 m above the ground.
+SILL = 8.95 - KEEL
+HEAD = 9.70 - KEEL
 WS_FRONT = _top_reaches(SILL)
 WS_TOP = _top_reaches(HEAD)
 POST = WS_TOP + 0.45
@@ -240,21 +252,24 @@ def build_windows():
 
 # ============================================================== wing
 
-# Planform traced from the plan view: leading edge 19.4 m aft of the nose at the fuselage side, ~37 deg swept;
-# trailing edge kink at 11.5 m span; tip chord 3.8 m at 39.6 m (79.75 m over the wingtip fences).
+# Planform: leading edge 19.4 m aft of the nose at the fuselage side, ~37 deg swept; trailing edge kink at
+# 11.5 m span. From RAKE outboard the tip rakes back on both edges (leading edge sweeping progressively harder)
+# to a 1.6 m tip chord at 39.65 m: 79.3 m span.
 WING_SIDE = HALF_WIDTH
 WING_KINK = 11.5
-WING_TIP = 39.70           # fence outer face at 39.87 m: 79.75 m span
+WING_TIP = 39.65
+RAKE = 35.0             # the raked tip starts here
 LE_PTS = [(0.0, 16.55), (WING_SIDE, 19.40), (8.0, 22.99), (12.0, 26.32), (16.0, 29.47), (20.0, 32.44), (26.0, 36.87),
-          (30.0, 39.81), (34.0, 42.85), (38.0, 45.80), (WING_TIP, 46.97)]
-TE_IN = 36.70           # trailing edge at the fuselage side
-TE_KINK = 38.95
-TE_TIP = 50.80
+          (30.0, 39.81), (34.0, 42.85), (RAKE, 43.59), (36.0, 44.42), (37.0, 45.40), (38.0, 46.55), (38.8, 47.65),
+          (39.3, 48.55), (WING_TIP, 49.35)]
+TE_PTS = [(0.0, 36.70), (WING_SIDE, 36.70), (WING_KINK, 38.95), (RAKE, 48.82), (36.5, 49.55), (38.0, 50.30),
+          (39.0, 50.75), (WING_TIP, 50.95)]
 WING_Z0 = 4.20          # chord-line height of the leading edge at the fuselage side
 DIHEDRAL = math.radians(5.6)
 WING_HINGE = 0.74       # rear spar (flap / aileron hinge) as a fraction of the local chord
 WING_AF = "2415"
 _le_tab = np.array(LE_PTS)
+_te_tab = np.array(TE_PTS)
 
 
 def le_s(y):
@@ -262,10 +277,7 @@ def le_s(y):
 
 
 def te_s(y):
-    ay = max(abs(y), WING_SIDE)
-    if ay <= WING_KINK:
-        return TE_IN + (ay - WING_SIDE) * (TE_KINK - TE_IN) / (WING_KINK - WING_SIDE)
-    return TE_KINK + (ay - WING_KINK) * (TE_TIP - TE_KINK) / (WING_TIP - WING_KINK)
+    return float(np.interp(max(abs(y), WING_SIDE), _te_tab[:, 0], _te_tab[:, 1]))
 
 
 def wing_chord(y):
@@ -277,7 +289,7 @@ def wing_z(y):
 
 
 def wing_thickness(y):
-    return float(np.interp(abs(y), [0, WING_SIDE, WING_KINK, WING_TIP], [0.85, 0.85, 0.70, 0.60]))
+    return float(np.interp(abs(y), [0, WING_SIDE, WING_KINK, RAKE, WING_TIP], [0.85, 0.85, 0.70, 0.60, 0.52]))
 
 
 def wing_station(y, h=WING_HINGE, scale_t=None, c_override=None):
@@ -309,8 +321,8 @@ def hinge_point(y):
 # trailing-edge pieces per side: (name, from, to); "filler" pieces are fixed. Two flaps (the inboard one ends at
 # the kink so its hinge stays straight) and one aileron per side keep LOD0 within its draw-call budget.
 TE_PIECES = [("Flap_{}_In", WING_SIDE + 0.10, 11.30), ("filler", 11.30, 11.70),
-             ("Flap_{}_Out", 11.70, 27.40), ("filler", 27.40, 27.60), ("Aileron_{}", 27.60, 38.20)]
-TIP_START = 38.25
+             ("Flap_{}_Out", 11.70, 26.20), ("filler", 26.20, 26.40), ("Aileron_{}", 26.40, 34.90)]
+TIP_START = 34.95
 
 
 def build_wing():
@@ -318,12 +330,13 @@ def build_wing():
     ys = sorted(set([round(v, 4) for v in
                      list(np.linspace(-TIP_START, -WING_KINK, 16)) + list(np.linspace(-WING_KINK, WING_KINK, 13)) +
                      list(np.linspace(WING_KINK, TIP_START, 16)) + [-WING_SIDE, WING_SIDE] +
-                     [sg * v for sg in (1, -1) for v in (8.0, 12.0, 16.0, 20.0, 26.0, 30.0, 34.0, 38.0)]]))
+                     [sg * v for sg in (1, -1) for v in (8.0, 12.0, 16.0, 20.0, 26.0, 30.0, 34.0)]]))
     wing = MeshBuilder()
     lifting_surface(wing, [wing_station(y) for y in ys], WING_AF, "Body", "wing", flip=True)
     out = {"Wing": wing}
     for sgn, side in ((1, "L"), (-1, "R")):
-        tip = [wing_station(sgn * y, h=None) for y in np.linspace(TIP_START - 0.03, WING_TIP, 5)]
+        tip = [wing_station(sgn * y, h=None) for y in (TIP_START - 0.03, 35.6, 36.3, 37.0, 37.6, 38.2, 38.8, 39.3,
+                                                         WING_TIP)]
         lifting_surface(wing, tip, WING_AF, "Body", "wing", flip=(sgn > 0))
         for name, y0, y1 in TE_PIECES:
             yy = np.linspace(y0, y1, max(int((y1 - y0) / 1.4) + 2, 2))
@@ -351,33 +364,6 @@ def build_flap_tracks():
                     for t in np.linspace(0.0, 1.0, 14)]
             z = wing_surface_z(y, s0 + 0.55 * length) - 0.55 * r_max
             revolve(b, prof, P(sgn * y, s0, z), (0, 1, 0), "Body", "wing_track", segs=14)
-    return b
-
-
-# Wingtip fences: a thin arrow-head plate standing above and below the tip (2.4 m tall in the front view),
-# projecting 1.1 m behind the trailing edge (52.07 m aft of the nose in the plan view).
-FENCE_UP, FENCE_DN = 1.25, 1.15
-FENCE_AFT = 52.07
-
-
-def _fence_station(dz):
-    t = abs(dz) / (FENCE_UP if dz >= 0 else FENCE_DN)
-    le = le_s(WING_TIP) + 3.25 * t ** 0.9
-    te = FENCE_AFT - (1.05 if dz >= 0 else 1.25) * t ** 1.3
-    return le, te
-
-
-def build_fences():
-    b = MeshBuilder()
-    tip = wing_station(WING_TIP, h=None)
-    z0 = tip["le"].z - 0.02
-    for sgn in (1, -1):
-        sts = []
-        for dz in (-FENCE_DN, -0.95, -0.7, -0.4, -0.15, 0.0, 0.15, 0.4, 0.7, 1.0, FENCE_UP):
-            le, te = _fence_station(dz)
-            sts.append(dict(le=Vector((sgn * (WING_TIP + 0.02), Y(le), z0 + dz)), chord_dir=Vector((0, 1, 0)),
-                            up=Vector((sgn, 0, 0)), c=te - le, h=None, scale_t=0.55))
-        lifting_surface(b, sts, "0010", "Body", "fence", flip=(sgn < 0))
     return b
 
 
@@ -451,17 +437,28 @@ def build_engine(x, inlet_s, z):
 
 # ============================================================== tail
 
-# Tailplane traced from the plan view: 30.37 m span, root LE 57.35 m (on the centre line), 0.765 m of sweep per
-# metre; TE 67.05 + 0.36 per metre; elevator hinge at 0.70 chord. Tip 9.2 m above the ground (HT, MRW).
-HT_Z = 7.60
-HT_ROOT_LE = 57.35
-HT_SPAN = 15.18
-HT_LE_TAN = 0.765
-HT_TE0, HT_TE_TAN = 67.05, 0.36
+# T-tail: a strongly swept fin (LE ~41 deg) carrying the tailplane on its tip. Fin root (on the 9.58 m
+# reference line) LE 52.0 m, chord 12.6 m; tip 22.10 m above the ground, LE 62.9 m, chord 7.4 m (the tip
+# chord stays long to carry the tailplane). Rudder hinge at 0.70 chord.
+VT_ROOT_Z = 9.58
+VT_TOP_Z = 22.10
+VT_ROOT_LE, VT_TIP_LE = 52.00, 62.90
+VT_ROOT_C, VT_TIP_C = 12.60, 7.40
+VT_HINGE = 0.70
+VT_BOTTOM = 8.90        # the fin surface starts inside the tail cone
+
+# Tailplane on the fin tip: 27.0 m span, root LE 62.5 m, 0.56 m of sweep per metre; TE 70.3 + 0.17 per metre
+# (2.9 m tip chord, ending 72.6 m aft of the nose, inside the stand length); slight anhedral. Elevator hinge
+# at 0.70 chord.
+HT_Z = VT_TOP_Z - 0.20
+HT_ROOT_LE = 62.50
+HT_SPAN = 13.50
+HT_LE_TAN = 0.56
+HT_TE0, HT_TE_TAN = 70.30, 0.17
 HT_HINGE = 0.70
-HT_DIHEDRAL = math.radians(6.0)
-EL_ROOT = 2.30          # elevator inboard end, clear of the tail cone
-EL_TIP = 14.75
+HT_DIHEDRAL = math.radians(-2.5)
+EL_ROOT = 0.85          # elevator inboard end, clear of the bullet fairing
+EL_TIP = 13.00
 
 
 def ht_station(x, h=HT_HINGE, scale_t=1.0):
@@ -475,32 +472,6 @@ def ht_station(x, h=HT_HINGE, scale_t=1.0):
 def ht_hinge(x):
     st = ht_station(x)
     return st["le"] + st["chord_dir"] * (st["c"] * st["h"])
-
-
-def build_htail():
-    out = {}
-    stab = MeshBuilder()
-    xs = sorted(set([round(v, 4) for v in np.linspace(-EL_TIP, EL_TIP, 17)]))
-    lifting_surface(stab, [ht_station(x) for x in xs], "0011", "Body", "htail", flip=True)
-    for sgn, side in ((1, "L"), (-1, "R")):
-        tip = [ht_station(sgn * x, h=None, scale_t=t) for x, t in ((EL_TIP, 1.0), (14.98, 0.85), (HT_SPAN, 0.55))]
-        lifting_surface(stab, tip, "0011", "Body", "htail", flip=(sgn > 0))
-        el = MeshBuilder()
-        lifting_surface(el, [ht_station(sgn * x) for x in np.linspace(EL_ROOT, EL_TIP, 8)], "0011", "Body", "elevator",
-                        part="ctrl", flip=(sgn > 0))
-        out["Elevator_" + side] = el
-    out["HStab"] = stab
-    return out
-
-
-# Fin traced from the side view: root (on the 9.58 m fuselage reference line) LE 53.94 m, chord 12.06 m; tip at
-# 24.17 m above the ground (VT, MRW), LE 68.02 m, chord 4.70 m. Rudder hinge at 0.68 chord.
-VT_ROOT_Z = 9.58
-VT_TOP_Z = 24.17
-VT_ROOT_LE, VT_TIP_LE = 53.94, 68.02
-VT_ROOT_C, VT_TIP_C = 12.06, 4.70
-VT_HINGE = 0.68
-VT_BOTTOM = 8.90        # the fin surface starts inside the tail cone
 
 
 def vt_le_s(z):
@@ -522,24 +493,46 @@ def vt_hinge(z):
     return st["le"] + st["chord_dir"] * (st["c"] * st["h"])
 
 
-RUDDER = (9.95, 23.60)
+RUDDER = (9.95, HT_Z - 0.55)
+BULLET = (61.6, 72.6, 0.66)     # fairing at the fin / tailplane joint: start, end, radius
+
+
+def build_htail():
+    out = {}
+    stab = MeshBuilder()
+    xs = sorted(set([round(v, 4) for v in np.linspace(-EL_TIP, EL_TIP, 17)]))
+    lifting_surface(stab, [ht_station(x) for x in xs], "0011", "Body", "htail", flip=True)
+    for sgn, side in ((1, "L"), (-1, "R")):
+        tip = [ht_station(sgn * x, h=None, scale_t=t) for x, t in ((EL_TIP, 1.0), (13.25, 0.85), (HT_SPAN, 0.55))]
+        lifting_surface(stab, tip, "0011", "Body", "htail", flip=(sgn > 0))
+        el = MeshBuilder()
+        lifting_surface(el, [ht_station(sgn * x) for x in np.linspace(EL_ROOT, EL_TIP, 8)], "0011", "Body", "elevator",
+                        part="ctrl", flip=(sgn > 0))
+        out["Elevator_" + side] = el
+    # bullet fairing over the fin / tailplane junction
+    s0, s1, r = BULLET
+    prof = [(0.0, 0.002)] + [((s1 - s0) * u, r * (1 - (2 * u - 1) ** 2) ** 0.5 * (1.0 - 0.35 * u))
+                             for u in np.linspace(0.03, 0.97, 16)] + [(s1 - s0, 0.002)]
+    revolve(stab, prof, P(0, s0, HT_Z + 0.10), (0, 1, 0), "Body", "bullet", segs=24, ref=(0, 0, 1))
+    out["HStab"] = stab
+    return out
 
 
 def build_vtail():
     out = {}
     fin = MeshBuilder()
-    lifting_surface(fin, [vt_station(z) for z in np.linspace(VT_BOTTOM, 23.62, 14)], "0010", "Body", "vtail")
-    caps = [vt_station(z, h=None, scale_t=t) for z, t in ((23.60, 1.0), (23.95, 0.85), (VT_TOP_Z, 0.5))]
-    lifting_surface(fin, caps, "0010", "Body", "vtail")
+    lifting_surface(fin, [vt_station(z) for z in np.linspace(VT_BOTTOM, HT_Z - 0.53, 14)], "0010", "Body", "vtail")
+    lifting_surface(fin, [vt_station(z, h=None) for z in (HT_Z - 0.54, HT_Z - 0.2, HT_Z + 0.05)], "0010", "Body",
+                    "vtail")
     # dorsal fillet blending the fin root into the crown
-    s0, s1 = 50.6, 55.9
+    s0, s1 = 48.0, 54.0
     rings = []
     for s in np.linspace(s0, s1, 12):
         t = (s - s0) / (s1 - s0)
         zt = float(Fuselage.zt(s))
-        ztop = zt + 0.01 + (11.3 - zt) * t ** 2.2
-        wb = 0.18 + 0.40 * math.sin(math.pi * t) ** 0.6
-        wt = 0.03 + 0.20 * t
+        ztop = zt + 0.01 + (11.4 - zt) * t ** 2.2
+        wb = 0.18 + 0.42 * math.sin(math.pi * t) ** 0.6
+        wt = 0.03 + 0.22 * t
         port = []
         for h in (0.0, 0.25, 0.55, 0.8, 1.0):
             px = wb * (1 - h) ** 2.4 + wt * h * (1 - h * 0.35)
@@ -649,29 +642,31 @@ def build_gear():
 
 # ============================================================== lights, antennas, probes
 
-NAV_S = le_s(WING_TIP) + 0.35
+NAV_S = le_s(WING_TIP - 0.25) + 0.30
 BEACON_TOP_S = 30.0
 BEACON_BOTTOM_S = 44.5
 LANDING = (5.2, 24.4)           # (span, station) under the wing root
-LOGO_LIGHT = (3.6, 63.4)        # (span, station) on the stabiliser
+LOGO_LIGHT = (0.55, 48.4)       # (span, station) on the crown ahead of the fin, shining up and aft
 
 
 def build_details():
     b = MeshBuilder()
-    tip_z = wing_station(WING_TIP, h=None)["le"].z
     for sx, mat in ((1, "LightRed"), (-1, "LightGreen")):
-        # nav light in the fence's leading edge, strobe behind it
-        revolve(b, [(-0.13, 0.001), (-0.08, 0.065), (0.06, 0.07), (0.13, 0.001)],
-                (sx * (WING_TIP + 0.05), Y(NAV_S), tip_z + 0.02), (0, 1, 0), mat, "light", segs=12)
-        revolve(b, [(-0.08, 0.001), (-0.04, 0.05), (0.05, 0.05), (0.08, 0.001)],
-                (sx * (WING_TIP + 0.05), Y(NAV_S + 0.5), tip_z + 0.03), (0, 1, 0), "LightWhite", "light", segs=10)
+        # nav light at the raked tip's leading edge, strobe behind it
+        y = WING_TIP - 0.25
+        tip_z = wing_station(y, h=None)["le"].z
+        revolve(b, [(-0.12, 0.001), (-0.07, 0.06), (0.05, 0.065), (0.12, 0.001)],
+                (sx * y, Y(NAV_S), tip_z + 0.02), (0, 1, 0), mat, "light", segs=12)
+        revolve(b, [(-0.08, 0.001), (-0.04, 0.045), (0.05, 0.045), (0.08, 0.001)],
+                (sx * (y - 0.05), Y(NAV_S + 0.6), tip_z + 0.0), (0, 1, 0), "LightWhite", "light", segs=10)
         y, s = LANDING
         revolve(b, [(-0.01, 0.001), (-0.005, 0.17), (0.05, 0.18)], (sx * y, Y(s), wing_surface_z(y, s) - 0.01),
                 (0, 0, -1), "LightLens", "light", segs=14, ref=(1, 0, 0))
-        x, s = sx * LOGO_LIGHT[0], LOGO_LIGHT[1]
-        z = ht_station(x, h=None)["le"].z + 0.14
-        revolve(b, [(-0.01, 0.08), (0.04, 0.07), (0.07, 0.001)], P(x, s, z), (0, 0, 1), "LightWhite", "light",
-                segs=10, ref=(1, 0, 0))
+        # logo light on the rear crown (a T-tail has no stabiliser root to carry it)
+        xl, sl = LOGO_LIGHT
+        revolve(b, [(-0.01, 0.08), (0.04, 0.07), (0.07, 0.001)],
+                P(sx * xl, sl, float(Fuselage.top_z(sl, xl)) - 0.01), (0, 0, 1), "LightWhite", "light", segs=10,
+                ref=(1, 0, 0))
     s = BEACON_TOP_S
     revolve(b, [(-0.01, 0.13), (0.06, 0.12), (0.13, 0.07), (0.16, 0.001)], P(0, s, float(Fuselage.zt(s)) - 0.02),
             (0, 0, 1), "LightRed", "light", segs=14, ref=(1, 0, 0))
@@ -692,9 +687,9 @@ def build_details():
         sat.append((s, 0.36 * math.sin(math.pi * t) ** 0.5 + 0.001))
     zc = float(Fuselage.zt(27.4)) - 0.19
     revolve(b, [(s - s0, r) for s, r in sat], P(0, s0, zc), (0, 1, 0), "Body", "satcom", segs=20)
-    # pitot probes under the windshield
-    for sx, z in ((1, 6.15), (-1, 6.15), (1, 5.70)):
-        s = WS_FRONT + 1.0
+    # pitot probes on the nose cone's flanks, ahead of the first door
+    for sx, z in ((1, 5.85), (-1, 5.85), (1, 5.35)):
+        s = 3.6
         x = sx * Fuselage.side_x(s, z)
         tube(b, [P(x, s, z), P(x + sx * 0.16, s - 0.03, z), P(x + sx * 0.17, s - 0.28, z)], lambda t: 0.017, "Metal",
              "detail", segs=6)

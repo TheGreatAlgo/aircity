@@ -19,7 +19,7 @@ namespace AirCity.EditorTools.Characters
 
     public sealed class RampCrewAssetPostprocessor : AssetPostprocessor
     {
-        public override uint GetVersion() => 2;
+        public override uint GetVersion() => 3;
         void OnPreprocessModel()
         {
             if (!assetPath.Contains("/Characters/RampCrew/Models/")) return;
@@ -37,7 +37,12 @@ namespace AirCity.EditorTools.Characters
             importer.textureType = normal ? TextureImporterType.NormalMap : TextureImporterType.Default;
             importer.wrapMode = TextureWrapMode.Clamp; importer.filterMode = FilterMode.Trilinear;
             importer.mipmapEnabled = true; importer.anisoLevel = 2;
-            importer.textureCompression = TextureImporterCompression.Uncompressed;
+            // Worker atlases use high-quality block compression (BC7 on desktop): about a quarter of the
+            // uncompressed memory; close-ups compared against uncompressed showed no visible difference.
+            // The small wand palettes stay uncompressed.
+            bool atlas = System.IO.Path.GetFileName(assetPath).StartsWith("RampCrew_");
+            importer.textureCompression = atlas ? TextureImporterCompression.CompressedHQ : TextureImporterCompression.Uncompressed;
+            if (atlas) importer.compressionQuality = 100;
             importer.sRGBTexture = !normal && !assetPath.Contains("MetalGloss");
             importer.alphaSource = TextureImporterAlphaSource.FromInput;
         }

@@ -1,0 +1,31 @@
+{
+  "name": "Tropical",
+  "location": "Bora Bora volcanic lagoon, French Polynesia",
+  "latitude": -16.503,
+  "longitude": -151.744,
+  "sourceExtentMetres": 12800,
+  "resolution": 513,
+  "hasOcean": true,
+  "minElevation": -1267.505859375,
+  "maxElevation": 592.9070434570312,
+  "seaFraction": 0.5381560898130099,
+  "sha256": "23541a7dca235d378a42a55d3dee85b013efe2f40cf73f6fd4077e215919198c",
+  "tiles": [
+    "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/13/641/4475.png",
+    "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/13/641/4476.png",
+    "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/13/641/4477.png",
+    "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/13/641/4478.png",
+    "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/13/642/4475.png",
+    "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/13/642/4476.png",
+    "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/13/642/4477.png",
+    "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/13/642/4478.png",
+    "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/13/643/4475.png",
+    "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/13/643/4476.png",
+    "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/13/643/4477.png",
+    "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/13/643/4478.png",
+    "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/13/644/4475.png",
+    "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/13/644/4476.png",
+    "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/13/644/4477.png",
+    "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/13/644/4478.png"
+  ]
+}

@@ -87,23 +87,23 @@ namespace AirCity.Tests.Aircraft
             var dd = Type("DoubleDeck");
             Debug.Log($"DoubleDeck: {dd.Wingspan:F2} x {dd.Length:F2} x {dd.Height:F2} m, code {dd.SizeCode}, " +
                       $"wheelbase {dd.Wheelbase:F2}, min turn {dd.MinTurnRadius:F1} m, runway {dd.RunwayLength:F0} m");
-            Assert.That(dd.Wingspan, Is.InRange(79.2f, 80f));           // A380-800: 79.75 m
+            Assert.That(dd.Wingspan, Is.InRange(79.0f, 80f));           // 79.3 m over the raked tips
             Assert.That(dd.Length, Is.InRange(72.2f, 73.2f));           // 72.73 m
-            Assert.That(dd.Height, Is.InRange(23.6f, 24.6f));           // 24.17 m (fin tip, MRW)
+            Assert.That(dd.Height, Is.InRange(22.2f, 23.2f));           // ~22.7 m (T-tail)
             Assert.AreEqual('F', dd.SizeCode);
             Assert.That(dd.Wheelbase, Is.InRange(29.5f, 32f));          // nose gear to the turn centre, ~30.6 m
-            Assert.LessOrEqual(dd.RunwayLength, 3400f, "fits the sandbox's 3,400 m main runway when dry");
+            Assert.LessOrEqual(dd.RunwayLength, 3400f, "within the 3,400 m dry runway budget");
             var qj = Type("Quadjet");
             Debug.Log($"Quadjet: {qj.Wingspan:F2} x {qj.Length:F2} x {qj.Height:F2} m, code {qj.SizeCode}, " +
                       $"wheelbase {qj.Wheelbase:F2}, min turn {qj.MinTurnRadius:F1} m, runway {qj.RunwayLength:F0} m, " +
                       $"dry paved {RunwayRules.RequiredLength(qj, PavementSurface.Asphalt, SurfaceCondition.Dry):F0} m");
-            Assert.That(qj.Wingspan, Is.InRange(67.9f, 68.9f));         // 747-8: 68.4 m
+            Assert.That(qj.Wingspan, Is.InRange(67.9f, 68.9f));         // 68.4 m over the winglets
             Assert.That(qj.Length, Is.InRange(75.8f, 76.8f));           // 76.3 m
-            Assert.That(qj.Height, Is.InRange(19.0f, 19.8f));           // 19.4 m (fin tip)
+            Assert.That(qj.Height, Is.InRange(19.2f, 20.0f));           // ~19.6 m (fin tip)
             Assert.AreEqual('F', qj.SizeCode);
             Assert.That(qj.Wheelbase, Is.InRange(28f, 30.5f));          // nose gear to the turn centre, ~28.9 m
             Assert.LessOrEqual(RunwayRules.RequiredLength(qj, PavementSurface.Asphalt, SurfaceCondition.Dry), 3400f,
-                "fits the sandbox's 3,400 x 60 m main runway when dry");
+                "within the 3,400 m dry runway budget");
             var tp = Type("Turboprop");
             Debug.Log($"Turboprop: {tp.Wingspan:F2} x {tp.Length:F2} x {tp.Height:F2} m, code {tp.SizeCode}, wheelbase {tp.Wheelbase:F2}, " +
                       $"min turn {tp.MinTurnRadius:F1} m, runway {tp.RunwayLength:F0} m");
@@ -121,7 +121,7 @@ namespace AirCity.Tests.Aircraft
             Assert.AreEqual('D', tj.SizeCode);
             Assert.That(tj.Wheelbase, Is.InRange(21.5f, 22.5f));
             Assert.LessOrEqual(RunwayRules.RequiredLength(tj, PavementSurface.Asphalt, SurfaceCondition.Dry), 3400f,
-                "fits the sandbox's 3,400 m main runway when dry");
+                "within the 3,400 m dry runway budget");
             var sst = Type("Supersonic");
             Debug.Log($"Supersonic: {sst.Wingspan:F2} x {sst.Length:F2} x {sst.Height:F2} m, code {sst.SizeCode}, wheelbase {sst.Wheelbase:F2}, " +
                       $"min turn {sst.MinTurnRadius:F1} m, runway {sst.RunwayLength:F0} m");
@@ -141,7 +141,7 @@ namespace AirCity.Tests.Aircraft
                 "too long for a code C stand");
             Assert.AreEqual(StandProblem.None, RunwayRules.CheckStand(sst, 'D', PavementSurface.Concrete, 23f, PavementSurface.Asphalt));
             Assert.LessOrEqual(RunwayRules.RequiredLength(sst, PavementSurface.Asphalt, SurfaceCondition.Dry), 3400f,
-                "fits the sandbox's 3,400 m main runway when dry");
+                "within the 3,400 m dry runway budget");
             Assert.Greater(sst.takeoffDistance, tj.takeoffDistance, "needs the longest runway of the fleet");
             // origin under the main gear, nose forwards (+Z), on the ground
             foreach (var t in new[] { cessna, jet, wide, dd, qj, tp, tj, sst })

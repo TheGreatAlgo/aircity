@@ -21,7 +21,7 @@ namespace AirCity.EditorTools.Vehicles
 
         static bool InVehicles(string path) => path.Replace('\\', '/').StartsWith(Root);
 
-        public override uint GetVersion() => 8;
+        public override uint GetVersion() => 9;
 
         [System.Serializable] class LodProfile { public string[] lodAlways, lodMovers; }
 
@@ -129,7 +129,12 @@ namespace AirCity.EditorTools.Vehicles
 
         Material CreateMaterial(string model)
         {
-            var shader = AircraftAssetPostprocessor.LitShader();
+            // Import workers may have no active render pipeline. Resolve the project's URP shader directly so
+            // generated airport equipment never falls back to an unsupported Standard material.
+            const string litShader = "Packages/com.unity.render-pipelines.universal/Shaders/Lit.shader";
+            context.DependsOnArtifact(litShader);
+            var shader = AssetDatabase.LoadAssetAtPath<Shader>(litShader);
+            if (shader == null) shader = AircraftAssetPostprocessor.LitShader();
             var mat = new Material(shader != null ? shader : Shader.Find("Standard")) { name = model };
             var albedo = ModelTexture(model, "Albedo");
             var metalGloss = ModelTexture(model, "MetalGloss");

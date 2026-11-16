@@ -6,6 +6,8 @@
 #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
 #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Lighting.hlsl"
 
+#include "UndergroundRoadView.hlsl"
+
 // set by Airport.ApplyGlobals: how wet surfaces look (0..1), snow on unploughed ground (cm)
 float _AirfieldWetness;
 float _AirfieldSnow;
@@ -19,10 +21,12 @@ float _AirfieldSnow;
 #define KIND_JUNCTION 5
 #define KIND_VERGE 6
 #define KIND_STAND 7
+#define KIND_ROAD 8
 
 half4 AirfieldShade(float3 positionWS, float4 positionCS, half3 normalWS, half3 albedo, half smoothness,
                     half occlusion, half alpha, half fogFactor)
 {
+    AirCityClipUnderground(positionWS);
     InputData inputData = (InputData)0;
     inputData.positionWS = positionWS;
     inputData.positionCS = positionCS;

@@ -27,9 +27,14 @@ ArtSource/README.md. When you change a system, update its doc in `Docs/` in the 
 - Roads are `TaxiwayEdge`s with `road` set to a `RoadClass` (`Service` now; `Street` / `Highway` reserved, see
   `RunwayRules.Road`): aircraft routing must keep leaving every class out. Road pavement sits under paved aprons
   (`AirfieldHeights.Road`), so across an apron a road is only paint. Aprons are polygons (`ApronArea.outline`).
-- Public roads in the career use the independent `World/PublicRoadNetwork` 3D graph, never `TaxiwayNetwork`.
+- Public roads in both game modes use the independent `World/PublicRoadNetwork` 3D graph, never `TaxiwayNetwork`.
   `PublicRoadGeometry` builds its own strips, junctions and bridges. At-grade crossings share a node; overpasses
   remain separate. Terminal entrances are explicit public node identifiers. See `Docs/systems/public-roads.md`.
+- Career and Sandbox are modes of one game in `NewGame.unity`. `CareerGame` hosts both (its historical class
+  name is retained). All new features use the same build tools (`DevAirfieldTool`/`DevToolbar`), airport data,
+  simulation and full-airport save (`AirportSaveData`). Mode rules control costs, unlocks and objectives.
+  `CareerLayout` is a tutorial projection and old-save migration format, not the full airport model. Never create
+  a separate career implementation of a sandbox feature. `Sandbox.unity` is a development fixture.
 - New Game construction is player-operated: `CareerConstruction` validates/charges brush edits and placed layouts;
   `CareerLayout` saves them. The task card guides the player and bottom tools unlock through work. Never put back
   automatic clearing/grading/building purchases or a construction checklist. The sequential `CareerState.Build`

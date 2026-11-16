@@ -12,12 +12,23 @@ namespace AirCity.Game
         {
             if (source == null) throw new ArgumentNullException(nameof(source));
             return new CareerState {
-                saveVersion = source.saveVersion, world = World(source.world), selectedSite = source.selectedSite,
+                saveVersion = source.saveVersion, expenseRemainder = source.expenseRemainder, mode = source.mode, airport = Airport(source.airport), world = World(source.world), selectedSite = source.selectedSite,
                 completedBuilds = source.completedBuilds, funds = source.funds, completedCharters = source.completedCharters,
                 expanded = source.expanded, charterActive = source.charterActive, charterElapsed = source.charterElapsed,
                 operatingSeconds = source.operatingSeconds, roadTrafficSeconds = source.roadTrafficSeconds,
                 publicRoads = Roads(source.publicRoads), accessRoadRoute = Copy(source.accessRoadRoute),
-                handsOn = source.handsOn, layout = Layout(source.layout)
+                handsOn = source.handsOn, wholeRegion = source.wholeRegion, layout = Layout(source.layout)
+            };
+        }
+
+        static AirportSaveData Airport(AirportSaveData source)
+        {
+            if (source == null) return null;
+            return new AirportSaveData {
+                nodes = Copy(source.nodes, n => n == null ? null : new AirportSaveData.Node { name = n.name, parent = n.parent, position = n.position, rotation = n.rotation, scale = n.scale }),
+                parts = Copy(source.parts, p => p == null ? null : new AirportSaveData.Part { node = p.node, kind = p.kind, json = p.json }),
+                references = Copy(source.references),
+                appearances = Copy(source.appearances, a => a == null ? null : new AirportSaveData.Appearance { name = a.name, json = a.json })
             };
         }
 
@@ -25,9 +36,16 @@ namespace AirCity.Game
         {
             if (source == null) return null;
             return new ValleyWorld {
-                generatorVersion = source.generatorVersion, seed = source.seed,
+                generatorVersion = source.generatorVersion, forestVersion = source.forestVersion, seed = source.seed, preset = source.preset, river = source.river,
+                hasOcean = source.hasOcean, hasRiver = source.hasRiver, seaLevel = source.seaLevel,
+                elevationScale = source.elevationScale, elevationOffset = source.elevationOffset, sourceExtent = source.sourceExtent,
+                hasCoordinates = source.hasCoordinates, latitude = source.latitude, longitude = source.longitude,
+                elevationSha256 = source.elevationSha256, coverSha256 = source.coverSha256,
+                landscapeSource = source.landscapeSource, landCover = source.landCover == null ? null : (byte[])source.landCover.Clone(), roadHeights = source.roadHeights == null ? null : (float[])source.roadHeights.Clone(),
+                waterHeights = source.waterHeights == null ? null : (float[])source.waterHeights.Clone(),
                 heights = source.heights == null ? null : (float[])source.heights.Clone(),
                 disturbance = source.disturbance == null ? null : (float[])source.disturbance.Clone(),
+                clearedProps = Copy(source.clearedProps),
                 trees = Copy(source.trees, t => t == null ? null : new ForestTree { position = t.position, height = t.height, removed = t.removed }),
                 sites = Copy(source.sites, s => s == null ? null : new AirportSite {
                     name = s.name, description = s.description, centre = s.centre, elevation = s.elevation, landPrice = s.landPrice }),

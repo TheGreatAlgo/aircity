@@ -3,8 +3,7 @@
 AirCity is an airport-building game for PC and Mac: Unity 6000.6.7f1, URP, minimum spec around an RTX 3060, up to
 about 100 aircraft. It's the real game, not a prototype. It's early: there's a sandbox scene with aircraft,
 generated airfields and service roads, aircraft stands and de-icing bays, weather, maintenance depots with their vehicles, and air
-traffic: aircraft taxi, take off and land on their own, held apart by a tower. A separate New Game scene now
-provides a first task-guided career: manual tree clearing and terrain brushes, player-placed airport layouts,
+traffic: aircraft taxi, take off and land on their own, held apart by a tower. The shared New Game scene provides Career and Sandbox modes with one world, build workspace and full-airport save; Career adds a first task-guided progression: manual tree clearing and terrain brushes, player-placed airport layouts,
 progressive bottom tools, road access, paid charters and save/resume. A full schedule and airport economy remain future work.
 
 Read this page, then the system doc for whatever you're touching. The repo's `CLAUDE.md` has conventions and
@@ -15,6 +14,7 @@ gotchas, and `README.md` / `ArtSource/README.md` are the human-facing guides.
 | Doc | Read it when you touch |
 |---|---|
 | [systems/new-game.md](systems/new-game.md) | player-placed airport, manual clearing/terrain, progressive tools, natural terrain relief, scanned ground, instanced rocks/undergrowth, first charter and save/resume |
+| [systems/built-surfaces.md](systems/built-surfaces.md) | pavement ownership, persistent terrain foundations, vegetation clearance and terrain shader clipping |
 | [systems/public-roads.md](systems/public-roads.md) | separate 3D road graph, terminal entrances, lane turns, signals, road geometry, bridge/ramp kit and career drawing |
 | [assets/ForestTrees.md](assets/ForestTrees.md) | spruce/pine assets, foliage source, instancing, distance models and regeneration |
 | [systems/aircraft.md](systems/aircraft.md) | aircraft models, the Blender pipeline, `AircraftType`, prefabs, lights, LODs |
@@ -24,8 +24,10 @@ gotchas, and `README.md` / `ArtSource/README.md` are the human-facing guides.
 | [systems/baggage.md](systems/baggage.md) | sandbox automation and station controls, repeated cart trips, bulk/container turnarounds, departure clearance, manifests and planned terminal expansion |
 | [systems/terminal-baggage.md](systems/terminal-baggage.md) | abstract terminal check-in/reclaim, timed underground/covered links, queue limits and connection controls |
 | [systems/maintenance.md](systems/maintenance.md) | depots, snow ploughs, mowers, tugs and push-back, teams, jobs and dispatch, turning round, keeping clear, the ploughing / mowing pass pattern |
+| [systems/deicing.md](systems/deicing.md) | deicing pads, spray trucks, tank storage, fluid deliveries and aircraft service holds |
 | [systems/traffic.md](systems/traffic.md) | flights: taxi route planning, holds and clearances, takeoffs, landings, go-arounds, the wind, the sandbox's traffic controls |
 | [taxi-todo.md](taxi-todo.md) | what's left in ground traffic: the jams the soak test still finds, ideas, tuning |
+| [roads-todo.md](roads-todo.md) | road construction handoff: shared curves/profiles, bridges, tunnels, underpasses and local rebuilds; future upgrades and traffic |
 | [systems/dev-tools.md](systems/dev-tools.md) | batch commands, tests, captures, the sandbox controls |
 | [assets/Cessna172.md](assets/Cessna172.md), [assets/Narrowbody.md](assets/Narrowbody.md), [assets/Widebody.md](assets/Widebody.md), [assets/DoubleDeck.md](assets/DoubleDeck.md), [assets/Quadjet.md](assets/Quadjet.md), [assets/Turboprop.md](assets/Turboprop.md), [assets/Trijet.md](assets/Trijet.md), [assets/Supersonic.md](assets/Supersonic.md) | one aircraft type |
 | [assets/SnowPlough.md](assets/SnowPlough.md), [assets/Mower.md](assets/Mower.md), [assets/Tugs.md](assets/Tugs.md), [assets/Depot.md](assets/Depot.md), [assets/ControlTowers.md](assets/ControlTowers.md), [assets/JetBridge.md](assets/JetBridge.md) | one vehicle / building |
@@ -33,6 +35,7 @@ gotchas, and `README.md` / `ArtSource/README.md` are the human-facing guides.
 | [assets/BaggageDepot.md](assets/BaggageDepot.md) | Small/Medium/Large depot shells, shared drive-through positions, roof inspection and equipment upgrades |
 | [assets/RampCrew.md](assets/RampCrew.md) | shared skinned workers, driving, boarding, bag handovers, hold poses and crew interlocks |
 | [assets/ContainerEquipment.md](assets/ContainerEquipment.md) | unbranded LD3, container dolly, dual-platform loader, interfaces, references and generation |
+| [assets/DeicingEquipment.md](assets/DeicingEquipment.md) | articulated deicing truck, storage tank, supplier tanker and recycling skid; generated models and review captures |
 | [assets/airfield-textures.md](assets/airfield-textures.md) | ground textures and airfield materials |
 
 ## Architecture in one screen
@@ -66,6 +69,13 @@ Tests/EditMode   AircraftTypeTests, AircraftLiveryTests, AirfieldTests, StandTes
                  TrafficSoakTests (explicit: game hours of auto traffic)
 ```
 
+## One game, two modes
+
+All features use the same airport data, tools, simulation and save system in `NewGame.unity`. Career and Sandbox
+select rules (funds, unlocks, objectives), not implementations. Use `Game > Switch to Sandbox / Career` to switch
+in place. Keep `Sandbox.unity` and the small review scenes as development fixtures. Never duplicate a new feature
+into separate career and sandbox tool paths. See [the shared session](systems/new-game.md#shared-game-architecture).
+
 ## Principles that hold everywhere
 
 - **Generated, not hand-edited.** Models, textures, `*.aircraft` / `*.vehicle` data, airfield textures and the
@@ -81,7 +91,8 @@ Tests/EditMode   AircraftTypeTests, AircraftLiveryTests, AirfieldTests, StandTes
 - **Scale.** Built for about 100 aircraft, mostly zoomed out: few draw calls per object (far LODs are 1–2 draws),
   lights as GPU glow quads controlled by the renderer's shader user value, and hot per-pixel work in Burst.
 - **Game time.** `Airport.timeScale` is game seconds per real second (default 1). Weather, grass growth and
-  vehicles all run on it. There's no game clock yet.
+  vehicles all run on it. New Game derives its calendar/climate from saved `operatingSeconds`: one displayed
+  minute per simulation second, with pause and 1×/5×/20× controls in the top bar.
 - **Input System only.** Never use `UnityEngine.Input`.
 
 ## Working with the user

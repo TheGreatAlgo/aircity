@@ -40,6 +40,8 @@ Shader "AirCity/AirfieldSurface"
         [Toggle(_FRINGE)] _Fringe ("Ragged edges (dirt, grass strips)", Float) = 0
         [Toggle(_GRASS_LENGTH)] _GrassLength ("Grass length and mowing stripes", Float) = 0
         _StripeStrength ("Mowing stripe strength", Range(0, 0.4)) = 0.2
+        [HideInInspector] _ConstructionZTest ("Depth test", Float) = 4
+        [HideInInspector] _ConstructionZWrite ("Depth write", Float) = 1
     }
     SubShader
     {
@@ -55,6 +57,7 @@ Shader "AirCity/AirfieldSurface"
             float _JointWidth, _JointDarkness, _SlabVariation, _Porosity, _Rubber;
             half4 _RubberColor;
             float _Puddles, _StripeStrength;
+            float _ConstructionZTest, _ConstructionZWrite;
         CBUFFER_END
 
         TEXTURE2D(_BaseMap); SAMPLER(sampler_BaseMap);
@@ -105,6 +108,7 @@ Shader "AirCity/AirfieldSurface"
 
         void Fringe(Varyings i)
         {
+            AirCityClipUnderground(i.positionWS);
         #if defined(_FRINGE)
             half grain = Macro(i.positionWS.xz, 9.0).a;
             clip(i.color.a - (grain * 0.9 + 0.05));
@@ -116,6 +120,8 @@ Shader "AirCity/AirfieldSurface"
         {
             Name "ForwardLit"
             Tags { "LightMode" = "UniversalForward" }
+            ZTest [_ConstructionZTest]
+            ZWrite [_ConstructionZWrite]
 
             HLSLPROGRAM
             #pragma target 3.5
@@ -153,7 +159,7 @@ Shader "AirCity/AirfieldSurface"
                 float2 xz = i.positionWS.xz;
                 int kind = (int)round(i.kindLength.x);
                 float runwayLength = i.kindLength.y;
-                bool worldMapped = kind == KIND_APRON || kind == KIND_JUNCTION || kind == KIND_GROUND;
+                bool worldMapped = kind == KIND_APRON || kind == KIND_JUNCTION || kind == KIND_GROUND || (kind == KIND_ROAD && i.kindLength.y < 0);
                 float2 local = worldMapped ? xz : i.local;
 
                 half4 macro = Macro(xz, _MacroScale);
@@ -179,6 +185,32 @@ Shader "AirCity/AirfieldSurface"
                 half wear = saturate(i.color.r * (0.55 + 0.7 * traffic));
                 half wearNoise = macro.r * 0.7 + fine.b * 0.3;
                 half worn = smoothstep(1.0 - wear - 0.12, 1.0 - wear + 0.12, wearNoise) * step(0.001, i.color.r);
+            #if defined(_GRASS_LENGTH)
+                // Metre-scale turf survives the photo texture's distant mip: damp clumps, pale dry patches
+                // and compacted wheel paths, rather than a solid green ribbon across the landscape.
+                half4 turf = Macro(xz + float2(71.0, 23.0), 31.0);
+                half4 clumps = Macro(xz + float2(13.0, 97.0), 8.0);
+                half dry = smoothstep(0.42, 0.72, turf.g * 0.7 + clumps.r * 0.3);
+                half lush = smoothstep(0.43, 0.73, turf.b * 0.75 + clumps.g * 0.25);
+                albedo *= lerp(half3(1, 1, 1), half3(1.23, 1.10, 0.76), dry * 0.65);
+                albedo *= lerp(half3(1, 1, 1), half3(0.72, 0.86, 0.72), lush * 0.7);
+                albedo *= 1.0 + (clumps.a - 0.5) * 0.2;
+                if(kind == KIND_RUNWAY || kind == KIND_TAXIWAY)
+                {
+                    half track = 1.0 - smoothstep(0.28, 1.05, abs(abs(local.x) - 1.8));
+                    half broken = smoothstep(0.25, 0.66, clumps.b * 0.45 + turf.r * 0.55);
+                    half ends = kind == KIND_RUNWAY ? smoothstep(5.0, 45.0, min(local.y, runwayLength-local.y)) : 1.0;
+                    worn = max(worn, track * broken * ends * (0.18 + i.color.r * 0.5));
+                }
+                if(kind == KIND_RUNWAY)
+                {
+                    // A maintained airstrip has broad mower passes even before its first maintenance job.
+                    // Filter them out below pixel size; the live mower's directional stripes still apply below.
+                    float stripe = cos(local.x * 0.698132); // alternating 4.5 m passes
+                    float visible = 1.0 - smoothstep(2.0, 7.0, fwidth(local.x));
+                    albedo *= 1.0 + stripe * _StripeStrength * 0.65 * visible;
+                }
+            #endif
                 if (worn > 0.001)
                 {
                     float2 uvW = uvA * 0.83 + 0.21;
@@ -188,7 +220,7 @@ Shader "AirCity/AirfieldSurface"
                 }
 
                 // slab / paving-lane joints and per-slab tint
-                float2 spacing = kind == KIND_JUNCTION ? 0 : _JointSpacing.xy;
+                float2 spacing = kind == KIND_JUNCTION || kind == KIND_ROAD ? 0 : _JointSpacing.xy;
                 half joint = 0;
                 float2 slab = 0;
                 if (spacing.x > 0)
@@ -207,6 +239,16 @@ Shader "AirCity/AirfieldSurface"
                 albedo *= 1.0 - joint * _JointDarkness;
 
                 albedo *= _Tint.rgb * (1.0 + (macro.r - 0.5) * 2.0 * _MacroStrength);
+                if(kind == KIND_ROAD)
+                {
+                    half4 roadPatch=Macro(xz+float2(37,81),23.0);
+                    half4 roadGrain=Macro(xz+float2(19,43),5.7);
+                    half faded=smoothstep(0.3,0.72,roadPatch.r*.7+roadGrain.g*.3);
+                    half damp=smoothstep(0.4,0.75,roadPatch.b);
+                    albedo*=lerp(half3(.85,.87,.9),half3(1.17,1.12,1.04),faded);
+                    albedo*=1.0-damp*.1;
+                    albedo*=1.0+(roadGrain.a-.5)*.12;
+                }
                 if (kind == KIND_SHOULDER)
                     albedo *= 1.06;
                 if (kind == KIND_GROUND || kind == KIND_VERGE)    // dry, yellower patches in the grass

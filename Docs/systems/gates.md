@@ -193,7 +193,8 @@ attachment prefabs follow named rig parts for signs, advertisements, lights or e
 and do not enlarge mechanical collision envelopes.
 
 The Blender generator exports `BridgeZones` vertex colours (red cladding, green glazing, blue roof). The rig
-shares an `AirCity/JetBridge` surface material over the original imported atlas. Separate rotunda drums and columns allow height
+shares an `AirCity/JetBridge` surface material over the original imported atlas. The vehicle importer resolves
+URP Lit directly during background imports so the atlas keeps its surface maps. Separate rotunda drums and columns allow height
 changes without distorting the drum. Generated files remain owned by `ArtSource/Vehicles/JetBridge/model.py`.
 
 ## Validation

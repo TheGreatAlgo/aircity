@@ -39,7 +39,7 @@ namespace AirCity.EditorTools.Game
         public static void Road(CareerState state)
         {
             var start = state.Site.centre + new Vector2(220f, -170f);
-            var end = new Vector2(ValleyWorld.RoadX, start.y);
+            var end = new Vector2(state.world.RoadAt(start.y), start.y);
             for (int i = 0; i < state.world.trees.Count; i++)
             {
                 var tree = state.world.trees[i];
@@ -50,7 +50,9 @@ namespace AirCity.EditorTools.Game
         }
         public static CareerState Open(int seed = 42)
         {
-            var state = CareerState.New(seed);
+            // Keep the paid construction/charter fixture independent of the selected real landscape.
+            var state = new CareerState { world = ValleyWorld.GenerateLegacy(seed), handsOn = true, wholeRegion = true, layout = new CareerLayout() };
+            state.publicRoads = PublicRoadNetwork.FromWorld(state.world);
             if (!state.Build(out string why, 0)) throw new Exception(why);
             PreparePatch(state); Runway(state); Parking(state); Road(state);
             if (!CareerConstruction.Reception(state, state.Site.centre + new Vector2(215f, -135f), 0f, true, out why)) throw new Exception(why);

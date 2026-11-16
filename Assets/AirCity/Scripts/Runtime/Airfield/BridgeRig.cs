@@ -226,10 +226,10 @@ namespace AirCity.Airfield
                         var entry = airport.Bridges.ServicePlan(previewStand, previewType)[l.bridge];
                         pose = entry.Operates ? BridgePose.Move(entry.parked, entry.docked, previewProgress) : entry.parked;
                     }
-                    if (inst.version != airport.LayoutVersion || !pose.Equals(inst.lastPose))
+                    if (inst.version != airport.Bridges.Version || !pose.Equals(inst.lastPose))
                     {
                         Place(inst, l, pose);
-                        inst.version = airport.LayoutVersion; inst.lastPose = pose;
+                        inst.version = airport.Bridges.Version; inst.lastPose = pose;
                     }
                 }
             var gone = new List<JetBridge>();
@@ -250,10 +250,10 @@ namespace AirCity.Airfield
                     if (inst != null) Discard(inst);
                     headInstances[h.head] = inst = MakeHead(h.head.appearance);
                 }
-                if (inst.version != airport.LayoutVersion)
+                if (inst.version != airport.Bridges.Version)
                 {
                     PlaceHead(inst, h);
-                    inst.version = airport.LayoutVersion;
+                    inst.version = airport.Bridges.Version;
                 }
             }
             var goneHeads = new List<BridgeHead>();

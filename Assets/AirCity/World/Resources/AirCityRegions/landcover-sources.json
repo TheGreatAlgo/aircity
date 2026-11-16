@@ -1,0 +1,199 @@
+{
+  "source": "ESA WorldCover 10 m 2021 v200, accessed 2026-11-14",
+  "source_url": "https://esa-worldcover.org/en/data-access",
+  "doi": "https://doi.org/10.5281/zenodo.7254221",
+  "license": "CC-BY-4.0",
+  "license_url": "https://creativecommons.org/licenses/by/4.0/",
+  "attribution": "\u00a9 ESA WorldCover project 2021 / Contains modified Copernicus Sentinel data (2021) processed by ESA WorldCover consortium",
+  "modification": "Nearest-neighbour samples extracted from geographic source windows to AirCity's 513 \u00d7 513 local east/north grids; source class values retained.",
+  "citation": "Zanaga, D., et al. (2022). ESA WorldCover 10 m 2021 v200.",
+  "generator": "ArtSource/World/landcover_presets.py",
+  "classes": {
+    "0": "No data",
+    "10": "Tree cover",
+    "20": "Shrubland",
+    "30": "Grassland",
+    "40": "Cropland",
+    "50": "Built-up",
+    "60": "Bare / sparse vegetation",
+    "70": "Snow and ice",
+    "80": "Permanent water",
+    "90": "Herbaceous wetland",
+    "95": "Mangroves",
+    "100": "Moss and lichen"
+  },
+  "maps": [
+    {
+      "name": "Desert",
+      "latitude": 38.57,
+      "longitude": -109.55,
+      "sourceExtentMetres": 8000,
+      "resolution": 513,
+      "format": "raw uint8 class code, south row first; no header",
+      "sha256": "179e4c349aa0e180410428df9f3e218b6a71058e035e45d95d03d6c56005892a",
+      "waterFraction": 0.02547412499192534,
+      "classes": {
+        "10": {
+          "name": "Tree cover",
+          "fraction": 0.03502312202425058
+        },
+        "20": {
+          "name": "Shrubland",
+          "fraction": 0.29722725700975416
+        },
+        "30": {
+          "name": "Grassland",
+          "fraction": 0.1089300031538669
+        },
+        "40": {
+          "name": "Cropland",
+          "fraction": 0.008606636799927044
+        },
+        "50": {
+          "name": "Built-up",
+          "fraction": 0.07235274671408866
+        },
+        "60": {
+          "name": "Bare / sparse vegetation",
+          "fraction": 0.45236711010795344
+        },
+        "80": {
+          "name": "Permanent water",
+          "fraction": 0.02547412499192534
+        },
+        "90": {
+          "name": "Herbaceous wetland",
+          "fraction": 1.899919823383453e-05
+        }
+      },
+      "tiles": [
+        "https://esa-worldcover.s3.eu-central-1.amazonaws.com/v200/2021/map/ESA_WorldCover_10m_2021_v200_N36W111_Map.tif"
+      ]
+    },
+    {
+      "name": "Mountains",
+      "latitude": 37.735,
+      "longitude": -119.597,
+      "sourceExtentMetres": 8000,
+      "resolution": 513,
+      "format": "raw uint8 class code, south row first; no header",
+      "sha256": "5826471b9ed11e09aeca2b4debed5243b8909557310faad999b6166458e52c20",
+      "waterFraction": 0.002108911003955633,
+      "classes": {
+        "10": {
+          "name": "Tree cover",
+          "fraction": 0.701742986445972
+        },
+        "20": {
+          "name": "Shrubland",
+          "fraction": 0.0007219695328857123
+        },
+        "30": {
+          "name": "Grassland",
+          "fraction": 0.23530127028639392
+        },
+        "50": {
+          "name": "Built-up",
+          "fraction": 0.001542734896587364
+        },
+        "60": {
+          "name": "Bare / sparse vegetation",
+          "fraction": 0.0585821278342054
+        },
+        "80": {
+          "name": "Permanent water",
+          "fraction": 0.002108911003955633
+        }
+      },
+      "tiles": [
+        "https://esa-worldcover.s3.eu-central-1.amazonaws.com/v200/2021/map/ESA_WorldCover_10m_2021_v200_N36W120_Map.tif"
+      ]
+    },
+    {
+      "name": "Tropical",
+      "latitude": -16.503,
+      "longitude": -151.744,
+      "sourceExtentMetres": 12800,
+      "resolution": 513,
+      "format": "raw uint8 class code, south row first; no header",
+      "sha256": "7235e3f36f2c91dc66c6eb0012571c7490365ee0abd24d4bb4a81ad5f9ea1d37",
+      "waterFraction": 0.8272630894976232,
+      "classes": {
+        "10": {
+          "name": "Tree cover",
+          "fraction": 0.1264662631236962
+        },
+        "20": {
+          "name": "Shrubland",
+          "fraction": 7.5996792935338125e-06
+        },
+        "30": {
+          "name": "Grassland",
+          "fraction": 0.030307521022612846
+        },
+        "50": {
+          "name": "Built-up",
+          "fraction": 0.010050575865698467
+        },
+        "60": {
+          "name": "Bare / sparse vegetation",
+          "fraction": 0.0016947284824580403
+        },
+        "80": {
+          "name": "Permanent water",
+          "fraction": 0.8272630894976232
+        },
+        "90": {
+          "name": "Herbaceous wetland",
+          "fraction": 0.004107626658155026
+        },
+        "95": {
+          "name": "Mangroves",
+          "fraction": 0.00010259567046270647
+        }
+      },
+      "tiles": [
+        "https://esa-worldcover.s3.eu-central-1.amazonaws.com/v200/2021/map/ESA_WorldCover_10m_2021_v200_S18W153_Map.tif"
+      ]
+    },
+    {
+      "name": "Woodland",
+      "latitude": 47.665,
+      "longitude": -121.928,
+      "sourceExtentMetres": 8000,
+      "resolution": 513,
+      "format": "raw uint8 class code, south row first; no header",
+      "sha256": "d3f2a1c2516226d46f775e61bdbe5ebd651af905cd65dc8dc7a5837d5108de49",
+      "waterFraction": 0.023084025854108958,
+      "classes": {
+        "10": {
+          "name": "Tree cover",
+          "fraction": 0.7342430149447693
+        },
+        "30": {
+          "name": "Grassland",
+          "fraction": 0.21110769125542903
+        },
+        "40": {
+          "name": "Cropland",
+          "fraction": 0.014902971094619808
+        },
+        "50": {
+          "name": "Built-up",
+          "fraction": 0.016160718017699652
+        },
+        "60": {
+          "name": "Bare / sparse vegetation",
+          "fraction": 0.0005015788333732317
+        },
+        "80": {
+          "name": "Permanent water",
+          "fraction": 0.023084025854108958
+        }
+      },
+      "tiles": [
+        "https://esa-worldcover.s3.eu-central-1.amazonaws.com/v200/2021/map/ESA_WorldCover_10m_2021_v200_N45W123_Map.tif"
+      ]
+    }
+  ]
+}

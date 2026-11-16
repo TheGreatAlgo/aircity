@@ -33,7 +33,11 @@ namespace AirCity.Vehicles
         {
             var t = aircraft.transform;
             var at = airport.transform.InverseTransformPoint(t.position);
-            if (at.y > 3f) return true;
+            float aircraftGround=airport.PavementElevationAt(BaggageServicePlan.XZ(at));
+            if(at.y-aircraftGround>3f)return true;
+            float deck=float.IsNaN(pose.elevation)?airport.PavementElevationAt(pose.position):pose.elevation;
+            float top=deck+Mathf.Max(bounds.max.y,serviceHeight);
+            if(top+.25f<at.y+aircraft.type.bounds.min.y || deck+bounds.min.y>at.y+aircraft.type.bounds.max.y+.25f)return true;
             var facing = BaggageServicePlan.XZ(airport.transform.InverseTransformDirection(t.forward)).normalized;
             var box = Box.Of(pose.position, pose.facing, bounds, 0.2f);
             if (!servicing || aircraft.type.serviceFootprints.Length == 0)
@@ -59,7 +63,7 @@ namespace AirCity.Vehicles
                 Mathf.Abs(Vector2.Dot(nose - door - normal * 0.10f, side)) < 0.04f && Vector2.Dot(nose - door, normal) >= 0.075f;
             foreach (var part in aircraft.type.serviceFootprints)
             {
-                float equipmentTop = vehicle != null ? Mathf.Max(bounds.max.y, serviceHeight) : bounds.max.y;
+                float equipmentTop=deck+(vehicle!=null?Mathf.Max(bounds.max.y,serviceHeight):bounds.max.y);
                 if ((part.name == "Tail" || part.name == "Left wing" || part.name == "Right wing") &&
                     part.bottom + at.y > equipmentTop + .25f) continue;
                 var shape = bounds;

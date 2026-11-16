@@ -54,6 +54,21 @@ namespace AirCity.Airfield
         readonly Dictionary<JetBridge, (int version, BridgePose pose)> parkedPoses = new Dictionary<JetBridge, (int, BridgePose)>();
         int seenVersion = -1;
         int seenAssetVersion = -1;
+        /// <summary>A fingerprint of everything the bridges are laid out from (Signature): a layout change that leaves it
+        /// alone (a road or taxiway built away from the gates) keeps every bridge layout, plan, shape and pose.</summary>
+        int seenSignature;
+        bool laidOut;
+        int version;
+
+        /// <summary>Changes whenever the bridges are laid out again (not on every airport layout change).</summary>
+        public int Version
+        {
+            get
+            {
+                Refresh();
+                return version;
+            }
+        }
         List<(StandLayout stand, List<BridgeLayout> bridges)> layouts = new List<(StandLayout, List<BridgeLayout>)>();
         /// <summary>Each stand's head, for the layout version (only stands that have one).</summary>
         readonly Dictionary<Stand, HeadLayout> heads = new Dictionary<Stand, HeadLayout>();
@@ -64,6 +79,8 @@ namespace AirCity.Airfield
         /// <summary>Each bridge's shapes, parked and docked to each type its stand takes, for the layout version.</summary>
         readonly Dictionary<JetBridge, (int version, List<BridgeShape> shapes)> shapes = new Dictionary<JetBridge, (int, List<BridgeShape>)>();
         readonly Dictionary<(Stand, AircraftType), BridgeServicePlan> servicePlans = new Dictionary<(Stand, AircraftType), BridgeServicePlan>();
+        int baggageEnvelopeStamp=int.MinValue;
+        List<Rect> baggageEnvelopes;
 
         public AirportBridges(Airport airport) => this.airport = airport;
 
@@ -132,6 +149,18 @@ namespace AirCity.Airfield
         /// <summary>Conservative part envelopes over the assigned docking and retracting motions.</summary>
         public List<Rect> BaggageExclusions()
         {
+            Refresh();
+            int stamp=unchecked(version*31+BridgeAssetRevision.Version);
+            int PoseHash(BridgePose pose) => unchecked(pose.heading.GetHashCode()*31+pose.length.GetHashCode()*17+
+                pose.cabFloor.GetHashCode()*13+pose.floor.GetHashCode()*7+pose.cabTurn.GetHashCode());
+            foreach(var (_,list) in layouts) foreach(var layout in list)
+            {
+                var pose=PoseOf(layout); var state=Get(layout);
+                bool moving=state.state==BridgeState.Docking || state.state==BridgeState.Retracting;
+                stamp=unchecked(stamp*31+PoseHash(moving?state.from:pose));
+                stamp=unchecked(stamp*31+PoseHash(moving?state.to:Parked(layout)));
+            }
+            if(baggageEnvelopes!=null && baggageEnvelopeStamp==stamp) return baggageEnvelopes;
             var result = new List<Rect>();
             foreach (var (stand, list) in Layouts)
                 foreach (var l in list)
@@ -157,7 +186,10 @@ namespace AirCity.Airfield
                         for (int i = 0; i <= 64; i++) Include(BridgePose.Move(from, to, i / 64f));
                     }
                     var current = PoseOf(l); var parked = Parked(l);
-                    Sweep(current, parked);
+                    var state=Get(l);
+                    if(state.state==BridgeState.Docking || state.state==BridgeState.Retracting)
+                    { Sweep(state.from,state.to); Sweep(state.from,parked); }
+                    else Sweep(current, parked);
                     foreach (var type in TypesFor(stand.stand))
                     {
                         if (!ServicePlan(stand.stand, type).TryGet(l.bridge, out var entry) || !entry.Operates) continue;
@@ -167,7 +199,7 @@ namespace AirCity.Airfield
                     result.AddRange(envelopes);
                 }
             foreach (var head in Heads) result.Add(head.Shape.bounds);
-            return result;
+            baggageEnvelopeStamp=stamp; baggageEnvelopes=result; return result;
         }
 
         /// <summary>The aircraft types a stand takes (Airport.aircraftTypes): by size code and length, no light aircraft
@@ -227,7 +259,7 @@ namespace AirCity.Airfield
         /// <summary>A bridge's shapes, parked and docked to each type its stand takes that it can dock.</summary>
         List<BridgeShape> Shapes(BridgeLayout l)
         {
-            int v = airport.LayoutVersion;
+            int v = Version;
             if (shapes.TryGetValue(l.bridge, out var c) && c.version == v) return c.shapes;
             var list = new List<BridgeShape> { l.Shape(Parked(l)) };
             foreach (var t in TypesFor(l.stand.stand))
@@ -1056,7 +1088,7 @@ namespace AirCity.Airfield
         /// it (BridgeLayout.ParkAll).</summary>
         BridgePose Parked(BridgeLayout l)
         {
-            int v = airport.LayoutVersion;
+            int v = Version;
             if (parkedPoses.TryGetValue(l.bridge, out var c) && c.version == v) return c.pose;
             var list = new List<BridgeLayout> { l };
             foreach (var (sl, bs) in Layouts)
@@ -1072,6 +1104,69 @@ namespace AirCity.Airfield
             return parkedPoses.TryGetValue(l.bridge, out c) ? c.pose : poses[0];
         }
 
+        /// <summary>How far from the gates (stands with bridges or heads, and the terminals) a change of pavement can
+        /// matter to the bridges: their link columns stand off it and their parts keep off the taxiways.</summary>
+        const float GateReach = 60f;
+
+        /// <summary>A fingerprint of everything the bridges are laid out from: the aircraft types, the terminals, every
+        /// stand (its saved bridges, heads and service settings, the objects themselves, and where it lies), and the
+        /// pavement near the gates. Equal fingerprints lay the bridges out the same.</summary>
+        int Signature()
+        {
+            unchecked
+            {
+                int h = 17;
+                void Add(int n) => h = h * 31 + n;
+                // to the millimetre: float noise must not count as a change
+                void V(Vector2 p) { Add(Mathf.RoundToInt(p.x * 1000f)); Add(Mathf.RoundToInt(p.y * 1000f)); }
+                int Identity(object o) => o != null ? System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(o) : 0;
+                foreach (var t in airport.aircraftTypes) Add(t != null ? t.GetEntityId().GetHashCode() : 0);
+                bool any = false;
+                Vector2 min = default, max = default;
+                void Grow(Vector2 p)
+                {
+                    if (!any) { min = max = p; any = true; }
+                    else { min = Vector2.Min(min, p); max = Vector2.Max(max, p); }
+                }
+                foreach (var t in airport.terminals)
+                {
+                    Add(Identity(t));
+                    if (t == null) continue;
+                    Add(JsonUtility.ToJson(t).GetHashCode());
+                    foreach (var c in t.corners) Grow(c);
+                }
+                var net = airport.GetComponentInChildren<TaxiwayNetwork>();
+                if (net == null) return h;
+                foreach (var st in net.stands)
+                {
+                    Add(Identity(st));
+                    if (st == null) continue;
+                    Add(JsonUtility.ToJson(st).GetHashCode());
+                    if (st.bridges != null) foreach (var b in st.bridges) Add(Identity(b));
+                    foreach (var head in st.BridgeHeads) Add(Identity(head));
+                    var sl = net.Layout(st);
+                    if (sl == null) { Add(-1); continue; }
+                    foreach (var p in sl.Pad) V(p);
+                    V(sl.entry); V(sl.axis); V(sl.stop); V(sl.nose); V(sl.along); V(sl.side);
+                    Add(Mathf.RoundToInt(sl.halfWidth * 1000f)); Add(Mathf.RoundToInt(sl.clearance * 1000f)); Add(sl.edge != null ? 1 : 0);
+                    bool gate = (st.bridges != null && st.bridges.Count > 0) || st.head != null || st.additionalHeads.Count > 0;
+                    if (gate) foreach (var p in sl.Pad) Grow(p);
+                }
+                if (!any) return h;
+                var zone = Rect.MinMaxRect(min.x - GateReach, min.y - GateReach, max.x + GateReach, max.y + GateReach);
+                foreach (var e in net.edges)
+                {
+                    var a = net.At(e.a);
+                    var b = net.At(e.b);
+                    float r = e.width * 0.5f;
+                    var box = Rect.MinMaxRect(Mathf.Min(a.x, b.x) - r, Mathf.Min(a.y, b.y) - r, Mathf.Max(a.x, b.x) + r, Mathf.Max(a.y, b.y) + r);
+                    if (!box.Overlaps(zone)) continue;
+                    V(a); V(b); Add(Mathf.RoundToInt(e.width * 1000f)); Add(e.IsRoad ? 1 : 0);
+                }
+                return h;
+            }
+        }
+
         /// <summary>Lay the bridges out again after the layout changed (their links' columns placed off the pavement);
         /// forget bridges that have gone. A docked bridge whose stand or terminal changed under it starts again from
         /// parked.</summary>
@@ -1079,12 +1174,17 @@ namespace AirCity.Airfield
         {
             int v = airport.LayoutVersion;
             if (v == seenVersion && seenAssetVersion == BridgeAssetRevision.Version) return;
+            seenVersion = v;
+            int signature = Signature();
+            if (laidOut && signature == seenSignature && seenAssetVersion == BridgeAssetRevision.Version) return;
+            seenSignature = signature;
+            laidOut = true;
+            version++;
             if (seenAssetVersion != BridgeAssetRevision.Version)
             {
                 parkedPoses.Clear(); shapes.Clear();
                 seenAssetVersion = BridgeAssetRevision.Version;
             }
-            seenVersion = v;
             servicePlans.Clear();
             layouts = new List<(StandLayout, List<BridgeLayout>)>();
             heads.Clear();

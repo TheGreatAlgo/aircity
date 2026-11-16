@@ -151,19 +151,30 @@ def select_only(objs, active=None):
     bpy.context.view_layer.objects.active = active or objs[0]
 
 
-def unwrap(objs):
+def unwrap(objs, margin=0.004, smart_atlas=False):
     """One atlas over every part: smart projection per object, then all islands packed together, sized by
     their area so texel density is even."""
     select_only(objs)
     bpy.ops.object.mode_set(mode="EDIT")
     bpy.ops.mesh.select_all(action="SELECT")
-    bpy.ops.uv.smart_project(angle_limit=math.radians(60), island_margin=0.0, area_weight=0.0,
+    bpy.ops.uv.smart_project(angle_limit=math.radians(60), island_margin=margin if smart_atlas else 0.0, area_weight=0.0,
                              correct_aspect=True, scale_to_bounds=False)
-    bpy.ops.uv.select_all(action="SELECT")
-    bpy.ops.uv.average_islands_scale()
-    bpy.ops.uv.pack_islands(udim_source="CLOSEST_UDIM", rotate=True, scale=True, margin_method="FRACTION",
-                            margin=0.004, shape_method="CONCAVE")
+    if not smart_atlas:
+        bpy.ops.uv.select_all(action="SELECT")
+        bpy.ops.uv.average_islands_scale()
+        bpy.ops.uv.pack_islands(udim_source="CLOSEST_UDIM", rotate=True, scale=True, margin_method="FRACTION",
+                                margin=margin, shape_method="CONCAVE")
     bpy.ops.object.mode_set(mode="OBJECT")
+    # Blender can report a successful pack after every island has collapsed to a point. Baking then silently
+    # produces an empty image; reject that before replacing textured art.
+    area = 0.0
+    for ob in objs:
+        uv = ob.data.uv_layers.active.data
+        for poly in ob.data.polygons:
+            points = [uv[i].uv for i in poly.loop_indices]
+            area += abs(sum(a.x * b.y - b.x * a.y for a, b in zip(points, points[1:] + points[:1]))) * 0.5
+    if area < 1e-5:
+        raise RuntimeError("UV atlas collapsed: use UV_SMART_ATLAS or adjust this model's UV_MARGIN before baking")
 
 
 def _emit_material(name, color_fn, img):
@@ -536,7 +547,7 @@ def run():
         return
     t0 = time.time()
     mesh_objs = list(objs.values())
-    unwrap(mesh_objs)
+    unwrap(mesh_objs, getattr(model, "UV_MARGIN", 0.004), getattr(model, "UV_SMART_ATLAS", False))
     maps = bake(mesh_objs, model.AO_DISTANCE)
     print("baked in %.1fs" % (time.time() - t0))
     for n, axis in getattr(model, "STRETCH", {}).items():

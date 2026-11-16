@@ -6,9 +6,10 @@ namespace AirCity.Vehicles
     public readonly struct BaggageVehiclePose
     {
         public readonly Vector2 position, facing;
+        public readonly float elevation;
         public Vector2 Right => new Vector2(facing.y, -facing.x);
-        public BaggageVehiclePose(Vector2 position, Vector2 facing)
-        { this.position = position; this.facing = facing.normalized; }
+        public BaggageVehiclePose(Vector2 position, Vector2 facing,float elevation=float.NaN)
+        { this.position = position; this.facing = facing.normalized;this.elevation=elevation; }
         public Vector2 Point(Vector3 local) => position + Right * local.x + facing * local.z;
     }
 
@@ -60,7 +61,7 @@ namespace AirCity.Vehicles
             carts = new BaggageVehiclePose[cartCount]; trialCarts = new BaggageVehiclePose[cartCount];
             drawbars = new Vector2[cartCount]; trialDrawbars = new Vector2[cartCount];
             var p = path.Pose(0f, out var f, out _);
-            Tractor = new BaggageVehiclePose(p, f);
+            Tractor = new BaggageVehiclePose(p, f,path.Height(0,float.NaN));
             for (int i = 0; i < cartCount; i++)
             { carts[i] = new BaggageVehiclePose(RearHitchAt(i-1) - f*b.frontHitch.z,f); drawbars[i] = f; }
         }
@@ -74,7 +75,7 @@ namespace AirCity.Vehicles
             {
                 float at = Mathf.Min(end, Distance + DistanceStep);
                 var p = Path.Pose(at, out var f, out _);
-                var tractor = new BaggageVehiclePose(p, f);
+                var tractor = new BaggageVehiclePose(p, f,Path.Height(at,float.NaN));
                 var hitch = tractor.Point(TractorType.baggage.rearHitch);
                 if (clear != null && !clear(tractor,TractorType)) { reason = "baggage tractor access is blocked"; return false; }
                 for (int i = 0; i < carts.Length; i++)
@@ -83,7 +84,7 @@ namespace AirCity.Vehicles
                     var drawbar = (hitch-oldAxle).normalized;
                     var axle = hitch-drawbar*DrawbarLength;
                     var body = (axle-carts[i].position).normalized;
-                    var cart = new BaggageVehiclePose(axle-body*CartType.baggage.steeringPivot.z,body);
+                    var cart = new BaggageVehiclePose(axle-body*CartType.baggage.steeringPivot.z,body,Path.Height(Mathf.Max(0,at-(i+1)*CartType.Length),float.NaN));
                     if (Mathf.Abs(Mathf.DeltaAngle(Bearing(body),Bearing(drawbar))) > SteeringLimit)
                     { reason = "cart " + (i+1) + " exceeds the drawbar steering limit"; return false; }
                     if (clear != null && !clear(cart,CartType)) { reason = "baggage train access is blocked at cart " + (i+1); return false; }

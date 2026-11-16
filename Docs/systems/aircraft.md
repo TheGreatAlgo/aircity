@@ -16,7 +16,10 @@ hook in.
 ## Naming (what the player sees)
 
 Real manufacturers and type names (Cessna, Airbus, A320, 747...) are trademarks and the aircraft shapes carry trade
-dress claims, so none of them appear anywhere the player reads: not in names, tooltips, paint or liveries. Every
+dress claims, so none of them appear anywhere the player reads: not in names, tooltips, paint or liveries. The
+shapes are the game's own too: a type may take its size, door layout and runway figures from a real aircraft's
+airport-planning document (so stands and bridges meet real numbers), but not its silhouette. The two code F
+quadjets were redesigned on 2026-11-11 for this reason (see their asset pages). Every
 aircraft in the game is built by one fictional manufacturer, **Starling**, and is named by its ICAO size code letter
 and its seat count, so the letter painted at a stand's entrance tells straight away which aircraft fit it:
 
@@ -54,6 +57,12 @@ heights allow equipment below them only when its full working height clears by 0
 fuselage obstacles stay protected. Gameplay reads these imported
 shapes, never render mesh vertices. `finish.py --service-data --model <Model>` refreshes only those outlines
 from the existing stage-1 cache. See [baggage](baggage.md) for close docking and visible transfers.
+
+`deicingWing` contains 17 right-wing upper-skin sections from root to tip, each with leading-edge, middle and
+trailing-edge points. `Common/deicing.py` samples the same `parts.wing_station` and airfoil definitions used
+by the aircraft generator, retaining sweep, dihedral, camber and incidence. The left wing mirrors X. Runtime
+deicing follows these sections rather than navigation lights or mesh vertices. Refresh this metadata without
+rebaking art with Blender's `--python ArtSource/Aircraft/deicing_profiles.py`; normal exports include it too.
 
 The profile's `cargoDoors` imports into `AircraftType.cargoDoors`. `AircraftCargoDoors` binds by transform name
 and rotates relative to the authored rest pose with smooth acceleration/deceleration. Bulk/container jobs drive
@@ -406,11 +415,11 @@ editor must not be open on the project while batchmode runs. CLAUDE.md suggests 
 6. Add the model to the tests: `[TestFixture("<Model>")]` in `AircraftLiveryTests`, the `new[] { "Cessna172", ... }`
    lists and the designator table in `AircraftTypeTests`, a `[TestCase]` in `BaggageDockingTests`, and the list in
    `ArtSource/Aircraft/hold_profiles.py`. Add a dimension check against its size code. Run **AirCity ▸ Airfield ▸ Refresh Sandbox Aircraft**
-   (`AirfieldSetup.RefreshSandboxAircraft`): the saved sandbox lists its types and showcase rows in the scene, so it
-   doesn't see a new type by itself.
+   (`AirfieldSetup.RefreshSandboxAircraft`): it registers the type and parks one aircraft at a free compatible stand.
+   Create a suitable stand first if none is available; new liveries do not add more aircraft.
 7. Sandbox: `Bootstrap` creates `Sandbox.unity` only if it is missing. To add the new type to an existing sandbox, use
-   **AirCity ▸ Dev ▸ Rebuild Sandbox Scene**, which overwrites the scene, then rerun
-   `AirCity.EditorTools.Airfield.AirfieldSetup.Bootstrap` to put the airport back. Update the README aircraft and
+   **AirCity ▸ Airfield ▸ Refresh Sandbox Aircraft**. **AirCity ▸ Dev ▸ Rebuild Sandbox Scene** replaces the whole
+   scene with the default airport and one aircraft per type at stands. Update the README aircraft and
    LOD tables and add a `Docs/assets/<Model>.md`.
 
 **Change geometry and regenerate:** edit `parts.py` (and `build()` in `model.py` if movers change), then run
@@ -523,7 +532,7 @@ $B -b --factory-startup --python finish.py -- --model Narrowbody --previews --li
 $B -b --factory-startup --python finish.py -- --model Cessna172 --previews --lod 1 --views front34                  # far LOD look
 ```
 
-**Unity captures** (the Sandbox names aircraft `"<Model> <Livery>"`):
+**Unity captures** (parked Sandbox aircraft are named `"<Model> on Stand <number>"`; the baggage aircraft is `"Narrowbody baggage turnaround"`):
 
 ```sh
 $U -batchmode -projectPath . -executeMethod AirCity.EditorTools.Dev.SceneCapture.FromCommandLine \

@@ -13,7 +13,7 @@ namespace AirCity.EditorTools.Aircraft
     /// <see cref="AircraftType"/>. Paths in the file are relative to it, positions are already in Unity space.
     /// Re-imports automatically when the generator rewrites the file or any referenced texture.
     /// </summary>
-    [ScriptedImporter(12, "aircraft")]
+    [ScriptedImporter(13, "aircraft")]
     public class AircraftTypeImporter : ScriptedImporter
     {
 #pragma warning disable 0649   // assigned by JsonUtility
@@ -22,6 +22,7 @@ namespace AirCity.EditorTools.Aircraft
         [Serializable] class RegistrationJson { public int textureWidth, halfHeight; public SideJson port, starboard; }
         [Serializable] class BoundsJson { public float[] min, max; }
         [Serializable] class FootprintJson { public string name; public float bottom; public float[] outline; }
+        [Serializable] class DeicingWingJson { public float span; public float[] leading, middle, trailing; }
         [Serializable] class WheelJson { public string name; public float[] position; public float radius; public bool steerable; }
         [Serializable] class GearJson { public WheelJson[] wheels; public float[] steeringPivot; public float maxSteeringAngle; }
         [Serializable]
@@ -50,6 +51,7 @@ namespace AirCity.EditorTools.Aircraft
             public BoundsJson bounds;
             public float[] wingOutline;
             public FootprintJson[] serviceFootprints;
+            public DeicingWingJson[] deicingWing;
             public int atlasSize;
             public float texelsPerMetre;
             public string detail, dirt, registrationDirt, logoUV, groundShadow, font, defaultBody, defaultRegistration, uvTemplate;
@@ -94,6 +96,11 @@ namespace AirCity.EditorTools.Aircraft
                 footprints.Add(new AircraftType.ServiceFootprint { name = footprint.name, bottom = footprint.bottom, outline = polygon });
             }
             t.serviceFootprints = footprints.ToArray();
+            var wingSections = new List<AircraftType.DeicingWingSection>();
+            foreach (var section in json.deicingWing ?? Array.Empty<DeicingWingJson>())
+                wingSections.Add(new AircraftType.DeicingWingSection { span = section.span, leading = V3(section.leading),
+                    middle = V3(section.middle), trailing = V3(section.trailing) });
+            t.deicingWing = wingSections.ToArray();
             if (json.gear != null)
             {
                 var wheels = new List<AircraftType.Wheel>();

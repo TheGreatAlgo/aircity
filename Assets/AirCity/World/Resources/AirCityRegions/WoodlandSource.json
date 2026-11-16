@@ -1,0 +1,27 @@
+{
+  "name": "Woodland",
+  "location": "Snoqualmie Valley, Washington",
+  "latitude": 47.665,
+  "longitude": -121.928,
+  "sourceExtentMetres": 8000,
+  "resolution": 513,
+  "hasOcean": false,
+  "minElevation": 9.295354843139648,
+  "maxElevation": 194.53086853027344,
+  "seaFraction": 0.0,
+  "sha256": "46abaf2beb6e71825835e9f7aef3918ac76c06d1ea5a2920c0c9721cda8b243c",
+  "tiles": [
+    "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/13/1320/2857.png",
+    "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/13/1320/2858.png",
+    "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/13/1320/2859.png",
+    "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/13/1320/2860.png",
+    "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/13/1321/2857.png",
+    "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/13/1321/2858.png",
+    "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/13/1321/2859.png",
+    "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/13/1321/2860.png",
+    "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/13/1322/2857.png",
+    "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/13/1322/2858.png",
+    "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/13/1322/2859.png",
+    "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/13/1322/2860.png"
+  ]
+}

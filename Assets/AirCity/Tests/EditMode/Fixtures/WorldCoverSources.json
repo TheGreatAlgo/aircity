@@ -1,0 +1,21 @@
+{
+  "source": "ESA WorldCover 10 m 2021 v200",
+  "tile": "N45W123",
+  "url": "https://esa-worldcover.s3.eu-central-1.amazonaws.com/v200/2021/map/ESA_WorldCover_10m_2021_v200_N45W123_Map.tif",
+  "accessed": "2026-11-14",
+  "license": "CC-BY-4.0",
+  "license_url": "https://creativecommons.org/licenses/by/4.0/",
+  "citation": "Zanaga, D., et al. (2022). ESA WorldCover 10 m 2021 v200. https://doi.org/10.5281/zenodo.7254221",
+  "attribution": "\u00a9 ESA WorldCover project 2021 / Contains modified Copernicus Sentinel data (2021) processed by ESA WorldCover consortium",
+  "modification": "Original bytes 0\u201365535 of the COG header and original compressed block 0, retained separately as small decoder test fixtures; no palette conversion.",
+  "files": {
+    "WorldCoverN45W123Header.bytes": {
+      "size": 65536,
+      "sha256": "f408997371374e5b9d13908b64c48faf715d07f82cd5ae314a15978cf32f5aa7"
+    },
+    "WorldCoverN45W123Block0.bytes": {
+      "size": 6497,
+      "sha256": "9a146091c1946890a9b0d95b8d3add1cc905eaec65df07e700f9bc83273a5cff"
+    }
+  }
+}

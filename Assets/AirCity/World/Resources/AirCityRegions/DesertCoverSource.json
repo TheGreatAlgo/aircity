@@ -1,0 +1,47 @@
+{
+  "name": "Desert",
+  "latitude": 38.57,
+  "longitude": -109.55,
+  "sourceExtentMetres": 8000,
+  "resolution": 513,
+  "format": "raw uint8 class code, south row first; no header",
+  "sha256": "179e4c349aa0e180410428df9f3e218b6a71058e035e45d95d03d6c56005892a",
+  "waterFraction": 0.02547412499192534,
+  "classes": {
+    "10": {
+      "name": "Tree cover",
+      "fraction": 0.03502312202425058
+    },
+    "20": {
+      "name": "Shrubland",
+      "fraction": 0.29722725700975416
+    },
+    "30": {
+      "name": "Grassland",
+      "fraction": 0.1089300031538669
+    },
+    "40": {
+      "name": "Cropland",
+      "fraction": 0.008606636799927044
+    },
+    "50": {
+      "name": "Built-up",
+      "fraction": 0.07235274671408866
+    },
+    "60": {
+      "name": "Bare / sparse vegetation",
+      "fraction": 0.45236711010795344
+    },
+    "80": {
+      "name": "Permanent water",
+      "fraction": 0.02547412499192534
+    },
+    "90": {
+      "name": "Herbaceous wetland",
+      "fraction": 1.899919823383453e-05
+    }
+  },
+  "tiles": [
+    "https://esa-worldcover.s3.eu-central-1.amazonaws.com/v200/2021/map/ESA_WorldCover_10m_2021_v200_N36W111_Map.tif"
+  ]
+}

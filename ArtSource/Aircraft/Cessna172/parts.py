@@ -156,6 +156,7 @@ WING_ROOT_Y = 0.56     # fuselage side
 WING_BREAK = 2.90      # start of the trailing-edge taper
 WING_TIP = 5.50
 WING_HINGE = 0.735
+WING_AF = "2412"
 DIHEDRAL = math.radians(1.73)
 
 

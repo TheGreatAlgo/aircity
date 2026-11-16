@@ -1,0 +1,24 @@
+{
+  "name": "Mountains",
+  "location": "Yosemite Valley, California",
+  "latitude": 37.735,
+  "longitude": -119.597,
+  "sourceExtentMetres": 8000,
+  "resolution": 513,
+  "hasOcean": false,
+  "minElevation": 1201.779296875,
+  "maxElevation": 2582.6083984375,
+  "seaFraction": 0.0,
+  "sha256": "f5d450e575574a6740edc1ad34c9b9ea2df898c24c454c21bcc1495307c63de4",
+  "tiles": [
+    "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/13/1373/3166.png",
+    "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/13/1373/3167.png",
+    "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/13/1373/3168.png",
+    "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/13/1374/3166.png",
+    "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/13/1374/3167.png",
+    "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/13/1374/3168.png",
+    "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/13/1375/3166.png",
+    "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/13/1375/3167.png",
+    "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/13/1375/3168.png"
+  ]
+}

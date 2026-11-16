@@ -18,6 +18,18 @@ namespace AirCity.Airfield.Building
 
         public SurfaceBuilder(int submeshes) => mesh = new MeshData(submeshes);
 
+        /// <summary>Rounded terminal corners within the road's existing length and width.</summary>
+        public static List<Vector2> RoadEndOutline(Vector2 end,Vector2 outward,float half,float radius)
+        {
+            var right=Geo.Right(outward);var points=new List<Vector2>();
+            var leftCentre=end-outward*radius-right*(half-radius);
+            Geo.Arc(points,leftCentre,end-outward*radius-right*half,end-right*(half-radius),.3f);
+            points.Add(end+right*(half-radius));
+            var rightCentre=end-outward*radius+right*(half-radius);
+            Geo.Arc(points,rightCentre,end+right*(half-radius),end-outward*radius+right*half,.3f,false);
+            return points;
+        }
+
         Color State(float coverage = 1f) => new Color(state.wear, state.snow, state.grass, coverage);
 
         /// <summary>A rectangle in a strip frame: origin + axis * s + right * x for s in [s0, s1], x in [x0, x1],

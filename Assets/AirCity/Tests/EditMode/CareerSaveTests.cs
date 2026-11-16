@@ -109,6 +109,40 @@ namespace AirCity.Tests.Game
         }
 
         [Test]
+        public void DenseForestLargerThanOldSaveLimitPreservesTreeRemovalAndClearingCount()
+        {
+            var state = CareerState.New(42);
+            const int count = 500000, cleared = 120001;
+            state.world.trees = new List<ForestTree>(count);
+            for (int i = 0; i < count; i++)
+                state.world.trees.Add(new ForestTree {
+                    position = new Vector2(-3190.123f + i % 800 * 7.97f, -3190.456f + i / 800 * 7.97f),
+                    height = 24.321f, removed = i < cleared
+                });
+            state.layout.clearedTrees = cleared;
+            Assert.IsTrue(store.Save(state, out string problem), problem);
+            Assert.Greater(new FileInfo(Path.Combine(directory, "career.json")).Length, 32000000L,
+                "Exercise the former 32 MB read limit using a valid dense forest.");
+            Assert.IsTrue(store.Load(out var loaded, out problem), problem);
+            Assert.AreEqual(count, loaded.world.trees.Count);
+            Assert.AreEqual(cleared, loaded.layout.clearedTrees);
+            Assert.IsTrue(loaded.world.trees[cleared - 1].removed);
+            Assert.IsFalse(loaded.world.trees[cleared].removed);
+            Assert.AreEqual(state.world.trees[count - 1].position, loaded.world.trees[count - 1].position);
+            Assert.AreEqual(state.world.trees[count - 1].height, loaded.world.trees[count - 1].height);
+        }
+
+        [Test]
+        public void SaveBeyondDenseForestReadBoundIsRejectedBeforeParsing()
+        {
+            Directory.CreateDirectory(directory);
+            using (var file = new FileStream(Path.Combine(directory, "career.json"), FileMode.Create, FileAccess.Write))
+                file.SetLength(128L * 1024L * 1024L + 1L);
+            Assert.IsFalse(store.Load(out _, out string problem));
+            Assert.AreEqual("The career save is too large.", problem);
+        }
+
+        [Test]
         public void BackgroundDiskFailureIsReturnedToTheGameWithoutFaultingTheWorker()
         {
             Directory.CreateDirectory(directory);

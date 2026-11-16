@@ -17,6 +17,12 @@ Stations with automatic handling create manifests when their configured aircraft
 The sandbox supplies configurable arriving/departing demand, including repeated cart trips. Direct tug
 push-back also checks baggage readiness. See [sandbox baggage handling](baggage.md#sandbox-handling-and-larger-manifests).
 
+Equipped de-icing pads add nose-wheel stops to routes crossing them. Aircraft wait through truck positioning,
+fluid application and clearing before taxiing on. Once an airport has installed de-icing equipment, snowy
+departures plan through a compatible bay, including a detour when necessary; the route search tracks whether
+it has passed a bay while retaining ordinary turn and clearance rules. A completed departure retains its
+treatment state across replanning. See [de-icing](deicing.md) for finite stock, delivery access and current scope.
+
 The user's choices (2026-10-28):
 
 | Topic | Choice |

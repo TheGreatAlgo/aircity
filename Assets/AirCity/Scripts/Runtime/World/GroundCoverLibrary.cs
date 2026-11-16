@@ -3,7 +3,7 @@ using UnityEngine;
 
 namespace AirCity.World
 {
-    public enum GroundCoverKind { Boulder, Stone, Grass, Fern, Shrub }
+    public enum GroundCoverKind { Boulder, Stone, Grass, Fern, Shrub, Log }
 
     [Serializable]
     public sealed class GroundCoverModel

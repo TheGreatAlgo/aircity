@@ -7,9 +7,10 @@ An airport-building game for PC and Mac (Unity 6, URP).
 1. Install **Unity 6000.6.7f1** through Unity Hub (see `ProjectSettings/ProjectVersion.txt`), plus **Git LFS**.
 2. `git lfs install && git clone https://github.com/TheGreatAlgo/aircity.git`
 3. Open the folder in Unity Hub, then open `Assets/AirCity/Scenes/NewGame.unity` and press Play.
-   - **New Game:** survey and buy a valley site, select trees to remove, brush level ground, then drag your own runway and draw its taxiways. A short task card helps with the next goal; bottom build icons unlock through your work and remain available. Place parking, draw a cleared public-road connection and choose where reception goes. Save/Continue preserves your layout, terrain and active flight; see [the career system](Docs/systems/new-game.md).
+   - **Modes:** Career and Sandbox share `NewGame.unity`, the full building tools, airport simulation and save/load. **Options > Switch to Sandbox / Career** changes rules in place. Sandbox unlocks all tools and builds free; Career adds funds, objectives and progression.
+   - **New Game:** choose an offline real location or use the globe to select coordinates and download terrain, then start with the entire map unlocked. Snoqualmie Valley, Yosemite, Bora Bora and Moab are bundled; downloaded locations are cached for offline reuse. Maps use real elevation and landcover, including rivers, coastal lakes and a volcanic lagoon; clear trees, level ground, drag your own runway and draw its taxiways. The top bar shows time/date, season, temperature, funds and simulation speeds. A short task card helps with the next goal; bottom build icons unlock through your work and remain available. Place parking, draw a cleared public-road connection and choose where reception goes. Save/Continue preserves your layout, terrain and active flight; see [the career system](Docs/systems/new-game.md).
    - Open `Assets/AirCity/Scenes/WorldAssets.unity` to review the new spruce/pine models and public-road kit: T-junctions, crossroads, signals and an elevated highway with a ramp. See [public roads](Docs/systems/public-roads.md) and [forest trees](Docs/assets/ForestTrees.md).
-   - Open `Assets/AirCity/Scenes/Sandbox.unity` for the independent development airport and the controls below.
+   - Open `Assets/AirCity/Scenes/Sandbox.unity` for the populated development fixture and the controls below.
    - The Sandbox contains one working baggage turnaround with a Small depot. The Baggage sidebar manages hired staff, teams, trailers and depot size. Container handling remains available in its separate review scene.
    - Baggage depots have three distinct layouts: a Small covered pull-up shed, Medium two-lane drive-through hall and Large four-lane centre. **Show more** in Baggage exposes roof inspection and equipment upgrades. **AirCity > Vehicles > Create Baggage Depot Family Review** opens all three for comparison; see [the depot assets](Docs/assets/BaggageDepot.md).
    - The Sandbox hall connects to the terminal through an abstract underground baggage link. Select a terminal to connect halls and choose check-in/reclaim floors; **Baggage > Show more > Terminal connection** shows queues, travel and capacity. **AirCity > Vehicles > Create Terminal Baggage Review** creates a nearby terminal with a covered link. Terminal interiors remain hidden; see [terminal baggage](Docs/systems/terminal-baggage.md).
@@ -17,6 +18,12 @@ An airport-building game for PC and Mac (Unity 6, URP).
      them for the tool's settings or the selection's actions. The world, maintenance and aircraft toggles are on the
      right. **Show more** reveals maintenance, traffic, station setup and optional diagnostics; the menu starts compact.
      Every button shows its key, and the keys below all still work. **H** hides the HUD.
+   - **Deicing:** the snowflake opens **Pads / Buildings / Objects**. Place truck parking and a supply station,
+     mark an outside service-road connection, then use **Manage airport** for fleet orders, assignments, fluid
+     deliveries and recycling across multiple supply areas. New trucks drive in to their reserved parking.
+     Model previews and **Turn / Snap 15° / Free angle** controls show placement before purchase.
+     Sandbox includes a marked southern supplier entrance; **Objects > Outside connection > Locate outside road**
+     takes the camera there. Older Sandbox scenes gain the missing road when entering Play.
    - **Right-drag:** orbit · **Middle-drag / WASD:** pan · **Scroll:** zoom (towards the cursor) · **Q / E:** rotate ·
      **F:** re-centre
    - **Click:** select an aircraft, runway, taxiway / road section, depot, stand or apron · **Delete / Backspace:** remove the
@@ -52,7 +59,7 @@ Assets/AirCity/
   Liveries/                livery assets (airline paint schemes) and Logos/, usable on any aircraft type
   Shaders/                 aircraft outline / ground shadow / light glow; airfield surface / paint / light glow / fixture;
                            vehicle light glow
-  Scenes/Sandbox.unity     dev scene: one aircraft per livery
+  Scenes/Sandbox.unity     dev airport: one aircraft per type, assigned to stands
   Scripts/Runtime/         AirCity.Runtime assembly  (namespace AirCity.*)
   Scripts/Editor/          AirCity.Editor assembly   (importers, postprocessors, tools)
   Tests/EditMode/          AirCity.Tests.EditMode
@@ -73,8 +80,8 @@ size code, all from the fictional manufacturer Starling (real type names are tra
 | `Supersonic` | Starling D100 | supersonic airliner, four afterburning engines (flames on takeoff); code C span, but its length makes it code D | 26.2 × 61.8 m | D |
 | `Trijet` | Starling D250 | long-range trijet, S-duct tail engine | 50.1 × 58.5 m | D |
 | `Widebody` | Starling E350 | widebody twinjet | 64.7 × 66.9 m | E |
-| `Quadjet` | Starling F450 | long-haul quadjet | 68.4 × 76.3 m | F |
-| `DoubleDeck` | Starling F550 | double-deck quadjet | 79.7 × 72.7 m | F |
+| `Quadjet` | Starling F450 | long-haul quadjet, forward upper-deck hump, split winglets | 68.4 × 76.2 m | F |
+| `DoubleDeck` | Starling F550 | double-deck quadjet, pointed nose, T-tail | 79.3 × 72.6 m | F |
 
 Each comes with an `AircraftType` asset (imported from `<Model>.aircraft`) holding what gameplay needs, in the
 aircraft's local space (origin on the ground under the main gear, +Z = nose, +X = right):
@@ -194,13 +201,14 @@ rwy.StartPloughing();                         // the depot's ploughs come; close
   vertex data only, never rebuild meshes.
 - The Sandbox uses flat ground. The separate [New Game career](Docs/systems/new-game.md) grades an airfield platform in generated valley terrain.
 
-**AirCity ▸ Airfield ▸ Add Sandbox Airport** rebuilds the sandbox airport, a small complete one: a 3,400 m x 60 m
+**AirCity ▸ Airfield ▸ Add Sandbox Airport** rebuilds the sandbox airport, a small complete one: a 3,600 m x 60 m
 concrete runway with precision lighting and a code F parallel taxiway (exits both ways), a crossing 1,600 m asphalt
-runway, a 600 m dirt strip and a 700 m grass strip (overdue for mowing) with a GA ramp, a terminal with code C, E
+runway, a 600 m dirt strip and a 700 m grass strip (overdue for mowing) with a GA ramp, a terminal with code D, E
 and F contact stands on a taxilane joined to the parallel taxiway at both ends and three stands fanned round its
 curved end, jet bridges (including a right-hand R1 and an upper-deck UL1), aircraft parked ready to leave, two
-de-icing bays at the 09 end, a depot (ploughs, a mower, two small and two large tugs) with service roads, and a
-display ramp for the showcase rows (see [Docs/systems/airfield.md](Docs/systems/airfield.md)).
+de-icing bays at the 09 end and a depot (ploughs, a mower, two small and two large tugs) with service roads.
+One aircraft of each type occupies a suitable stand; the narrowbody serves the baggage turnaround
+(see [Docs/systems/airfield.md](Docs/systems/airfield.md)).
 
 ### Snow ploughs and mowers
 

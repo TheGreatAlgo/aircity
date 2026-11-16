@@ -216,12 +216,29 @@ namespace AirCity.Traffic
         // ------------------------------------------------------------------ search
 
         /// <summary>Dijkstra over (node, the link it came in by), from the starts to the cheapest goal.</summary>
-        Goal Search(List<Start> starts, List<RunwayChoice> runways, List<StandLayout> stands)
+        Goal Search(List<Start> starts, List<RunwayChoice> runways, List<StandLayout> stands, bool requireDeicing = false)
         {
             var dist = new Dictionary<int, float>();
             var prev = new Dictionary<int, int>();
             var open = new List<(float d, int state)>();
             Goal best = null;
+
+            bool PassedDeicing(Link link)
+            {
+                if (!requireDeicing || link.edge == null) return false;
+                foreach (var facility in airport.Deicing.Facilities)
+                {
+                    if (!airport.Deicing.CanTreat(facility, type)) continue;
+                    var layout = airport.Deicing.Layout(facility);
+                    if (Vector2.Dot(link.dir, layout.axis) < 0.995f) continue;
+                    var a = At(link.edge.a);
+                    var t = (At(link.edge.b) - a).normalized;
+                    if (Mathf.Abs(Geo.Cross(t, layout.stop - a)) > 0.75f) continue;
+                    float u = Vector2.Dot(layout.stop - a, t);
+                    if ((u - link.uFrom) * link.sign >= 1f && (link.uTo - u) * link.sign >= 1f) return true;
+                }
+                return false;
+            }
 
             void Offer(Goal g)
             {
@@ -291,12 +308,13 @@ namespace AirCity.Traffic
                     var lk = links[links.Count - 1];
                     lk.cost = lk.length * ConflictCost(s.edge, s.dir, Mathf.Min(lk.uFrom, lk.uTo), Mathf.Max(lk.uFrom, lk.uTo));
                     // a stand ahead on the very section it starts on
-                    StandGoals(links.Count - 1, lk, s.cost);
+                    StandGoals((links.Count - 1) * 2, lk, s.cost);
                 }
                 int i = links.Count - 1;
                 float d0 = s.cost + links[i].cost;
-                dist[i] = d0;
-                open.Add((d0, i));
+                int initial = i * 2 + (PassedDeicing(links[i]) ? 1 : 0);
+                dist[initial] = d0;
+                open.Add((d0, initial));
             }
 
             var closed = new HashSet<int>();
@@ -309,12 +327,12 @@ namespace AirCity.Traffic
                 open.RemoveAt(bi);
                 if (!closed.Add(state)) continue;
                 if (best != null && d >= best.total) break;
-                var via = links[state];
+                var via = links[state / 2];
                 int node = via.to;
                 var n = nodes[node];
 
                 // departures: line up here?
-                if (runways != null && n.runway != null && via.edge != null)
+                if (runways != null && n.runway != null && via.edge != null && (!requireDeicing || state % 2 != 0))
                     foreach (var choice in runways)
                         if (choice.runway == n.runway && TakeoffGoal(via, n, choice, d, out var g))
                         {
@@ -334,12 +352,13 @@ namespace AirCity.Traffic
                     if (landing && !CanExit(via.start, n, l, turn)) continue;
                     float cost = d + Turn(turn);
                     if (n.runway != null && !offRunway) cost += CrossingCost;
-                    StandGoals(next, l, cost);
+                    int nextState = next * 2 + (state % 2 != 0 || PassedDeicing(l) ? 1 : 0);
+                    StandGoals(nextState, l, cost);
                     float nd = cost + l.cost;
-                    if (dist.TryGetValue(next, out float old) && old <= nd) continue;
-                    dist[next] = nd;
-                    prev[next] = state;
-                    open.Add((nd, next));
+                    if (dist.TryGetValue(nextState, out float old) && old <= nd) continue;
+                    dist[nextState] = nd;
+                    prev[nextState] = state;
+                    open.Add((nd, nextState));
                 }
             }
 
@@ -410,7 +429,8 @@ namespace AirCity.Traffic
         // ------------------------------------------------------------------ departures
 
         /// <summary>The departure route from these starts to the best runway entry (null with a reason).</summary>
-        public TaxiRoute Departure(List<Start> starts, List<RunwayChoice> runways, out string problem, out Start from)
+        public TaxiRoute Departure(List<Start> starts, List<RunwayChoice> runways, out string problem, out Start from,
+            bool previouslyDeiced = false)
         {
             problem = null;
             from = null;
@@ -419,10 +439,12 @@ namespace AirCity.Traffic
                 problem = "no runway is open for it";
                 return null;
             }
-            var goal = Search(starts, runways, null);
+            bool alreadyDeiced = previouslyDeiced || self?.DeicingCompleted == true || (self != null && airport.Deicing.CompletedFor(self.aircraft));
+            bool requireDeicing = !alreadyDeiced && airport.Deicing.RequiresDepartureService(type);
+            var goal = Search(starts, runways, null, requireDeicing);
             if (goal == null)
             {
-                problem = "no way to a runway it can take off from";
+                problem = requireDeicing ? "no way through an equipped de-icing bay to a runway" : "no way to a runway it can take off from";
                 return null;
             }
             var chain = Chain(goal.state, out from);
@@ -457,6 +479,9 @@ namespace AirCity.Traffic
             r.Locate(Geo.X0Z(b.At), out float lineUp, out _);
             route.lineUpS = lineUp;
             route.path = b.Build(from.gear, wheelbase, Lateral);
+            if (!alreadyDeiced) airport.Deicing.AddStops(route, type);
+            if (requireDeicing && route.deicingStops.Count == 0)
+            { problem = "the aircraft cannot stop safely on its de-icing route"; return null; }
             return route;
         }
 
@@ -568,6 +593,7 @@ namespace AirCity.Traffic
             route.traversals[route.traversals.Count - 1] = tr;
             route.standFrom = tr.dStart + Mathf.Abs(goal.uGoal - tr.uFrom) - 2f * l.halfWidth;
             route.path = b.Build(from.gear, wheelbase, Lateral);
+            airport.Deicing.AddStops(route, type);
             // somewhere to wait off the runway, short of the first junction or runway after it
             if (route.runwayFree > 0f)
             {
@@ -593,6 +619,7 @@ namespace AirCity.Traffic
             var chain = new List<int> { state };
             while (lastPrev.TryGetValue(chain[chain.Count - 1], out int p)) chain.Add(p);
             chain.Reverse();
+            for (int i = 0; i < chain.Count; i++) chain[i] /= 2;
             start = links[chain[0]].start;
             return chain;
         }

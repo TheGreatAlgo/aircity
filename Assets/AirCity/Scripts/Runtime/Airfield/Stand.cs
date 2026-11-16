@@ -92,14 +92,14 @@ namespace AirCity.Airfield
             front = Mathf.Repeat(front + degrees, 360f);
             float r = degrees * Mathf.Deg2Rad, c = Mathf.Cos(r), s = Mathf.Sin(r);
             var d = new Vector2(position.x, position.z) - about;
-            position = new Vector3(about.x + d.x * c + d.y * s, 0f, about.y - d.x * s + d.y * c);
+            position = new Vector3(about.x + d.x * c + d.y * s, position.y, about.y - d.x * s + d.y * c);
         }
 
-        /// <summary>A copy, framed like this one, at another position.</summary>
+        /// <summary>A copy, framed like this one, at another position, including its support elevation.</summary>
         public Stand At(Vector3 at)
         {
             var copy = (Stand)MemberwiseClone();
-            copy.position = new Vector3(at.x, 0f, at.z);
+            copy.position = at;
             copy.bridges = bridges.ConvertAll(b => b.Clone());
             copy.head = head != null ? head.Clone() : new BridgeHead();
             copy.additionalHeads = additionalHeads.ConvertAll(h => h.Clone());

@@ -82,6 +82,19 @@ namespace AirCity.Vehicles
         /// <summary>Where the lead is (Airport space).</summary>
         public Vector2 LeadPosition => Where(0, pos[0], out _, out _, out _);
 
+        public float Elevation(int index) => Elevation(index, pos[index]);
+        public float Elevation(int index, float distance)
+        {
+            var p = Where(index, distance, out _, out _, out _);
+            float value;
+            if (distance < 0 && index < departures.Length && departures[index] != null)
+                value = departures[index].Height(distance + Ld(index), float.NaN);
+            else if (distance > path.Length && index < arrivals.Length && arrivals[index] != null)
+                value = arrivals[index].Height(distance - path.Length, float.NaN);
+            else value = path.Height(distance, float.NaN);
+            return float.IsNaN(value) ? depot.Airport.PavementElevationAt(p) : value;
+        }
+
         public string Status
         {
             get
@@ -500,40 +513,42 @@ namespace AirCity.Vehicles
 
         /// <summary>Route nodes as points, each stretch pushed to the right of the way it's driven (keeping right,
         /// so oncoming vehicles can pass where it's wide enough). `from` is an extra first point (on an edge).</summary>
+        sealed class RoadRoutePoints:List<Vector2>
+        {
+            public readonly List<TaxiwayEdge> roads;
+            public RoadRoutePoints(IEnumerable<Vector2> points,List<TaxiwayEdge> roads):base(points){this.roads=roads;}
+        }
         List<Vector2> Points(TaxiwayNetwork net, List<int> nodes, Vector2? from)
         {
-            var pts = new List<Vector2>();
-            var keep = new List<float>();
-            if (from.HasValue) pts.Add(from.Value);
-            foreach (int id in nodes) pts.Add(net.At(id));
-            if (pts.Count < 2) return pts;
-            int offset = from.HasValue ? 1 : 0;
-            for (int i = 0; i < pts.Count - 1; i++)
+            var pts=new List<Vector2>();var routeRoads=new List<TaxiwayEdge>();var keep=new List<float>();
+            if(from.HasValue)pts.Add(from.Value);
+            for(int i=0;i<nodes.Count;i++)
             {
-                int ia = i - offset, ib = i + 1 - offset;
-                float w = 0f, cap = MaxKeepRight;
-                if (ia >= 0)
+                if(i==0)
                 {
-                    int a = nodes[ia], b = nodes[ib];
-                    var e = net.edges.Find(x => (x.a == a && x.b == b) || (x.a == b && x.b == a));
-                    if (e != null)
+                    if(pts.Count>0)
                     {
-                        w = e.width;
-                        if (e.IsRoad) cap = RoadKeepRight;
+                        float firstWidth=0,firstCap=MaxKeepRight;
+                        if(net.TryNearestEdge(Geo.X0Z(pts[0]),2f,out var firstEdge,out _))
+                        {firstWidth=firstEdge.width;if(firstEdge.IsRoad){firstCap=RoadKeepRight;routeRoads.Add(firstEdge);}}
+                        keep.Add(KeepRight(firstWidth,firstCap));
                     }
-                    else
-                    {
-                        var r = net.Node(a).runway;
-                        if (r != null && r == net.Node(b).runway) w = r.width;
-                    }
+                    pts.Add(net.At(nodes[i]));continue;
                 }
-                else if (net.TryNearestEdge(Geo.X0Z(pts[0]), 2f, out var e0, out _))
+                int a=nodes[i-1],b=nodes[i];
+                var edge=net.edges.Find(e=>e.a==a&&e.b==b||e.b==a&&e.a==b);
+                var runway=net.Node(a).runway;
+                float width=edge!=null?edge.width:runway!=null&&runway==net.Node(b).runway?runway.width:0;
+                float offset=KeepRight(width,edge!=null&&edge.IsRoad?RoadKeepRight:MaxKeepRight);
+                if(edge!=null&&edge.IsRoad)routeRoads.Add(edge);
+                if(edge!=null&&edge.alignment.curved)
                 {
-                    w = e0.width;
-                    if (e0.IsRoad) cap = RoadKeepRight;
+                    var alignment=net.Path(edge);bool reverse=edge.b==a;int count=Mathf.Max(1,Mathf.CeilToInt(alignment.Length/6f));
+                    for(int k=1;k<=count;k++){pts.Add(Geo.XZ(alignment.Position(reverse?1-k/(float)count:k/(float)count)));keep.Add(offset);}
                 }
-                keep.Add(KeepRight(w, cap));
+                else {pts.Add(net.At(b));keep.Add(offset);}
             }
+            if(pts.Count<2)return pts;
             var o = new List<Vector2>(pts.Count);
             for (int i = 0; i < pts.Count; i++)
             {
@@ -553,7 +568,7 @@ namespace AirCity.Vehicles
                     o.Add(a0 + d0 * t);
                 else o.Add(pts[i] + Geo.Right((d0 + d1).normalized) * Mathf.Min(keep[i - 1], keep[i]));
             }
-            return o;
+            return new RoadRoutePoints(o,routeRoads);
         }
 
         /// <summary>Drive on from the end of the path along route points: turn (or turn round) onto the first,
@@ -561,6 +576,7 @@ namespace AirCity.Vehicles
         void Follow(List<Vector2> route)
         {
             if (route.Count == 0) return;
+            float before=path.Length;
             var p0 = route[0];
             var dir = route.Count > 1 ? route[1] - p0 : p0 - path.End;
             if (dir.sqrMagnitude < 1e-4f) dir = path.EndFacing;
@@ -568,6 +584,15 @@ namespace AirCity.Vehicles
             bool onIt = Vector2.Distance(path.End, p0) < 2f && Vector2.Dot(path.EndFacing, dir) > 0.7f && !path.EndReversing;
             if (!onIt) Join(new Pose(p0, dir), false, PavementFor(false));
             if (route.Count > 1) path.Through(route.GetRange(1, route.Count - 1), Mathf.Max(type.turnRadius * 1.5f, 15f), type.transitSpeed);
+            if(route is RoadRoutePoints roads&&roads.roads.Count>0)
+                path.BindElevation(p=>
+                {
+                    TaxiwayEdge nearest=null;float best=float.MaxValue;
+                    foreach(var source in roads.roads)
+                    {var edge=Net.Edge(source.id);if(edge==null)continue;float d=Net.Path(edge).DistanceTo(p);if(d<best){nearest=edge;best=d;}}
+                    return nearest!=null&&best<nearest.width*.5f+5f?depot.Airport.RoadEdgeElevation(nearest,p):depot.Airport.PavementElevationAt(p);
+                },before);
+
         }
 
         /// <summary>From the end of the path to a pose: a turn, or a turn with reversing in it (one vehicle at a
@@ -1020,8 +1045,11 @@ namespace AirCity.Vehicles
                 bool parked = InBay(i);
                 float gear = reversing ? -1f : 1f;
                 float steer = parked ? 0f : -Mathf.Atan(curvature * type.wheelbase * gear) * Mathf.Rad2Deg;
-                v.Place(airport.TransformPoint(Geo.X0Z(p)), airport.TransformDirection(Geo.X0Z(facing)),
-                    parked ? 0f : vel[i] * gear, steer, dt);
+                var airfield=airport.GetComponent<AirCity.Airfield.Airport>();
+                float height=airfield!=null?Elevation(i):0f;
+                var grade=airfield!=null?airfield.RoadGradientAt(p,height):Vector2.zero;
+                v.Place(airport.TransformPoint(Geo.X0Z(p,height)), airport.TransformDirection(new Vector3(facing.x,Vector2.Dot(grade,facing),facing.y)),
+                    parked ? 0f : vel[i] * gear, steer, dt,false);
                 if (type.IsTug)
                 {
                     v.SetLift(Tow != null ? Tow.Lift : 0f);

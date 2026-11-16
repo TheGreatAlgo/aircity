@@ -1,7 +1,9 @@
 using System.Collections.Generic;
 using System.Linq;
+using AirCity.EditorTools.World;
 using AirCity.World;
 using NUnit.Framework;
+using UnityEditor;
 using UnityEngine;
 
 namespace AirCity.Tests.World
@@ -128,8 +130,84 @@ namespace AirCity.Tests.World
             var tinyArea = new Rect(edgePlant.position.x - .05f, edgePlant.position.y - .05f, .1f, .1f);
             var tiny = GroundCoverScatter.Generate(world, area: tinyArea);
             CollectionAssert.Contains(tiny.Select(p => p.position).ToArray(), edgePlant.position);
+            world.hasOcean = true; world.seaLevel = 40f;
             for (int i = 0; i < world.heights.Length; i++) world.heights[i] = 40f;
             Assert.IsEmpty(GroundCoverScatter.Generate(world, area: Area));
+        }
+
+        [Test]
+        public void LowInlandGroundRemainsHabitatUntilAnActualSeaIsPresent()
+        {
+            var world = Habitat();
+            for (int i = 0; i < world.heights.Length; i++) world.heights[i] = 15f;
+            Assert.Greater(GroundCoverScatter.Generate(world, area: Area).Length, 1000,
+                "An old river's water-height formula must not flood low inland real-world terrain.");
+            world.hasOcean = true; world.seaLevel = 40f;
+            Assert.IsEmpty(GroundCoverScatter.Generate(world, area: Area));
+        }
+
+        [Test]
+        public void OutcropsHaveStoneApronsAndWoodlandHasLargeNaturalDebris()
+        {
+            var world = Habitat();
+            var items = GroundCoverScatter.Generate(world, area: Area);
+            var rocks = items.Where(p => p.kind == GroundCoverKind.Boulder).ToArray();
+            var stones = items.Where(p => p.kind == GroundCoverKind.Stone).ToArray();
+            var logs = items.Where(p => p.kind == GroundCoverKind.Log).ToArray();
+            Assert.Greater(rocks.Length, 50, "A forest clearing should reveal rocky outcrops, not just tiny grass.");
+            Assert.IsTrue(rocks.Any(p => p.scale > 2.4f), "Some outcrops need a silhouette visible from the normal builder camera.");
+            Assert.Greater(logs.Length, 2, "Fallen wood should add a different forest-floor silhouette.");
+            Assert.IsTrue(stones.Any(s => rocks.Any(b => Vector2.Distance(s.position, b.position) < 9.1f)),
+                "Broken stones should gather around larger outcrops.");
+            Assert.IsTrue(items.Any(p => p.kind == GroundCoverKind.Shrub && p.scale > 1.6f));
+            Assert.IsTrue(items.Any(p => p.kind == GroundCoverKind.Fern && p.scale > 1.5f));
+            // The original canopy, including removed roots, determines woodland debris habitat.
+            foreach (var log in logs) Assert.Less(log.position.x, 35f);
+        }
+
+        [Test]
+        public void MappedFieldsAndTownsDoNotFillWithRocksOrForestDebris()
+        {
+            var world = Habitat();
+            world.landCover = new byte[world.heights.Length];
+            for (int z = 0; z < ValleyWorld.Resolution; z++)
+            for (int x = 0; x < ValleyWorld.Resolution; x++)
+                world.landCover[z * ValleyWorld.Resolution + x] = x < 256 ? (byte)10 : z < 256 ? (byte)40 : (byte)50;
+            var generated = GroundCoverScatter.Generate(world, area: Area);
+            Assert.Greater(generated.Length, 500);
+            foreach (var item in generated)
+            {
+                int x = Mathf.Clamp(Mathf.RoundToInt((item.position.x + ValleyWorld.Size * .5f) / world.Spacing), 0, ValleyWorld.Resolution - 1);
+                int z = Mathf.Clamp(Mathf.RoundToInt((item.position.y + ValleyWorld.Size * .5f) / world.Spacing), 0, ValleyWorld.Resolution - 1);
+                Assert.AreEqual(10, world.landCover[z * ValleyWorld.Resolution + x]);
+            }
+        }
+
+        [Test]
+        public void SharedModelsFitTheirPlacementFootprintsEvenWhenTiltedAndWidened()
+        {
+            var library = AssetDatabase.LoadAssetAtPath<GroundCoverLibrary>(GroundCoverSetup.LibraryPath);
+            Assert.IsNotNull(library); Assert.GreaterOrEqual(library.generatorVersion, 3);
+            Assert.AreEqual(20, library.models.Length);
+            foreach (var model in library.models)
+            {
+                Assert.IsNotNull(model.nearMesh); Assert.IsNotNull(model.farMesh); Assert.IsNotNull(model.material);
+                Assert.Greater(model.nearMesh.GetIndexCount(0), 0u);
+                Assert.Less(model.farMesh.GetIndexCount(0), model.nearMesh.GetIndexCount(0));
+                // The renderer can scale either horizontal axis up by 1/.88. A sphere around every
+                // bound corner conservatively includes any slope/yaw, plus shader wind padding.
+                var bounds = model.bounds;
+                for (int z = -1; z <= 1; z += 2)
+                for (int y = -1; y <= 1; y += 2)
+                for (int x = -1; x <= 1; x += 2)
+                {
+                    var corner = bounds.center + Vector3.Scale(bounds.extents, new Vector3(x, y, z));
+                    Assert.GreaterOrEqual(GroundCoverScatter.FootprintRadius(model.kind, 1f), corner.magnitude / .88f + .06f,
+                        model.name + " needs to reserve its full tilted footprint.");
+                }
+            }
+            foreach (var log in library.models.Where(m => m.kind == GroundCoverKind.Log))
+                Assert.AreEqual(0f, log.material.GetFloat("_Wind"), "Fallen trunks must stay grounded.");
         }
 
         static float Distance(Vector2 p, Vector2 a, Vector2 b)

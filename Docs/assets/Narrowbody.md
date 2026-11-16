@@ -41,7 +41,7 @@ All numbers come from `Assets/AirCity/Aircraft/Narrowbody/Narrowbody.aircraft`,
 | `…/Textures/Narrowbody_*.png` | `Body_Default`, `Registration_Default`, `Detail`, `Dirt`, `RegistrationDirt`, `LogoUV`, `GroundShadow`, `Mask_{Classic,Swoosh,TwoTone,Trainer}`, `UV_Template` |
 | `…/Narrowbody.aircraft` | Type data (imported as `AircraftType`) |
 | `…/Narrowbody.prefab` | Created once by `AircraftSetup`, hand-editable |
-| `…/Thumbnails/Narrowbody_<Livery>.png` | Menu thumbnails (6 liveries) |
+| `…/Thumbnails/Narrowbody_<Livery>.png` | Menu thumbnails (7 liveries) |
 
 ## Parts and movers
 

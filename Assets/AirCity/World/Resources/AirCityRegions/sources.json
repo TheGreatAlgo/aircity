@@ -1,0 +1,120 @@
+{
+  "source": "Mapzen Terrain Tiles, accessed 2026-11-14",
+  "source_url": "https://registry.opendata.aws/terrain-tiles/",
+  "attribution_url": "https://github.com/tilezen/joerd/blob/master/docs/attribution.md",
+  "format_url": "https://github.com/tilezen/joerd/blob/master/docs/formats.md",
+  "attribution": [
+    "3DEP, GMTED2010 and SRTM terrain data courtesy of the U.S. Geological Survey.",
+    "Global ETOPO1 terrain data: U.S. National Oceanic and Atmospheric Administration.",
+    "Mapzen / Tilezen"
+  ],
+  "generator": "ArtSource/World/elevation_presets.py",
+  "maps": [
+    {
+      "name": "Woodland",
+      "location": "Snoqualmie Valley, Washington",
+      "latitude": 47.665,
+      "longitude": -121.928,
+      "sourceExtentMetres": 8000,
+      "resolution": 513,
+      "hasOcean": false,
+      "minElevation": 9.295354843139648,
+      "maxElevation": 194.53086853027344,
+      "seaFraction": 0.0,
+      "sha256": "46abaf2beb6e71825835e9f7aef3918ac76c06d1ea5a2920c0c9721cda8b243c",
+      "tiles": [
+        "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/13/1320/2857.png",
+        "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/13/1320/2858.png",
+        "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/13/1320/2859.png",
+        "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/13/1320/2860.png",
+        "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/13/1321/2857.png",
+        "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/13/1321/2858.png",
+        "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/13/1321/2859.png",
+        "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/13/1321/2860.png",
+        "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/13/1322/2857.png",
+        "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/13/1322/2858.png",
+        "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/13/1322/2859.png",
+        "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/13/1322/2860.png"
+      ]
+    },
+    {
+      "name": "Mountains",
+      "location": "Yosemite Valley, California",
+      "latitude": 37.735,
+      "longitude": -119.597,
+      "sourceExtentMetres": 8000,
+      "resolution": 513,
+      "hasOcean": false,
+      "minElevation": 1201.779296875,
+      "maxElevation": 2582.6083984375,
+      "seaFraction": 0.0,
+      "sha256": "f5d450e575574a6740edc1ad34c9b9ea2df898c24c454c21bcc1495307c63de4",
+      "tiles": [
+        "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/13/1373/3166.png",
+        "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/13/1373/3167.png",
+        "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/13/1373/3168.png",
+        "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/13/1374/3166.png",
+        "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/13/1374/3167.png",
+        "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/13/1374/3168.png",
+        "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/13/1375/3166.png",
+        "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/13/1375/3167.png",
+        "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/13/1375/3168.png"
+      ]
+    },
+    {
+      "name": "Tropical",
+      "location": "Bora Bora volcanic lagoon, French Polynesia",
+      "latitude": -16.503,
+      "longitude": -151.744,
+      "sourceExtentMetres": 12800,
+      "resolution": 513,
+      "hasOcean": true,
+      "minElevation": -1267.505859375,
+      "maxElevation": 592.9070434570312,
+      "seaFraction": 0.5381560898130099,
+      "sha256": "23541a7dca235d378a42a55d3dee85b013efe2f40cf73f6fd4077e215919198c",
+      "tiles": [
+        "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/13/641/4475.png",
+        "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/13/641/4476.png",
+        "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/13/641/4477.png",
+        "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/13/641/4478.png",
+        "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/13/642/4475.png",
+        "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/13/642/4476.png",
+        "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/13/642/4477.png",
+        "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/13/642/4478.png",
+        "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/13/643/4475.png",
+        "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/13/643/4476.png",
+        "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/13/643/4477.png",
+        "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/13/643/4478.png",
+        "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/13/644/4475.png",
+        "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/13/644/4476.png",
+        "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/13/644/4477.png",
+        "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/13/644/4478.png"
+      ]
+    },
+    {
+      "name": "Desert",
+      "location": "Moab canyon country, Utah",
+      "latitude": 38.57,
+      "longitude": -109.55,
+      "sourceExtentMetres": 8000,
+      "resolution": 513,
+      "hasOcean": false,
+      "minElevation": 1201.3087158203125,
+      "maxElevation": 1791.26904296875,
+      "seaFraction": 0.0,
+      "sha256": "090478dd4140b8b5a5ab13fe9ecc7e4080155829d0dc9557662cedf8a5869354",
+      "tiles": [
+        "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/13/1602/3142.png",
+        "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/13/1602/3143.png",
+        "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/13/1602/3144.png",
+        "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/13/1603/3142.png",
+        "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/13/1603/3143.png",
+        "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/13/1603/3144.png",
+        "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/13/1604/3142.png",
+        "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/13/1604/3143.png",
+        "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/13/1604/3144.png"
+      ]
+    }
+  ]
+}

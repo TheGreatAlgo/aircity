@@ -148,17 +148,16 @@ namespace AirCity.EditorTools.Airfield
 
         /// <summary>
         /// The sandbox airport, a small but complete one for testing:
-        /// - a 3,400 m x 60 m concrete runway 09/27 with precision lighting, taking every type up to code F; a code F
+        /// - a 3,600 m x 60 m concrete runway 09/27 with precision lighting, taking every type up to code F; a code F
         ///   (25 m) parallel taxiway with entrances at both thresholds, three straight exits and a rapid exit each way;
         /// - a 1,600 m asphalt runway 13/31 crossed by a taxiway; a 600 m dirt strip and a 700 m grass strip (overdue
         ///   for mowing) for light aircraft, with a GA ramp on the grass taxiway; mown verges of various lengths;
         /// - the terminal apron: a code F taxilane joined to the parallel taxiway at both ends, contact stands for code
-        ///   C, E and F with jet bridges (right-hand R1 on the first, the upper-deck UL1 on the first code F stand), and
+        ///   D, E and F with jet bridges (right-hand R1 on the first, the upper-deck UL1 on the first code F stand), and
         ///   three code C stands fanned round the terminal's half-circle east end, served by long bridges;
         /// - two code E de-icing bays on a bypass at the 09 end; the maintenance depot (ploughs, a mower, two small and
-        ///   two large tugs) west of the GA apron, with service roads; and a display ramp for the aircraft showcase.
-        /// Narrow-bodies, a wide-body, and (once their models exist) the double-deck and the long-haul quadjet stand
-        /// ready to leave.
+        ///   two large tugs) west of the GA apron, with service roads.
+        /// One aircraft of each type is parked at a suitable stand, rather than in livery showcase rows.
         /// </summary>
         [MenuItem("AirCity/Airfield/Add Sandbox Airport")]
         public static void AddSandboxAirport()
@@ -166,19 +165,22 @@ namespace AirCity.EditorTools.Airfield
             CreateMaterials();
             var scene = EditorSceneManager.OpenScene(AircraftSetup.SandboxScene, OpenSceneMode.Single);
             foreach (var root in scene.GetRootGameObjects())
-                if (root.name == "Airport" || root.name == "Apron") Object.DestroyImmediate(root);
+                if (root.name == "Airport" || root.name == "Apron" || root.name == "Aircraft") Object.DestroyImmediate(root);
 
             var airport = BuildSandboxAirport();
-            // the showcase rows (one aircraft per type and livery) onto their display ramp, clear of the traffic
-            foreach (var root in scene.GetRootGameObjects())
-                if (root.name == "Aircraft")
-                    root.transform.position = new Vector3(DisplayRamp.x - 14f, 0f, DisplayRamp.y - 250f);
             var cam = Camera.main;
             if (cam != null)
             {
                 cam.farClipPlane = 12000f;
                 var orbit = cam.GetComponent<DevOrbitCamera>();
-                if (orbit != null) orbit.distanceLimits = new Vector2(4f, 5000f);
+                if (orbit != null)
+                {
+                    orbit.distanceLimits = new Vector2(4f, 5000f);
+                    orbit.pivot = new Vector3(450f, 0f, 180f);
+                    orbit.distance = 700f;
+                    var rotation = Quaternion.Euler(orbit.pitch, orbit.yaw, 0f);
+                    cam.transform.SetPositionAndRotation(orbit.pivot - rotation * Vector3.forward * orbit.distance, rotation);
+                }
                 if (cam.GetComponent<DevToolbar>() == null) cam.gameObject.AddComponent<DevToolbar>();
                 var tool = cam.GetComponent<DevAirfieldTool>();
                 if (tool == null) tool = cam.gameObject.AddComponent<DevAirfieldTool>();
@@ -193,8 +195,11 @@ namespace AirCity.EditorTools.Airfield
                 tool.largeTugType = VehicleSetup.Type("TugLarge");
                 tool.smallTugPrefab = VehicleSetup.Prefab("TugSmall");
                 tool.largeTugPrefab = VehicleSetup.Prefab("TugLarge");
+                tool.trafficSignalPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(AirCity.EditorTools.World.WorldAssetSetup.SignalPath);
+                tool.roadKerbMaterial = AirCity.EditorTools.World.WorldAssetSetup.KerbMaterial();
             }
             AirCity.EditorTools.Vehicles.BaggageSandboxSetup.Install(airport);
+            RefreshAircraft(airport);
             EditorSceneManager.SaveScene(scene);
             Debug.Log("AirfieldSetup: sandbox airport added");
         }
@@ -206,15 +211,13 @@ namespace AirCity.EditorTools.Airfield
             var airport = go.AddComponent<Airport>();
             AssignMaterials(airport);
             airport.groundSize = 20000f;
-            // the GA apron, the depot's pad (room to turn out of the doors onto the road and back in), and a display
-            // ramp off every taxiway for the aircraft showcase (AddSandboxAirport moves it there)
+            // The GA apron and the depot's pad, with room to turn out of the doors onto the road and back in.
             airport.aprons.Add(ApronArea.Rect(new Vector2(0f, 55f), new Vector2(240f, 180f), 0f, PavementSurface.Concrete));
             airport.aprons.Add(ApronArea.Rect(new Vector2(-195f, 52f), new Vector2(40f, 56f), 0f, PavementSurface.Concrete));
-            airport.aprons.Add(ApronArea.Rect(DisplayRamp, new Vector2(300f, 560f), 0f, PavementSurface.Concrete));
             go.SetActive(true);
 
-            // the main runway takes every type: 3,400 m x 60 m
-            var main = airport.AddRunway(new Vector3(-2000f, 0f, 480f), new Vector3(1400f, 0f, 480f), PavementSurface.Concrete, 60f,
+            // The extra length leaves the supersonic aircraft its full takeoff roll after turning and lining up.
+            var main = airport.AddRunway(new Vector3(-2100f, 0f, 480f), new Vector3(1500f, 0f, 480f), PavementSurface.Concrete, 60f,
                 RunwayLighting.Precision);
             var cross = airport.AddRunway(new Vector3(900f, 0f, 1100f), new Vector3(900f, 0f, 1100f) + Heading(130f) * 1600f,
                 PavementSurface.Asphalt, 30f, RunwayLighting.Basic);
@@ -239,11 +242,11 @@ namespace AirCity.EditorTools.Airfield
             }
 
             // parallel taxiway A, entrances at both thresholds, straight exits and a rapid exit each way
-            int west = Node(-1940f, 330f), east = Node(1340f, 330f);
-            int wEntry = Node(-1985f, 480f, main), eEntry = Node(1385f, 480f, main);
+            int west = Node(-2040f, 330f), east = Node(1440f, 330f);
+            int wEntry = Node(-2085f, 480f, main), eEntry = Node(1485f, 480f, main);
             int xw = Node(-1100f, 330f), x1 = Node(-500f, 330f), x2 = Node(-60f, 330f), x3 = Node(60f, 330f);
             int hs09 = Node(140f, 330f), l1 = Node(180f, 330f), hs27 = Node(500f, 330f), l2 = Node(760f, 330f), xd = Node(1000f, 330f);
-            Line(wide, asphalt, true, wEntry, Node(-1985f, 400f), west, xw, x1, x2, x3, hs09, l1, hs27, l2, xd, east, Node(1385f, 400f), eEntry);
+            Line(wide, asphalt, true, wEntry, Node(-2085f, 400f), west, xw, x1, x2, x3, hs09, l1, hs27, l2, xd, east, Node(1485f, 400f), eEntry);
             foreach (var (from, x) in new[] { (xw, -1100f), (x1, -500f), (xd, 1000f) }) Line(wide, asphalt, true, from, Node(x, 480f, main));
             // rapid exits, angled 30 degrees: for landings on 09 (eastwards) and on 27 (westwards)
             Line(wide, asphalt, true, Node(-120f, 480f, main), hs09);
@@ -293,15 +296,28 @@ namespace AirCity.EditorTools.Airfield
                 if (st == null) Debug.LogError($"AirfieldSetup: no taxiway for the stand at {x}, {z}");
                 return st;
             }
-            // contact stands, pulled against each other: four code C, a code E, two code F
+            // Contact stands include code D gates for both the trijet and the long supersonic airliner.
             var contact = new List<Stand>();
             float edgeX = 200f;
-            foreach (var code in new[] { SizeCode.C, SizeCode.C, SizeCode.C, SizeCode.C, SizeCode.E, SizeCode.F, SizeCode.F })
+            foreach (var code in new[] { SizeCode.D, SizeCode.D, SizeCode.D, SizeCode.D, SizeCode.E, SizeCode.F, SizeCode.F })
             {
                 char c = code.Letter();
                 float width = RunwayRules.MaxWingspan(c) + RunwayRules.StandClearance(c);
                 contact.Add(PlaceStand(StandKind.Parking, edgeX + width * 0.5f, 230f, 180f, code, concrete));
                 edgeX += width;
+            }
+            // Its long nose needs more room for the tug's turn off the head road. Move the stop back within the
+            // stand, keeping the tail half a metre beyond the required taxilane clearance.
+            var supersonic = AircraftSetup.AllTypes().FirstOrDefault(t => t.model == "Supersonic");
+            if (supersonic != null)
+            {
+                var layout = net.Layout(contact[1]);
+                float tail = Vector2.Dot(layout.ParkPosition(supersonic) - layout.entry, layout.axis) + supersonic.bounds.min.z;
+                contact[1].serviceConfigurations.Add(new StandServiceConfiguration
+                {
+                    aircraft = supersonic,
+                    stopOffset = -Mathf.Max(0f, tail - layout.clearance - 0.5f),
+                });
             }
             var fanStands = new List<Stand>();
             foreach (float b in new[] { 45f, 90f, 135f })
@@ -331,19 +347,19 @@ namespace AirCity.EditorTools.Airfield
             foreach (float x in new[] { -1150f, -1030f }) PlaceStand(StandKind.DeIcing, x, 250f, 270f, SizeCode.E, concrete);
 
             // service roads: from the depot's pad east onto the GA apron and north across the dirt taxiway (give way) to
-            // A; round the GA apron and along the heads of the contact stands, jogging south past the code C ones to the
+            // A; round the GA apron and along the heads of the contact stands, jogging south past the code D ones to the
             // deeper code E and F heads (every stand's way in for vehicles: tugs come along it and back in off it, and
             // never drive the taxilane)
             net.Connect(Node(-180f, 52f), Node(-119f, 52f), RunwayRules.RoadWidth, asphalt, false, RoadClass.Service);
             net.Connect(Node(-195f, 78f), net.SplitEdge(net.edges.First(e => e.a == x1 && e.b == x2 || e.a == x2 && e.b == x1),
                 new Vector3(-195f, 0f, 330f)), RunwayRules.RoadWidth, asphalt, false, RoadClass.Service);
-            var cHead = net.Layout(contact[0]);
-            var cLast = net.Layout(contact[3]);
+            var contactHead = net.Layout(contact[0]);
+            var contactLast = net.Layout(contact[3]);
             var eLayout = net.Layout(contact[4]);
             float halfRoad = RunwayRules.RoadWidth * 0.5f;
-            float headZ = cHead.At(0f, cHead.far).y - halfRoad;
+            float headZ = contactHead.At(0f, contactHead.far).y - halfRoad;
             float wideZ = eLayout.At(0f, eLayout.far).y - halfRoad;
-            float stepX = cLast.Pad.Max(c => c.x), jogX = stepX - halfRoad - 1.5f;
+            float stepX = contactLast.Pad.Max(c => c.x), jogX = stepX - halfRoad - 1.5f;
             float wideEnd = net.Layout(contact[6]).Pad.Max(c => c.x);
             int apronRoad = net.NearestNode(new Vector3(-119f, 0f, 52f), 1f).id;
             foreach (var next in new[] { Node(-100f, 30f), Node(-100f, -20f), Node(100f, -20f), Node(100f, headZ), Node(jogX, headZ),
@@ -357,7 +373,7 @@ namespace AirCity.EditorTools.Airfield
             // back behind the jog to the code E and F heads, a half-circle west end and a half-circle east end that the
             // fan stands face, their bridges' links reaching it across the gap
             airport.aircraftTypes = AircraftSetup.AllTypes().ToList();
-            float northC = headZ - halfRoad - 12f;
+            float northD = headZ - halfRoad - 12f;
             float northE = wideZ - halfRoad - 12f;
             stepX = jogX - halfRoad - 8f;
             float r = (northE - 35f) * 0.5f;
@@ -365,17 +381,17 @@ namespace AirCity.EditorTools.Airfield
             var terminal = Terminal.Polygon(new[]
             {
                 new Vector2(190f, 35f), new Vector2(fanCentre.x, 35f), new Vector2(fanCentre.x, northE),
-                new Vector2(stepX, northE), new Vector2(stepX, northC), new Vector2(190f, northC),
+                new Vector2(stepX, northE), new Vector2(stepX, northD), new Vector2(190f, northD),
             }, 2);
             BowEdge(terminal, new Vector2(fanCentre.x, 35f), new Vector2(fanCentre.x, northE), r);
-            BowEdge(terminal, new Vector2(190f, northC), new Vector2(190f, 35f), (northC - 35f) * 0.5f);
+            BowEdge(terminal, new Vector2(190f, northD), new Vector2(190f, 35f), (northD - 35f) * 0.5f);
             BowEdge(terminal, new Vector2(190f, 35f), new Vector2(fanCentre.x, 35f), 8f);
             string terminalProblem = airport.TerminalProblem(terminal);
             if (terminalProblem == null) airport.terminals.Add(terminal);
             else Debug.LogError($"AirfieldSetup: the terminal won't fit ({terminalProblem})");
             airport.BuildGround();
 
-            // jet bridges: one per code C stand (the first has a right-hand one too, R1), two for the code E stand, L1, L2
+            // jet bridges: one per code D stand (the first has a right-hand one too, R1), two for the code E stand, L1, L2
             // and the upper deck's UL1 for the first code F stand, L1 and L2 for the second (the code E and F stands'
             // sharing a bridge head each), and one long one per fan stand
             var left1 = new JetBridge { door = 1 };
@@ -396,6 +412,7 @@ namespace AirCity.EditorTools.Airfield
             foreach (var st in fanStands) Bridges(st, left1);
             var rig = go.AddComponent<BridgeRig>();
             rig.prefab = VehicleSetup.Prefab("JetBridge");
+            rig.surfaceShader = AssetDatabase.LoadAssetAtPath<Shader>($"{Shaders}/JetBridge.shader");
 
             // verges: the main runway's nearly due for mowing, the rest at various lengths
             main.vergeGrass = 14f;
@@ -421,23 +438,22 @@ namespace AirCity.EditorTools.Airfield
             depotGo.SetActive(true);
 
             airport.RunwaysChanged();
-            // parked, ready to leave: narrow-bodies on two contact stands and a fan stand, a wide-body on the code E
-            // stand, the double-deck and the long-haul quadjet (when their models exist) on the code F stands
-            ParkAircraft(airport, new List<Stand> { contact[1], contact[3], fanStands[1] }, "Narrowbody");
+            // One of each type, on its own stand. Installing baggage later keeps its working narrowbody instead.
+            ParkAircraft(airport, new List<Stand> { contact[0] }, "Narrowbody");
+            ParkAircraft(airport, new List<Stand> { contact[1] }, "Supersonic");
+            ParkAircraft(airport, new List<Stand> { contact[3] }, "Trijet");
             ParkAircraft(airport, new List<Stand> { contact[4] }, "Widebody");
             ParkAircraft(airport, new List<Stand> { contact[5] }, "DoubleDeck");
             ParkAircraft(airport, new List<Stand> { contact[6] }, "Quadjet");
-            // the regional turboprop on the third contact stand (code B on a code C stand: its nose comes to the design
-            // nose line; it pushes back onto the wide taxilane, not into the fan stands' lane). The trijet needs a code D
-            // stand or larger and there is none free: it shows on the display ramp
             ParkAircraft(airport, new List<Stand> { contact[2] }, "Turboprop");
+            ParkAircraft(airport, new List<Stand> { net.stands.Last(s => !s.DeIcing && s.code == SizeCode.A) }, "Cessna172");
+            SandboxOutsideAccess.Install(airport);
             return airport;
         }
 
-        /// <summary>
-        /// Bring the saved sandbox up to date with the aircraft types: every type in Airport.aircraftTypes, showcase rows
-        /// on the display ramp for the types it has none of, and the turboprop parked on a free code C contact stand
-        /// (as BuildSandboxAirport parks it). Batch: -executeMethod AirCity.EditorTools.Airfield.AirfieldSetup.RefreshSandboxAircraft -quit
+        /// <summary>Keep one aircraft per type at connected stands, preserving the working baggage aircraft.
+        /// New liveries do not add aircraft. Create a suitable free stand before adding a larger type.
+        /// Batch: -executeMethod AirCity.EditorTools.Airfield.AirfieldSetup.RefreshSandboxAircraft -quit
         /// </summary>
         [MenuItem("AirCity/Airfield/Refresh Sandbox Aircraft")]
         public static void RefreshSandboxAircraft()
@@ -445,38 +461,76 @@ namespace AirCity.EditorTools.Airfield
             var scene = EditorSceneManager.OpenScene(AircraftSetup.SandboxScene, OpenSceneMode.Single);
             var airport = Object.FindAnyObjectByType<Airport>();
             if (airport == null) { Debug.LogError("AirfieldSetup: no Airport in the sandbox"); return; }
-            int listed = 0;
-            foreach (var t in AircraftSetup.AllTypes())
-                if (!airport.aircraftTypes.Contains(t)) { airport.aircraftTypes.Add(t); listed++; }
-            int rows = AircraftSetup.AddMissingShowcaseRows();
-            var net = airport.Taxiways;
-            var parked = airport.GetComponentsInChildren<AirCity.Aircraft.Aircraft>().Select(a => a.transform.position).ToList();
-            bool Free(Stand s)
-            {
-                var l = net.Layout(s);
-                if (l == null) return false;
-                var at = airport.transform.TransformPoint(new Vector3(l.stop.x, 0f, l.stop.y));
-                return parked.All(p => Vector3.Distance(p, at) > 25f);
-            }
-            int parkedNow = 0;
-            var turboprop = AircraftSetup.AllTypes().FirstOrDefault(t => t.model == "Turboprop");
-            if (turboprop != null && !airport.GetComponentsInChildren<AirCity.Aircraft.Aircraft>().Any(a => a.type == turboprop))
-            {
-                // the contact stands face south (180); the last free code C one, past the first (which has R1 as well)
-                var stand = net.stands.Where(s => s != null && s.kind == StandKind.Parking && s.code == SizeCode.C &&
-                                                  Mathf.Abs(Mathf.DeltaAngle(s.heading, 180f)) < 1f && Free(s))
-                    .OrderByDescending(s => s.number).FirstOrDefault();
-                if (stand != null) { ParkAircraft(airport, new List<Stand> { stand }, "Turboprop"); parkedNow = 1; }
-            }
+            int count = RefreshAircraft(airport);
             airport.BuildGround();
-            net.Rebuild();
+            airport.Taxiways.Rebuild();
             EditorSceneManager.SaveScene(scene);
-            AssetDatabase.SaveAssets();
-            Debug.Log($"AirfieldSetup: sandbox aircraft refreshed: {listed} types listed, showcase rows for {rows} types, {parkedNow} parked");
+            Debug.Log($"AirfieldSetup: sandbox aircraft refreshed: {count} types, one aircraft per stand");
         }
 
-        /// <summary>Where the aircraft showcase stands, off every taxiway (AddSandboxAirport moves it there).</summary>
-        static readonly Vector2 DisplayRamp = new Vector2(600f, -440f);
+        /// <summary>Reconcile the sandbox's aircraft without replacing its airport, equipment or liveries.</summary>
+        public static int RefreshAircraft(Airport airport)
+        {
+            var scene = airport.gameObject.scene;
+            var net = airport.Taxiways;
+            var types = AircraftSetup.AllTypes();
+            airport.aircraftTypes = types.ToList();
+            var aircraft = scene.GetRootGameObjects().SelectMany(r => r.GetComponentsInChildren<AirCity.Aircraft.Aircraft>(true)).ToArray();
+            var layouts = net.Layouts().Where(l => !l.stand.DeIcing && l.edge != null).ToList();
+            var baggageStands = airport.GetComponentsInChildren<BaggageStation>().SelectMany(s => s.standIds).ToHashSet();
+            var keep = new Dictionary<AircraftType, AirCity.Aircraft.Aircraft>();
+            var assigned = new Dictionary<AircraftType, Stand>();
+            var used = new HashSet<Stand>();
+            Stand AtStand(AirCity.Aircraft.Aircraft a)
+            {
+                var at = airport.transform.InverseTransformPoint(a.transform.position);
+                var nose = airport.transform.InverseTransformDirection(a.transform.forward);
+                return layouts.FirstOrDefault(l => net.CheckStand(l.stand, a.type) == StandProblem.None &&
+                    Vector2.Distance(new Vector2(at.x, at.z), l.ParkPosition(a.type)) < 0.1f &&
+                    Vector2.Dot(new Vector2(nose.x, nose.z), l.nose) > 0.99f)?.stand;
+            }
+            // Preserve aircraft already on stands, especially the station's sole working narrowbody.
+            foreach (var type in types)
+            {
+                var candidates = aircraft.Where(a => a.type == type)
+                    .OrderByDescending(a => { var stand = AtStand(a); return stand != null && baggageStands.Contains(stand.id); })
+                    .ThenByDescending(a => AtStand(a) != null).ThenBy(a => a.name).ToArray();
+                if (candidates.Length == 0) continue;
+                var chosen = candidates[0];
+                keep[type] = chosen;
+                var home = AtStand(chosen);
+                chosen.transform.SetParent(airport.transform, true);
+                if (home != null && used.Add(home)) assigned[type] = home;
+                foreach (var duplicate in candidates.Skip(1)) Object.DestroyImmediate(duplicate.gameObject);
+            }
+            // Larger aircraft claim their stands first; smaller types use the smallest free compatible stand.
+            foreach (var type in types.OrderByDescending(t => t.SizeCode).ThenByDescending(t => t.Length))
+            {
+                if (assigned.ContainsKey(type)) continue;
+                var stand = layouts.Where(l => !used.Contains(l.stand) && net.CheckStand(l.stand, type) == StandProblem.None)
+                    .OrderBy(l => l.Code).ThenBy(l => l.stand.number).Select(l => l.stand).FirstOrDefault();
+                if (stand == null) throw new System.InvalidOperationException($"Create a free stand for {type.TypeName} before refreshing sandbox aircraft.");
+                used.Add(stand);
+                assigned[type] = stand;
+                if (!keep.TryGetValue(type, out var a))
+                {
+                    ParkAircraft(airport, new List<Stand> { stand }, type.model);
+                    continue;
+                }
+                var layout = net.Layout(stand);
+                var park = layout.ParkPosition(type);
+                a.transform.SetParent(airport.transform, true);
+                a.transform.SetPositionAndRotation(airport.transform.TransformPoint(new Vector3(park.x, 0f, park.y)),
+                    Quaternion.LookRotation(airport.transform.TransformDirection(new Vector3(layout.nose.x, 0f, layout.nose.y))));
+                a.name = $"{type.model} on {stand.Name}";
+            }
+            // Remove the legacy livery-display root and its otherwise unused concrete rectangle.
+            foreach (var root in scene.GetRootGameObjects())
+                if (root.name == "Aircraft" && root.transform.childCount == 0) Object.DestroyImmediate(root);
+            var oldRamp = ApronArea.Rect(new Vector2(600f, -440f), new Vector2(300f, 560f), 0f, PavementSurface.Concrete);
+            airport.aprons.RemoveAll(a => a.outline.SequenceEqual(oldRamp.outline));
+            return assigned.Count;
+        }
 
         /// <summary>Bow the terminal's edge from a to b (either way along it) out by `metres`.</summary>
         static void BowEdge(Terminal t, Vector2 a, Vector2 b, float metres)
@@ -502,7 +556,8 @@ namespace AirCity.EditorTools.Airfield
             var jet = AircraftSetup.AllTypes().FirstOrDefault(t => t.model == model);
             var prefab = jet != null ? AircraftSetup.Prefab(jet) : null;
             if (prefab == null) return;
-            var liveries = AircraftSetup.AllLiveries();
+            var liveries = AircraftSetup.AllLiveries().Where(l => jet.Light || l.livery.logo != null || l.name == "ClassicBlue").ToArray();
+            int colour = AircraftSetup.AllTypes().ToList().IndexOf(jet);
             var net = airport.Taxiways;
             var t = airport.transform;
             for (int i = 0; i < stands.Count; i++)
@@ -517,7 +572,7 @@ namespace AirCity.EditorTools.Airfield
                 var applier = go.GetComponent<AircraftLiveryApplier>();
                 if (applier != null && liveries.Length > 0)
                 {
-                    applier.liveryAsset = liveries[(i + 1) % liveries.Length];
+                    applier.liveryAsset = liveries[(colour + i) % liveries.Length];
                     applier.dirt = 0.25f * (i % 3);
                     applier.Apply();
                 }

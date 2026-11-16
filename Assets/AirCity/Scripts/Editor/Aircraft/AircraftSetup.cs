@@ -5,7 +5,6 @@ using AirCity.Dev;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
-using System.Collections.Generic;
 using UnityEngine.Rendering;
 using UnityEngine.SceneManagement;
 
@@ -186,20 +185,13 @@ namespace AirCity.EditorTools.Aircraft
             var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
             var sun = SetUpDaylight();
 
-            var ground = GameObject.CreatePrimitive(PrimitiveType.Plane);
-            ground.name = "Apron";
-            ground.transform.localScale = new Vector3(60f, 1f, 60f);
-            var groundRenderer = ground.GetComponent<Renderer>();
-            groundRenderer.sharedMaterial = ApronMaterial();
-            groundRenderer.shadowCastingMode = ShadowCastingMode.Off;   // a flat ground only receives
-
             var cam = new GameObject("Main Camera") { tag = "MainCamera" }.AddComponent<Camera>();
             cam.nearClipPlane = 0.3f;
             cam.farClipPlane = 3000f;
             cam.fieldOfView = 45f;
             var orbit = cam.gameObject.AddComponent<DevOrbitCamera>();
-            orbit.pivot = new Vector3(14f, 0f, 40f);
-            orbit.distance = 150f;
+            orbit.pivot = new Vector3(450f, 0f, 180f);
+            orbit.distance = 700f;
             orbit.pitch = 38f;
             orbit.yaw = 20f;   // facing the same way as the light, so the apron is lit, not back-lit
             var rot = Quaternion.Euler(orbit.pitch, orbit.yaw, 0f);
@@ -209,65 +201,9 @@ namespace AirCity.EditorTools.Aircraft
             controls.sun = sun;
             cam.gameObject.AddComponent<DevToolbar>();
 
-            // one parked aircraft per (type, livery): light aircraft in front, airliners behind. Widebodies show one
-            // row of every other livery (the airline ones), which keeps them on the apron
-            var parent = new GameObject("Aircraft").transform;
-            float rowZ = 0f;
-            ShowcaseRows(parent, AllTypes(), ref rowZ);
-
             EditorSceneManager.SaveScene(scene, SandboxScene);
             EditorBuildSettings.scenes = new[] { new EditorBuildSettingsScene(SandboxScene, true) };
-        }
-
-        /// <summary>One parked aircraft per (type, livery) in rows along +Z from rowZ, under `parent` (the sandbox's
-        /// "Aircraft" root): light aircraft in front, airliners behind. Widebodies show one row of every other livery
-        /// (the airline ones), which keeps them on the apron. Leaves rowZ past the last row.</summary>
-        static void ShowcaseRows(Transform parent, IEnumerable<AircraftType> types, ref float rowZ)
-        {
-            var liveries = AllLiveries();
-            foreach (var type in types)
-            {
-                var prefab = Prefab(type);
-                if (prefab == null) continue;
-                float dx = type.Wingspan + 2f, dz = type.Length + 4f;
-                bool wide = type.SizeCode > 'C';
-                int shown = wide ? Mathf.Min(3, liveries.Length) : liveries.Length;
-                for (int i = 0; i < shown; i++)
-                {
-                    var livery = liveries[wide ? (2 * i + 1) % liveries.Length : i];
-                    var go = (GameObject)PrefabUtility.InstantiatePrefab(prefab, parent);
-                    go.name = $"{type.model} {livery.name}";
-                    var pos = new Vector3((i % 3 - 1) * dx + 14f, 0f, rowZ + (i / 3) * dz);
-                    go.transform.localPosition = pos;
-                    go.transform.localRotation = Quaternion.Euler(0f, 215f, 0f);
-                    var a = go.GetComponent<AircraftLiveryApplier>();
-                    a.liveryAsset = livery;
-                    a.dirt = (i % 5) / 4f;          // clean to filthy, to show the range
-                    a.Apply();
-                }
-                rowZ += (shown + 2) / 3 * dz + 6f;
-            }
-        }
-
-        /// <summary>Showcase rows for the types the open scene's "Aircraft" root has none of (a type added since the
-        /// sandbox was created), behind the rows it has. Returns how many types were added.</summary>
-        public static int AddMissingShowcaseRows()
-        {
-            Transform parent = null;
-            foreach (var root in SceneManager.GetActiveScene().GetRootGameObjects())
-                if (root.name == "Aircraft") parent = root.transform;
-            if (parent == null) parent = new GameObject("Aircraft").transform;
-            var shown = new HashSet<AircraftType>();
-            float rowZ = 0f;
-            foreach (var a in parent.GetComponentsInChildren<AirCity.Aircraft.Aircraft>())
-            {
-                if (a.type == null) continue;
-                shown.Add(a.type);
-                rowZ = Mathf.Max(rowZ, a.transform.localPosition.z + a.type.Length + 4f + 6f);
-            }
-            var missing = AllTypes().Where(t => !shown.Contains(t)).ToList();
-            ShowcaseRows(parent, missing, ref rowZ);
-            return missing.Count;
+            AirCity.EditorTools.Airfield.AirfieldSetup.AddSandboxAirport();
         }
 
         internal static Light SetUpDaylight()
@@ -285,22 +221,6 @@ namespace AirCity.EditorTools.Aircraft
             sun.transform.rotation = Quaternion.Euler(50f, 30f, 0f);
             RenderSettings.sun = sun;
             return sun;
-        }
-
-        static Material ApronMaterial()
-        {
-            string path = MaterialsFolder + "/Apron.mat";
-            var mat = AssetDatabase.LoadAssetAtPath<Material>(path);
-            if (mat != null) return mat;
-            var rp = GraphicsSettings.currentRenderPipeline;
-            var shader = rp != null ? Shader.Find("Universal Render Pipeline/Lit") : Shader.Find("Standard");
-            mat = new Material(shader) { name = "Apron" };
-            var c = new Color(0.56f, 0.56f, 0.55f);   // weathered concrete
-            if (mat.HasProperty("_BaseColor")) mat.SetColor("_BaseColor", c);
-            if (mat.HasProperty("_Color")) mat.SetColor("_Color", c);
-            if (mat.HasProperty("_Smoothness")) mat.SetFloat("_Smoothness", 0.15f);
-            AssetDatabase.CreateAsset(mat, path);
-            return mat;
         }
 
         // ------------------------------------------------------------------ thumbnails

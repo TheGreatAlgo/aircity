@@ -1,5 +1,6 @@
 using UnityEngine;
 using UnityEngine.Rendering;
+using System.Collections.Generic;
 
 namespace AirCity.Airfield
 {
@@ -12,6 +13,8 @@ namespace AirCity.Airfield
         MeshFilter filter;
         MeshRenderer renderer;
         Mesh mesh;
+        public bool constructionPreview;
+        readonly ConstructionMaterials previewMaterials = new ConstructionMaterials();
 
         public AirfieldPart(Transform owner, string name)
         {
@@ -37,7 +40,13 @@ namespace AirCity.Airfield
             Ensure();
             mesh = built;
             filter.sharedMesh = built;
-            renderer.sharedMaterials = materials;
+            if (constructionPreview)
+            {
+                var preview = new Material[materials.Length];
+                for (int i = 0; i < materials.Length; i++) preview[i] = previewMaterials.Get(materials[i]);
+                renderer.sharedMaterials = preview;
+            }
+            else { renderer.sharedMaterials = materials; previewMaterials.Clear(); }
             renderer.enabled = built != null && built.vertexCount > 0;
         }
 
@@ -66,6 +75,7 @@ namespace AirCity.Airfield
 
         public void Destroy()
         {
+            previewMaterials.Clear();
             if (mesh != null) DestroyAny(mesh);
             if (renderer != null) DestroyAny(renderer.gameObject);
             mesh = null;
@@ -80,4 +90,31 @@ namespace AirCity.Airfield
             else Object.DestroyImmediate(o);
         }
     }
+    /// <summary>Temporary forward-only material copies for construction previews over ungraded land.</summary>
+    sealed class ConstructionMaterials
+    {
+        readonly Dictionary<Material,Material> previewMaterials = new Dictionary<Material,Material>();
+
+        public Material Get(Material source)
+        {
+            if (source == null || !source.HasProperty("_ConstructionZTest")) return source;
+            if (previewMaterials.TryGetValue(source, out var material)) return material;
+            material = new Material(source) { name = source.name + " construction preview", hideFlags = HideFlags.HideAndDontSave,
+                renderQueue = source.shader.name == "AirCity/AirfieldPaint" ? 3001 : 3000 };
+            material.SetFloat("_ConstructionZTest", (float)CompareFunction.Always);
+            material.SetFloat("_ConstructionZWrite", 0f);
+            material.SetShaderPassEnabled("DepthOnly", false);
+            material.SetShaderPassEnabled("DepthNormals", false);
+            previewMaterials.Add(source, material);
+            return material;
+        }
+
+        public void Clear()
+        {
+            foreach (var material in previewMaterials.Values) AirfieldPart.DestroyAny(material);
+            previewMaterials.Clear();
+        }
+
+    }
+
 }

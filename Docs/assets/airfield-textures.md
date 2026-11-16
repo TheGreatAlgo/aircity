@@ -68,6 +68,17 @@ delete the `.mat` (keep the `.meta`) and rerun the bootstrap. The surface looks 
 - **Dirt:** the colour was retuned to a warmer brown (target 0.47, 0.40, 0.31, chroma 0.85).
 - **Runway numbers:** the stroke was thickened from 0.62 to 0.8 m because the numbers read too thin.
 - **Grass:** the yellow patches were reduced.
+- **Grass strips (2026-11-15):** the existing photo texture now also has 8 m clump and 31 m damp/dry variation,
+  subtle compacted wheel tracks and 4.5 m alternating mowing passes on runways. These remain readable when
+  the close grass texture mips away. Track exposure grows with maintenance wear; live mowing, snow and rain
+  retain their existing state channels. Stripe derivatives filter out subpixel bands.
 - **Snow:** the first version was pure white and blotchy. It now uses a darker snow albedo (0.5, 0.52, 0.56), softer
   coverage and noise mixed from height, fine noise and grain.
 - **Far ground in heavy snow:** it reads very uniform; this is a known look issue.
+
+
+Road pavement now uses kind 8 (`AirfieldKind.Road` / `KIND_ROAD`) for deterministic 23 m faded/damp patches
+and finer 5.7 m tonal grain over the existing asphalt photo maps. Service roads keep strip coordinates;
+public roads use world coordinates, indicated by kind length -1. Road surfaces omit repeating slab/lane
+joint lines. Arrow heads use paint shape kind 2, an analytic triangular signed-distance field rather than
+stacked rectangular bars; kind 0 boxes and kind 1 glyphs keep their existing contracts.

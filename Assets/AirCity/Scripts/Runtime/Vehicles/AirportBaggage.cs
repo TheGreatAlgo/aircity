@@ -365,6 +365,7 @@ namespace AirCity.Vehicles
                 StepTerminalLinks(.05f);
                 liveObstacles.Clear();
                 liveObstacles.AddRange(airport.Maintenance.VehicleBoxes(null));
+                liveObstacles.AddRange(airport.Deicing.VehicleBoxes());
                 foreach (var job in jobs) if (!job.Finished) job.Step(0.05f);
                 foreach (var job in containerJobs) if (!job.Finished) job.Step(0.05f);
             }
@@ -373,19 +374,19 @@ namespace AirCity.Vehicles
         internal bool Clear(BaggageTurnaround job, BaggageVehiclePose pose, VehicleType type)
         {
             if (!job.Plan.Clear(pose, type)) return false;
-            var box = Box.Of(pose.position, pose.facing, type.bounds, 0.3f);
+            var box = Box.Of(pose, type.bounds, 0.3f, airport);
             if (job.Fleet.Station != null && job.Fleet.Station.accessBlocked && job.Plan.reservation.Contains(box.c)) return false;
             foreach (var obstacle in liveObstacles) if (box.Overlaps(obstacle)) return false;
             foreach (var fleet in fleets.Values)
             {
                 if (fleet == job.Fleet)
                 {
-                    if (type != fleet.Equipment.Loader && box.Overlaps(Box.Of(fleet.LoaderPose.position, fleet.LoaderPose.facing, fleet.Equipment.Loader.bounds, 0.2f))) return false;
+                    if (type != fleet.Equipment.Loader && box.Overlaps(Box.Of(fleet.LoaderPose, fleet.Equipment.Loader.bounds, 0.2f, airport))) return false;
                     if (type == fleet.Equipment.Loader && fleet.Train != null)
                     {
-                        if (box.Overlaps(Box.Of(fleet.Train.Tractor.position,fleet.Train.Tractor.facing,fleet.Equipment.Tractor.bounds,.2f))) return false;
+                        if (box.Overlaps(Box.Of(fleet.Train.Tractor, fleet.Equipment.Tractor.bounds, .2f, airport))) return false;
                         for (int i = 0; i < fleet.Train.CartCount; i++)
-                        { var cart = fleet.Train.CartAt(i); if (box.Overlaps(Box.Of(cart.position,cart.facing,fleet.Equipment.Cart.bounds,.2f))) return false; }
+                        { var cart = fleet.Train.CartAt(i); if (box.Overlaps(Box.Of(cart, fleet.Equipment.Cart.bounds, .2f, airport))) return false; }
                     }
                     continue;
                 }
@@ -396,16 +397,16 @@ namespace AirCity.Vehicles
             return true;
         }
 
-        static IEnumerable<Box> Boxes(BaggageFleet fleet)
+        IEnumerable<Box> Boxes(BaggageFleet fleet)
         {
             if (fleet.Train==null) yield break;
             if (fleet.Train != null)
             {
-                yield return Box.Of(fleet.Train.Tractor.position, fleet.Train.Tractor.facing, fleet.Equipment.Tractor.bounds, 0.3f);
+                yield return Box.Of(fleet.Train.Tractor, fleet.Equipment.Tractor.bounds, 0.3f, airport);
                 for (int i = 0; i < fleet.Train.CartCount; i++)
-                { var cart = fleet.Train.CartAt(i); yield return Box.Of(cart.position,cart.facing,fleet.Equipment.Cart.bounds,.3f); }
+                { var cart = fleet.Train.CartAt(i); yield return Box.Of(cart, fleet.Equipment.Cart.bounds, .3f, airport); }
             }
-            yield return Box.Of(fleet.LoaderPose.position, fleet.LoaderPose.facing, fleet.Equipment.Loader.bounds, 0.3f);
+            yield return Box.Of(fleet.LoaderPose, fleet.Equipment.Loader.bounds, 0.3f, airport);
         }
 
         public List<Box> VehicleBoxes()

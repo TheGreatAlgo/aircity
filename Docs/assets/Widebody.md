@@ -39,7 +39,7 @@ inside the 80 MB budget in `Fleet_100Aircraft_10Liveries_StaysWithinBudget`.
 | `Assets/AirCity/Aircraft/Widebody/Models/Widebody.fbx` | LOD0–2, movers, collider, ground shadow |
 | `…/Widebody.aircraft` | Type data (imported as `AircraftType`) |
 | `…/Widebody.prefab` | `AircraftSetup`, hand-editable |
-| `…/Thumbnails/Widebody_<Livery>.png` | Menu thumbnails (6 liveries) |
+| `…/Thumbnails/Widebody_<Livery>.png` | Menu thumbnails (7 liveries) |
 
 ## Parts
 

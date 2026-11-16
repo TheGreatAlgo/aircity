@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.Linq;
 using AirCity.Airfield;
 using AirCity.Airfield.Building;
+using AirCity.Characters;
 using UnityEngine;
 
 namespace AirCity.Vehicles
@@ -12,6 +13,25 @@ namespace AirCity.Vehicles
 
     /// <summary>A shared baggage destination, equipment capacity and hired workforce. Bags stay in the airport ledger.</summary>
     [ExecuteAlways, DisallowMultipleComponent]
+    /// <summary>
+    /// A depot bay's hall handler. Waits by the conveyor ends; while a train stands in the bay, that fleet's
+    /// <see cref="BaggageCrewPerformance"/> drives it (claims it, writes its pose, releases it back home). Presentation only.
+    /// </summary>
+    public sealed class BaggageBayHand
+    {
+        public readonly BaggageDepot depot; public readonly int lane;
+        /// <summary>The performance driving the hand, or null while it waits at home.</summary>
+        public object owner;
+        public RampCrewPose pose; public Vector3 position; public float yaw; public bool placed;
+        /// <summary>The hand's rig (made by the depot presentation). While owned, the owning station poses it, right after
+        /// the performance step, so the hands and the bag drawn in them come from the same step.</summary>
+        public RampCrewRig rig;
+        public BaggageBayHand(BaggageDepot depot,int lane) { this.depot=depot; this.lane=lane; }
+        /// <summary>Waiting spot between the two conveyor ends, facing the lane.</summary>
+        public Vector3 Home { get { var p=depot.Point(depot.Layout.LaneX(lane)+2.05f,depot.Layout.WorkZ-6f); return new Vector3(p.x,0,p.y); } }
+        public float HomeYaw => Mathf.Atan2(-depot.Right.x,-depot.Right.y)*Mathf.Rad2Deg;
+    }
+
     public sealed class BaggageDepot : MonoBehaviour
     {
         public BaggageDepotSize size;
@@ -62,6 +82,14 @@ namespace AirCity.Vehicles
         BaggageLedger ledger;
         BaggageStore dispatch,arrivals;
         BaggageDepotPresentation presentation;
+        BaggageBayHand[] bayHands;
+        /// <summary>The hall's own handler at a working bay's conveyor (presentation only; not one of the leasable staff).</summary>
+        public BaggageBayHand BayHand(int lane)
+        {
+            int lanes=ProcessingBays;
+            if (bayHands==null || bayHands.Length!=lanes) { bayHands=new BaggageBayHand[lanes]; for (int i=0;i<lanes;i++) bayHands[i]=new BaggageBayHand(this,i); }
+            return bayHands[Mathf.Clamp(lane,0,lanes-1)];
+        }
         bool dirty=true;
         bool built;
         int builtLayout;
@@ -377,6 +405,8 @@ namespace AirCity.Vehicles
         void OnValidate() => dirty=true;
         void Update() { if (dirty) Rebuild(); }
         public void Present() { if (presentation==null) Rebuild(); presentation?.Present(); }
+        /// <summary>Present after <paramref name="dt"/> game seconds (review tools; Play mode uses the frame time).</summary>
+        public void Present(float dt) { if (presentation==null) Rebuild(); presentation?.Present(dt); }
         void LateUpdate() { if (Application.isPlaying) Present(); }
         void OnDisable() { presentation?.Destroy(); presentation=null; PaintChanged(); }
     }

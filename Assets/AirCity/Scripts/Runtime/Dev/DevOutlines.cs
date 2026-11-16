@@ -13,16 +13,18 @@ namespace AirCity.Dev
         static readonly int ColorId = Shader.PropertyToID("_BaseColor");
         readonly List<LineRenderer> pool = new List<LineRenderer>();
         MaterialPropertyBlock props;   // made on first use: not allowed while a MonoBehaviour is being constructed
-        Material material;
+        Material material, overlayMaterial;
         int used;
 
         public void Begin() => used = 0;
 
         /// <summary>Points in world space; width in pixels at the camera's distance from the first point.</summary>
-        public void Line(Camera cam, IReadOnlyList<Vector3> points, Color color, float pixels, bool loop = false)
+        public void Line(Camera cam, IReadOnlyList<Vector3> points, Color color, float pixels, bool loop = false, bool overlay = false)
         {
             if (points.Count < 2) return;
             var lr = Next();
+            if(overlay)overlayMaterial??=new Material(Resources.Load<Shader>("ConstructionOutline")) {hideFlags=HideFlags.DontSave};
+            lr.sharedMaterial=overlay?overlayMaterial:material;
             lr.loop = loop;
             lr.positionCount = points.Count;
             for (int i = 0; i < points.Count; i++) lr.SetPosition(i, points[i] + Vector3.up * 0.3f);
@@ -48,6 +50,7 @@ namespace AirCity.Dev
                 if (lr != null) Object.Destroy(lr.gameObject);
             pool.Clear();
             if (material != null) Object.Destroy(material);
+            if (overlayMaterial != null) Object.Destroy(overlayMaterial);
         }
 
         LineRenderer Next()

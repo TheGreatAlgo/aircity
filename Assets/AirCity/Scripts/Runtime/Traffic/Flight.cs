@@ -72,6 +72,8 @@ namespace AirCity.Traffic
         /// <summary>How long it has waited in all (game seconds), and how many times it went around.</summary>
         public float WaitedFor { get; private set; }
         public int GoArounds { get; private set; }
+        /// <summary>This departure has finished treatment and its trucks have returned clear.</summary>
+        public bool DeicingCompleted { get; internal set; }
 
         internal TaxiPlanner.Start start;
         /// <summary>Since when (AirTraffic.Clock) it has waited for traffic the other way, at `queuedAt` metres along
@@ -385,17 +387,31 @@ namespace AirCity.Traffic
             Waiting = null;
             // the first hold it isn't cleared past: ask in time to go on without stopping
             float stopAt = path.Length;
+            DeicingStop deicing = null;
+            foreach (var stop in Route.deicingStops)
+            {
+                if (DeicingCompleted) break;
+                var job = traffic.Airport.Deicing.JobFor(stop.facility);
+                if (job != null && job.aircraft == aircraft && job.Completed) { DeicingCompleted = true; break; }
+                if (stop.at < Along - 1f) continue;
+                deicing = stop;
+                stopAt = Mathf.Max(Along, stop.at);
+                Waiting = job != null && job.aircraft == aircraft ? job.Waiting : "stopping for de-icing";
+                break;
+            }
             var marshaller = kind == FlightKind.Arrival ? traffic.Airport.Marshalling.For(this) : null;
             if (marshaller != null && !marshaller.Ready)
-            { stopAt = Mathf.Max(Along,path.Length-25f); Waiting = "waiting for the marshaller to take position"; }
+            { stopAt = Mathf.Min(stopAt, Mathf.Max(Along,path.Length-25f)); Waiting = "waiting for the marshaller to take position"; }
             var holds = Route.holds;
             for (int i = 0; i < holds.Count; i++)
             {
                 var h = holds[i];
                 if (h.cleared) continue;
+                // A treatment may take minutes: don't reserve the next junction or runway while the trucks work.
+                if (deicing != null && h.at > stopAt + 0.05f) break;
                 float ask = Speed * Speed / (2f * TaxiBraking) + 40f;
                 if (Along >= h.at - ask && traffic.TryClear(this, i)) continue;
-                stopAt = h.at;
+                stopAt = Mathf.Min(stopAt, h.at);
                 if (Along >= h.at - ask) Waiting = h.waiting;
                 break;
             }
@@ -435,6 +451,13 @@ namespace AirCity.Traffic
             if (Along >= stopAt - 0.05f && stopAt < path.Length) Speed = Mathf.Min(Speed, 0.5f);
             traffic.Passed(this);
             PlaceOnRoute();
+            if (deicing != null && Mathf.Abs(Along - deicing.at) <= 0.05f)
+            {
+                Along = deicing.at;
+                Speed = 0f;
+                PlaceOnRoute();
+                return;
+            }
             pitch = Mathf.MoveTowards(pitch, 0f, 1.5f * dt);
             if (Along < path.Length - 0.05f) return;
             Speed = 0f;
@@ -679,8 +702,22 @@ namespace AirCity.Traffic
         void Place(Vector2 origin, Vector2 facing, float height)
         {
             var t = Airport;
-            var rotation = Quaternion.LookRotation(t.TransformDirection(Geo.X0Z(facing)), Vector3.up) * Quaternion.Euler(-pitch, 0f, 0f);
-            aircraft.transform.SetPositionAndRotation(t.TransformPoint(Geo.X0Z(origin, height)), rotation);
+            var airport=traffic.Airport;
+            float support=0f,slope=0f;
+            if(airport.HasElevatedPavement)
+            {
+                if(Route?.runway!=null && (Phase==FlightPhase.Approach || Phase==FlightPhase.GoAround))
+                    support=Mathf.Max(Route.runway.ElevationAt(TouchdownPoint),Route.runway.ElevationAt(origin));
+                else if(Route?.runway!=null && (Phase==FlightPhase.TakeoffRoll || Phase==FlightPhase.Climb))
+                    support=Route.runway.ElevationAt(origin);
+                else support=airport.PavementElevationAt(origin);
+                if(Route?.runway!=null && (Phase==FlightPhase.TakeoffRoll || Phase==FlightPhase.Climb))
+                    slope=Vector2.Dot(Route.runway.ElevationGradient,facing)*(1f-Mathf.SmoothStep(0f,1f,Mathf.Clamp01(height/30f)));
+                else if(height<=.001f)slope=Vector2.Dot(airport.PavementGradientAt(origin),facing);
+            }
+            var direction=new Vector3(facing.x,slope,facing.y).normalized;
+            var rotation = Quaternion.LookRotation(t.TransformDirection(direction), Vector3.up) * Quaternion.Euler(-pitch, 0f, 0f);
+            aircraft.transform.SetPositionAndRotation(t.TransformPoint(Geo.X0Z(origin, support+height)), rotation);
         }
 
         void Drive(float speed, float steeringDegrees)

@@ -20,6 +20,7 @@ namespace AirCity.Vehicles
         public const float CuspSpeed = 0.4f;
 
         readonly List<Vector2> points = new List<Vector2>();
+        readonly List<float> heights=new List<float>();
         readonly List<float> distance = new List<float>();
         readonly List<float> spread = new List<float>();
         readonly List<float> limit = new List<float>();
@@ -48,14 +49,14 @@ namespace AirCity.Vehicles
 
         public void Clear()
         {
-            points.Clear();
+            points.Clear();heights.Clear();
             distance.Clear();
             spread.Clear();
             limit.Clear();
             gear.Clear();
         }
 
-        void Add(Vector2 p, float fan, float speed, bool reverse = false)
+        void Add(Vector2 p, float fan, float speed, bool reverse = false,float height=float.NaN)
         {
             sbyte g = reverse ? (sbyte)-1 : (sbyte)1;
             if (points.Count > 0)
@@ -63,6 +64,7 @@ namespace AirCity.Vehicles
                 float d = Vector2.Distance(points[points.Count - 1], p);
                 if (d < 0.05f)
                 {
+                    if(!float.IsNaN(height))heights[heights.Count-1]=height;
                     spread[spread.Count - 1] = fan;
                     limit[limit.Count - 1] = Mathf.Min(limit[limit.Count - 1], speed);
                     if (gear[gear.Count - 1] != g && points.Count > 1)
@@ -78,7 +80,7 @@ namespace AirCity.Vehicles
                 distance.Add(distance[distance.Count - 1] + d);
             }
             else distance.Add(0f);
-            points.Add(p);
+            points.Add(p);heights.Add(height);
             spread.Add(fan);
             limit.Add(speed);
             gear.Add(g);
@@ -90,7 +92,7 @@ namespace AirCity.Vehicles
         public void Append(VehiclePath other)
         {
             for (int i = 0; i < other.points.Count; i++)
-                Add(other.points[i], other.spread[i], other.limit[i], other.gear[i] < 0);
+                Add(other.points[i], other.spread[i], other.limit[i], other.gear[i] < 0,other.heights[i]);
         }
 
         /// <summary>Keep only the stretch between two distances (resampled), as the whole path.</summary>
@@ -98,18 +100,29 @@ namespace AirCity.Vehicles
         {
             from = Mathf.Clamp(from, 0f, Length);
             to = Mathf.Clamp(to, from, Length);
-            var kept = new List<(Vector2 p, float fan, float speed, bool reverse)>();
+            var kept = new List<(Vector2 p, float fan, float speed, bool reverse,float height)>();
             for (float d = from; ; d += Step)
             {
                 float at = Mathf.Min(d, to);
                 int i = Segment(at);
                 var p = Sample(at, out _, out float fan, out float speed);
-                kept.Add((p, fan, speed, gear[Mathf.Min(i + 1, gear.Count - 1)] < 0));
+                kept.Add((p, fan, speed, gear[Mathf.Min(i + 1, gear.Count - 1)] < 0,Height(at,float.NaN)));
                 if (at >= to) break;
             }
             Clear();
-            foreach (var (p, fan, speed, reverse) in kept) Add(p, fan, speed, reverse);
+            foreach (var (p, fan, speed, reverse,height) in kept) Add(p, fan, speed, reverse,height);
         }
+
+        /// <summary>Sample the road deck attached to this route, preserving level identity at stacked crossings.</summary>
+        public float Height(float at,float fallback=0f)
+        {
+            if(points.Count==0)return fallback;if(points.Count==1)return float.IsNaN(heights[0])?fallback:heights[0];
+            int i=Segment(at);int next=Mathf.Min(i+1,heights.Count-1);
+            if(float.IsNaN(heights[i])||float.IsNaN(heights[next]))return fallback;
+            return Mathf.Lerp(heights[i],heights[next],Mathf.InverseLerp(distance[i],distance[next],at));
+        }
+        public void BindElevation(System.Func<Vector2,float> height,float from=0f)
+        {for(int i=0;i<points.Count;i++)if(distance[i]>=from-.001f)heights[i]=height(points[i]);}
 
         /// <summary>Straight on to p; the spread goes from fan0 to fan1 over the first / last `ramp` metres.</summary>
         public void LineTo(Vector2 p, float speed, float fan = 0f, float rampIn = 0f, float rampOut = 0f, bool reverse = false)

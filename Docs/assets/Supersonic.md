@@ -28,7 +28,7 @@ and the stage 2 log.
 | Main track / wheels | legs at x ±2.75 (track 5.5 m, inboard of the nacelles), four-wheel bogies: axles ±0.82 m, wheels ±0.42, r 0.60 m; nose twin ±0.34, r 0.42 m | `parts.py` |
 | Max steering | 60° | `GEAR` |
 | MTOW | 170,000 kg | `PERFORMANCE` |
-| Takeoff / landing distance | 3,300 m / 2,300 m | `RunwayLength` 3,300 m: fits the sandbox's 3,400 m runway dry |
+| Takeoff / landing distance | 3,300 m / 2,300 m | `RunwayLength` 3,300 m: fits the sandbox's 3,600 m runway dry |
 | Speeds | VR 102 m/s, approach 82, climb 15 m/s at 125 m/s | `PERFORMANCE` |
 | Wing | NACA 0004 scaled to 3% at the root, 4% at the tip; apex s 19.5 at y 1.2; strake 77° to y 3.3, outer panel 64.5° to the tip at y 13.0 (chord 2.3 m); straight TE at s 51.2; flat to y 7.6, then 3.5° anhedral; washout 0.6° → −1° | `parts.py` |
 | Elevons | chord 2.4 m (root) → 1.5 m (tip), hinge line just ahead of the TE; fixed TE over the nozzles (y 3.75–7.6) | `TE_PIECES` |

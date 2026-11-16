@@ -20,7 +20,8 @@ namespace AirCity.EditorTools.Characters
             if (Prefab != null)
             {
                 var existing = PrefabUtility.LoadPrefabContents(Root + "/RampCrew.prefab");
-                bool changed = RemoveImportedControllers(existing);
+                bool changed = RefreshModel(existing, materials[0]);
+                changed |= RemoveImportedControllers(existing);
                 if (changed) PrefabUtility.SaveAsPrefabAsset(existing,Root + "/RampCrew.prefab");
                 PrefabUtility.UnloadPrefabContents(existing); AssetDatabase.SaveAssets(); return;
             }
@@ -42,6 +43,59 @@ namespace AirCity.EditorTools.Characters
             var rig = go.AddComponent<RampCrewRig>(); rig.type = Type; rig.uniforms = materials;
             PrefabUtility.SaveAsPrefabAsset(go, Root + "/RampCrew.prefab"); Object.DestroyImmediate(go);
             AssetDatabase.SaveAssets();
+        }
+
+        /// <summary>
+        /// The prefab holds an unpacked copy of the model, so its renderers keep a baked bone list. When the
+        /// generated skeleton changes (bones added), only the "Model" child is replaced; the root, its
+        /// RampCrewRig/LODGroup settings, renderer materials and LOD thresholds stay as they were edited.
+        /// </summary>
+        static bool RefreshModel(GameObject root, Material fallback)
+        {
+            var source = AssetDatabase.LoadAssetAtPath<GameObject>(Root + "/Models/RampCrew.fbx");
+            var model = root.transform.Find("Model");
+            if (source == null || model == null || SameSkeleton(model.gameObject, source)) return false;
+            var old = model.GetComponentsInChildren<SkinnedMeshRenderer>(true);
+            var fresh = Object.Instantiate(source, root.transform); fresh.name = "Model";
+            fresh.transform.SetLocalPositionAndRotation(model.localPosition, model.localRotation);
+            fresh.transform.localScale = model.localScale; fresh.transform.SetSiblingIndex(model.GetSiblingIndex());
+            foreach (var animator in fresh.GetComponentsInChildren<Animator>()) Object.DestroyImmediate(animator);
+            var renderers = fresh.GetComponentsInChildren<SkinnedMeshRenderer>();
+            foreach (var renderer in renderers)
+            {
+                var previous = System.Array.Find(old, r => r.name == renderer.name);
+                renderer.sharedMaterial = previous != null ? previous.sharedMaterial : fallback;
+                renderer.localBounds = previous != null ? previous.localBounds : new Bounds(new Vector3(0,.9f,0), new Vector3(2.5f,2.4f,2.5f));
+            }
+            var lod = root.GetComponent<LODGroup>();
+            if (lod != null)
+            {
+                var levels = lod.GetLODs();
+                for (int i = 0; i < levels.Length; i++)
+                {
+                    var renderer = System.Array.Find(renderers, r => r.name.EndsWith("LOD" + i));
+                    levels[i].renderers = renderer != null ? new Renderer[] { renderer } : new Renderer[0];
+                }
+                lod.SetLODs(levels); lod.RecalculateBounds();
+            }
+            Object.DestroyImmediate(model.gameObject);
+            return true;
+        }
+
+        static bool SameSkeleton(GameObject model, GameObject source)
+        {
+            var current = model.GetComponentsInChildren<SkinnedMeshRenderer>(true);
+            var imported = source.GetComponentsInChildren<SkinnedMeshRenderer>(true);
+            if (current.Length != imported.Length) return false;
+            foreach (var renderer in current)
+            {
+                var match = System.Array.Find(imported, r => r.name == renderer.name);
+                if (match == null || match.sharedMesh != renderer.sharedMesh || match.bones.Length != renderer.bones.Length) return false;
+                if (renderer.sharedMesh != null && renderer.sharedMesh.bindposeCount != renderer.bones.Length) return false;
+                for (int i = 0; i < match.bones.Length; i++)
+                    if (renderer.bones[i] == null || renderer.bones[i].name != match.bones[i].name) return false;
+            }
+            return true;
         }
 
         // Also upgrade existing generated materials when the atlas gains fabric normals/roughness.

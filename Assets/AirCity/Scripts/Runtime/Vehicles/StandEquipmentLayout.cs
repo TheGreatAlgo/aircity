@@ -15,6 +15,9 @@ namespace AirCity.Vehicles
         {
             public int stamp;
             public List<Parking> parking;
+            /// <summary>Each stand's packed equipment, by a hash of everything that can reach it (its pad, aircraft, requests
+            /// and the obstacles near it), so a change elsewhere on the airfield reuses it instead of packing again.</summary>
+            public Dictionary<int, List<Parking>> groups = new Dictionary<int, List<Parking>>();
         }
         static readonly ConditionalWeakTable<Airport,Cached> cache = new ConditionalWeakTable<Airport,Cached>();
 
@@ -102,12 +105,22 @@ namespace AirCity.Vehicles
                         aircraft=s.automaticHold.aircraft,cargo=s.automaticHold.cargoPoint,count=Mathf.Max(1,s.cartCount) });
             int stamp=Stamp(airport,requests);
             if (cache.TryGetValue(airport,out var previous) && previous.stamp==stamp) return previous.parking;
+            var groups = new Dictionary<int, List<Parking>>();
+            List<Box> everything = null;
             foreach (var group in requests.GroupBy(r=>r.stand))
             {
                 var layout = airport.Taxiways.Layout(group.Key);
-                var batch = new List<Parking>();
-                var obstacles = Fixed(airport);
                 var types = airport.Bridges.TypesFor(group.Key);
+                everything ??= Fixed(airport);
+                var obstacles = Near(everything, layout);
+                int key = GroupKey(group.Key, layout, types, group, obstacles);
+                if (previous != null && previous.groups.TryGetValue(key, out var reused))
+                {
+                    groups[key] = reused;
+                    result.AddRange(reused);
+                    continue;
+                }
+                var batch = new List<Parking>();
                 var guarded = layout == null ? null : Swept(layout, types);
                 if (guarded != null) obstacles.AddRange(guarded);
                 var workspaces=new List<(Component station,Box loader,Box train)>();
@@ -222,9 +235,63 @@ namespace AirCity.Vehicles
                 if (batch.Any(q => q.problem != null) || !Place(0,slots.Select(s=>s.candidates).ToArray()) || batch.Any(q => !q.Valid))
                     foreach (var q in batch) { q.problem ??= "No clear equipment staging layout found on " + group.Key.Name + "."; q.loaderBay = q.trainBay = null; }
                 result.AddRange(batch);
+                groups[key] = batch;
             }
-            cache.Remove(airport); cache.Add(airport,new Cached { stamp=stamp,parking=result });
+            cache.Remove(airport); cache.Add(airport,new Cached { stamp=stamp,parking=result,groups=groups });
             return result;
+        }
+
+        /// <summary>How far past a stand's pad equipment staging looks: its bays sit on the pad, and a vehicle's
+        /// way out of its bay (turning circle included) reaches at most this far beyond.</summary>
+        const float StagingReach = 40f;
+
+        /// <summary>The obstacles that can touch a stand's staging (its pad, grown by StagingReach); all of them if
+        /// the stand isn't laid out.</summary>
+        static List<Box> Near(List<Box> all, StandLayout layout)
+        {
+            if (layout == null) return new List<Box>(all);
+            var pad = layout.Pad;
+            var centre = (pad[0] + pad[1] + pad[2] + pad[3]) * .25f;
+            float reach = 0f;
+            foreach (var p in pad) reach = Mathf.Max(reach, Vector2.Distance(p, centre));
+            reach += StagingReach;
+            var near = new List<Box>();
+            foreach (var box in all)
+            {
+                float r = reach + box.Radius;
+                if ((box.c - centre).sqrMagnitude <= r * r) near.Add(box);
+            }
+            return near;
+        }
+
+        /// <summary>Everything one stand's packing depends on, hashed.</summary>
+        static int GroupKey(Stand stand, StandLayout layout, IEnumerable<AircraftType> types, IEnumerable<Request> requests, List<Box> obstacles)
+        {
+            unchecked
+            {
+                int h = stand.id;
+                void Add(int n) => h = h * 31 + n;
+                // to the millimetre: float noise must not count as a change
+                int Q(float f) => Mathf.RoundToInt(f * 1000f);
+                void V(Vector2 v) { Add(Q(v.x)); Add(Q(v.y)); }
+                int Id(Object o) => o != null ? o.GetEntityId().GetHashCode() : 0;
+                Add((int)stand.surface); Add((int)stand.exit); Add(stand.DeIcing ? 1 : 0);
+                if (layout != null)
+                {
+                    foreach (var p in layout.Pad) V(p);
+                    V(layout.nose); V(layout.stop); V(layout.entry); V(layout.axis);
+                    Add(Q(layout.far)); Add(Q(layout.x0)); Add(Q(layout.x1));
+                }
+                else Add(-1);
+                foreach (var t in types) Add(Id(t));
+                foreach (var r in requests)
+                {
+                    Add(Id(r.station)); Add(r.count); Add(Id(r.aircraft)); Add(r.cargo?.GetHashCode() ?? 0);
+                    Add(Id(r.tractor)); Add(Id(r.cart)); Add(Id(r.loader)); Add(Id(r.unit));
+                }
+                foreach (var b in obstacles) { V(b.c); V(b.az); Add(Q(b.hx)); Add(Q(b.hz)); }
+                return h;
+            }
         }
 
         public static Bounds TrainBounds(VehicleType tractor,VehicleType cart,int count)

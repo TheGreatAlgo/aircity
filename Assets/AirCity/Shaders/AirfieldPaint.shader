@@ -6,7 +6,7 @@
 //
 // Mesh layout (built by PaintBuilder; state kept current by SurfaceState): normal / tangent = which way the
 // corner grows (across / along, world, 0 = doesn't), uv0 = (across, along metres from the mark's centre,
-// snow cm, unused), uv1 = (half width, half length, along-centre, kind 0 = box / 1 = glyph), uv2 = glyph
+// snow cm, unused), uv1 = (half width, half length, along-centre, kind 0 = box / 1 = glyph / 2 = triangular arrowhead), uv2 = glyph
 // atlas (u0, v0, u per metre, v per metre), uv3 = (strip along, strip across, runway length, wear), uv4 = the
 // ploughs at work (AirfieldCommon.hlsl StripWorked), color = paint colour and opacity.
 Shader "AirCity/AirfieldPaint"
@@ -18,6 +18,8 @@ Shader "AirCity/AirfieldPaint"
         _GlyphSpread ("Glyph distance spread (metres)", Float) = 0.66
         _Smoothness ("Smoothness", Range(0, 1)) = 0.35
         _Grain ("Grain", Range(0, 0.5)) = 0.12
+        [HideInInspector] _ConstructionZTest ("Depth test", Float) = 4
+        [HideInInspector] _ConstructionZWrite ("Depth write", Float) = 0
     }
     SubShader
     {
@@ -28,7 +30,8 @@ Shader "AirCity/AirfieldPaint"
             Name "Paint"
             Tags { "LightMode" = "UniversalForward" }
             Blend SrcAlpha OneMinusSrcAlpha
-            ZWrite Off
+            ZWrite [_ConstructionZWrite]
+            ZTest [_ConstructionZTest]
             Offset -1, -1
 
             HLSLPROGRAM
@@ -45,6 +48,7 @@ Shader "AirCity/AirfieldPaint"
 
             CBUFFER_START(UnityPerMaterial)
                 float _GlyphSpread, _Smoothness, _Grain;
+                float _ConstructionZTest, _ConstructionZWrite;
             CBUFFER_END
             TEXTURE2D(_GlyphMap); SAMPLER(sampler_GlyphMap);
             TEXTURE2D(_MacroMap); SAMPLER(sampler_MacroMap);
@@ -115,7 +119,14 @@ Shader "AirCity/AirfieldPaint"
             half4 frag(Varyings i) : SV_Target
             {
                 half alpha;
-                if (i.box.w > 0.5)
+                if (i.box.w > 1.5)
+                {
+                    float slope=i.box.x/max(2.0*i.box.y,0.001);
+                    float side=(abs(i.local.x)+slope*(i.local.y-i.box.y))*rsqrt(1.0+slope*slope);
+                    float distance=max(side,abs(i.local.y)-i.box.y);
+                    alpha=saturate(0.5-distance/max(fwidth(distance),0.0001));
+                }
+                else if (i.box.w > 0.5)
                 {
                     float2 uv = i.atlas.xy + i.local * i.atlas.zw;
                     float sdf = SAMPLE_TEXTURE2D(_GlyphMap, sampler_GlyphMap, uv).r;

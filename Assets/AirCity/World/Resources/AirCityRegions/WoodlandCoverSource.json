@@ -1,0 +1,39 @@
+{
+  "name": "Woodland",
+  "latitude": 47.665,
+  "longitude": -121.928,
+  "sourceExtentMetres": 8000,
+  "resolution": 513,
+  "format": "raw uint8 class code, south row first; no header",
+  "sha256": "d3f2a1c2516226d46f775e61bdbe5ebd651af905cd65dc8dc7a5837d5108de49",
+  "waterFraction": 0.023084025854108958,
+  "classes": {
+    "10": {
+      "name": "Tree cover",
+      "fraction": 0.7342430149447693
+    },
+    "30": {
+      "name": "Grassland",
+      "fraction": 0.21110769125542903
+    },
+    "40": {
+      "name": "Cropland",
+      "fraction": 0.014902971094619808
+    },
+    "50": {
+      "name": "Built-up",
+      "fraction": 0.016160718017699652
+    },
+    "60": {
+      "name": "Bare / sparse vegetation",
+      "fraction": 0.0005015788333732317
+    },
+    "80": {
+      "name": "Permanent water",
+      "fraction": 0.023084025854108958
+    }
+  },
+  "tiles": [
+    "https://esa-worldcover.s3.eu-central-1.amazonaws.com/v200/2021/map/ESA_WorldCover_10m_2021_v200_N45W123_Map.tif"
+  ]
+}

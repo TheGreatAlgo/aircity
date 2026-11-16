@@ -33,3 +33,6 @@
 *.ttf  filter=lfs diff=lfs merge=lfs -text
 *.otf  filter=lfs diff=lfs merge=lfs -text
 *.mp4  filter=lfs diff=lfs merge=lfs -text
+
+# Offline terrain foundations
+*.bytes filter=lfs diff=lfs merge=lfs -text

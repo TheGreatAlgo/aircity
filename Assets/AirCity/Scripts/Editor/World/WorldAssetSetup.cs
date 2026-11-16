@@ -137,6 +137,17 @@ namespace AirCity.EditorTools.World
             mat.SetColor("_BaseColor", color); mat.SetFloat("_Smoothness", .25f); AssetDatabase.CreateAsset(mat, path); return mat;
         }
 
+        /// <summary>Kerbs and median barriers: light concrete (their meshes are two-sided).</summary>
+        public static Material KerbMaterial()
+        {
+            string path = Root + "/Roads/Materials/RoadKerb.mat";
+            var mat = AssetDatabase.LoadAssetAtPath<Material>(path);
+            if (mat != null) return mat;
+            mat = new Material(Shader.Find("Universal Render Pipeline/Lit")) { name = "RoadKerb" };
+            mat.SetColor("_BaseColor", new Color(.6f, .6f, .58f)); mat.SetFloat("_Smoothness", .15f);
+            AssetDatabase.CreateAsset(mat, path); return mat;
+        }
+
         static void Signal()
         {
             if (AssetDatabase.LoadAssetAtPath<GameObject>(SignalPath) != null) return;

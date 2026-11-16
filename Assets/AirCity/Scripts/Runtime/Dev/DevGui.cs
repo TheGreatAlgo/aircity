@@ -6,7 +6,7 @@ using UnityEngine.InputSystem;
 namespace AirCity.Dev
 {
     /// <summary>
-    /// Shared visual primitives for the sandbox and career HUDs: dark rounded IMGUI panels and buttons
+    /// Shared visual primitives for the sandbox and career HUDs: warm paper panels and rounded IMGUI controls
     /// that scale with the screen (fonts are sized up, not stretched, so text stays sharp), and the parts of the
     /// screen the HUD covers, so clicks and scrolls over it don't reach the world tools (PointerOverHud).
     ///
@@ -17,15 +17,20 @@ namespace AirCity.Dev
     public static class DevGui
     {
         // written as sRGB; GUI() converts them for the project's colour space
-        static readonly Color text = new Color(0.91f, 0.93f, 0.96f), muted = new Color(0.56f, 0.61f, 0.68f);
-        static readonly Color panelFill = new Color(0.07f, 0.085f, 0.11f, 0.92f), panelEdge = new Color(1f, 1f, 1f, 0.09f);
-        static readonly Color buttonFill = new Color(1f, 1f, 1f, 0.06f), buttonHover = new Color(1f, 1f, 1f, 0.14f);
-        static readonly Color onText = new Color(0.1f, 0.08f, 0.04f), shadow = new Color(0f, 0f, 0f, 0.28f);
+        public static readonly Color Ink = new Color(.14f, .23f, .28f);
+        public static readonly Color Paper = new Color(.98f, .975f, .94f);
+        public static readonly Color Surface = new Color(.89f, .93f, .91f);
+        public static readonly Color Primary = new Color(.06f, .43f, .44f);
+        public static readonly Color Success = new Color(.13f, .52f, .36f);
+        static readonly Color text = Ink, muted = new Color(.39f, .47f, .49f);
+        static readonly Color panelFill = Paper, panelEdge = new Color(1f, 1f, 1f, .9f);
+        static readonly Color buttonFill = Surface, buttonHover = new Color(.79f, .87f, .84f);
+        static readonly Color onText = Ink, shadow = new Color(.07f, .17f, .19f, .24f);
 
         /// <summary>On / selected: the aircraft selection outline's amber.</summary>
-        public static readonly Color Accent = new Color(1f, 0.74f, 0.1f);
+        public static readonly Color Accent = new Color(1f, .75f, .22f);
         /// <summary>The delete tool and delete buttons.</summary>
-        public static readonly Color Danger = new Color(0.93f, 0.3f, 0.3f);
+        public static readonly Color Danger = new Color(.77f, .23f, .23f);
 
         /// <summary>IMGUI takes colours as they're stored in a linear-space project: convert sRGB ones for it.</summary>
         public static Color GUI(Color c) => QualitySettings.activeColorSpace == ColorSpace.Linear ? c.linear : c;
@@ -50,9 +55,11 @@ namespace AirCity.Dev
         public static float U(float units) => Mathf.Round(units * Scale);
 
         public static GUIStyle Label, Bold, Small, Caption, Title, Hint;
-        static GUIStyle buttonText, buttonOnText, dangerText, dangerOnText, keyHint, keyHintOn, cardSub, cardSubOn, tooltipText;
+        static GUIStyle buttonText, buttonOnText, dangerText, dangerOnText, keyHint, keyHintOn, cardSub, cardSubOn, tooltipText, primaryText;
         static Color Text, OnText, PanelFill, PanelEdge, ButtonFill, ButtonHover, Shadow, AccentFill, DangerFill, DangerHover, Well;
         static float builtScale;
+        static GUISkin hudSkin;
+        static Texture2D scrollbarThumb;
 
         static readonly List<Rect> covered = new List<Rect>();
         static int coveredFrame = -10;
@@ -61,7 +68,8 @@ namespace AirCity.Dev
         public static void Begin()
         {
             Scale = Mathf.Round(Mathf.Clamp(Screen.height / 1000f, 1f, 2.5f) * 4f) / 4f;
-            if (Label != null && Mathf.Approximately(builtScale, Scale)) return;
+            if (Label != null && Mathf.Approximately(builtScale, Scale))
+            { UnityEngine.GUI.skin = hudSkin; return; }
             builtScale = Scale;
             Text = GUI(text);
             PanelFill = GUI(panelFill);
@@ -72,7 +80,7 @@ namespace AirCity.Dev
             AccentFill = GUI(Accent);
             DangerFill = GUI(Danger);
             DangerHover = GUI(new Color(Danger.r, Danger.g, Danger.b, 0.28f));
-            Well = GUI(new Color(0f, 0f, 0f, 0.32f));
+            Well = GUI(new Color(.82f, .88f, .85f));
             var dim = GUI(muted);
             var onDark = OnText = GUI(onText);
             GUIStyle Style(float size, Color color, FontStyle font = FontStyle.Normal, TextAnchor align = TextAnchor.MiddleLeft) =>
@@ -82,21 +90,33 @@ namespace AirCity.Dev
                     normal = { textColor = color }, hover = { textColor = color }, active = { textColor = color },
                     clipping = TextClipping.Clip,
                 };
-            Label = Style(13f, Text);
+            Label = Style(14f, Text);
             tooltipText = new GUIStyle(Label) { wordWrap = true, alignment = TextAnchor.UpperLeft };
-            Bold = Style(13f, Text, FontStyle.Bold);
-            Small = Style(11f, dim);
+            Bold = Style(14f, Text, FontStyle.Bold);
+            Small = Style(12f, dim);
             Caption = Style(10f, dim, FontStyle.Bold);
-            Title = Style(14f, Text, FontStyle.Bold);
+            Title = Style(19f, Text, FontStyle.Bold);
             Hint = Style(12f, dim);
-            buttonText = Style(12f, Text, FontStyle.Normal, TextAnchor.MiddleCenter);
-            buttonOnText = Style(12f, onDark, FontStyle.Bold, TextAnchor.MiddleCenter);
+            buttonText = Style(13f, Text, FontStyle.Bold, TextAnchor.MiddleCenter);
+            buttonOnText = Style(13f, onDark, FontStyle.Bold, TextAnchor.MiddleCenter);
+            primaryText = Style(13f, GUI(Color.white), FontStyle.Bold, TextAnchor.MiddleCenter);
             dangerText = Style(12f, DangerFill, FontStyle.Bold, TextAnchor.MiddleCenter);
             dangerOnText = Style(12f, Color.white, FontStyle.Bold, TextAnchor.MiddleCenter);
             keyHint = Style(10f, dim);
             keyHintOn = Style(10f, new Color(onDark.r, onDark.g, onDark.b, 0.6f));
-            cardSub = Style(10f, dim, FontStyle.Normal, TextAnchor.MiddleCenter);
-            cardSubOn = Style(10f, new Color(onDark.r, onDark.g, onDark.b, 0.7f), FontStyle.Normal, TextAnchor.MiddleCenter);
+            cardSub = Style(11f, dim, FontStyle.Normal, TextAnchor.MiddleCenter);
+            cardSubOn = Style(11f, new Color(onDark.r, onDark.g, onDark.b, 0.8f), FontStyle.Normal, TextAnchor.MiddleCenter);
+            if (hudSkin != null) UnityEngine.Object.Destroy(hudSkin);
+            if (scrollbarThumb != null) UnityEngine.Object.Destroy(scrollbarThumb);
+            hudSkin = UnityEngine.Object.Instantiate(UnityEngine.GUI.skin); hudSkin.hideFlags = HideFlags.HideAndDontSave;
+            scrollbarThumb = new Texture2D(4, 4) { hideFlags = HideFlags.HideAndDontSave };
+            var pixels = new Color[16]; for (int i = 0; i < pixels.Length; i++) pixels[i] = GUI(new Color(.53f, .66f, .60f));
+            scrollbarThumb.SetPixels(pixels); scrollbarThumb.Apply();
+            hudSkin.verticalScrollbar = new GUIStyle { fixedWidth = U(8), margin = new RectOffset((int)U(4), 0, 0, 0) };
+            hudSkin.verticalScrollbarThumb = new GUIStyle { normal = { background = scrollbarThumb }, border = new RectOffset(1, 1, 1, 1), fixedWidth = U(5) };
+            hudSkin.verticalScrollbarUpButton = new GUIStyle { fixedHeight = 0 };
+            hudSkin.verticalScrollbarDownButton = new GUIStyle { fixedHeight = 0 };
+            UnityEngine.GUI.skin = hudSkin;
         }
 
         // ------------------------------------------------------------------ what the HUD covers
@@ -146,14 +166,46 @@ namespace AirCity.Dev
         public static void Panel(Rect r)
         {
             Cover(r);
-            float radius = U(10f);
-            Fill(new Rect(r.x, r.y + U(3f), r.width, r.height), Shadow, radius);
+            float radius = U(16f);
+            Fill(new Rect(r.x, r.y + U(5f), r.width, r.height), Shadow, radius);
             Fill(r, PanelFill, radius);
             Outline(r, PanelEdge, radius);
         }
 
         /// <summary>A thin vertical rule between groups.</summary>
-        public static void Divider(float x, float y, float height) => Fill(new Rect(x, y, 1f, height), PanelEdge);
+        public static void Divider(float x, float y, float height) => Fill(new Rect(x, y, U(1f), height), GUI(new Color(.72f, .80f, .77f)));
+
+        public static void SurfaceCard(Rect r) => Fill(r, GUI(Surface), U(12));
+
+        public static void StatusPill(Rect r, string label, Color color)
+        {
+            Fill(r, GUI(Color.Lerp(Paper, color, .16f)), U(12));
+            var style = new GUIStyle(Small) { alignment = TextAnchor.MiddleCenter, fontStyle = FontStyle.Bold };
+            style.normal.textColor = GUI(color.grayscale > .55f ? Color.Lerp(color, Ink, .65f) : color);
+            float available = r.width - U(14);
+            string shown = label ?? "";
+            while (shown.Length > 1 && Width(shown, style) > available) shown = shown.Substring(0, shown.Length - 1);
+            if (shown != label && shown.Length > 1) shown = shown.Substring(0, shown.Length - 1) + "…";
+            UnityEngine.GUI.Label(r, new GUIContent(shown, label), style);
+        }
+
+        public static void ProgressBar(Rect r, float amount, Color color)
+        {
+            Fill(r, GUI(Color.Lerp(Surface, Ink, .12f)), U(6));
+            if (amount > 0) Fill(new Rect(r.x, r.y, r.width * Mathf.Clamp01(amount), r.height), GUI(color), U(6));
+        }
+
+        public static bool PrimaryButton(Rect r, string label, string tip = null, bool enabled = true)
+        {
+            bool hover = enabled && r.Contains(Event.current.mousePosition);
+            Fill(r, GUI(enabled ? (hover ? Color.Lerp(Primary, Color.white, .12f) : Primary) : Color.Lerp(Paper, Primary, .35f)), U(9));
+            bool was = UnityEngine.GUI.enabled;
+            UnityEngine.GUI.enabled = was && enabled;
+            bool clicked = UnityEngine.GUI.Button(r, new GUIContent("", tip), GUIStyle.none);
+            UnityEngine.GUI.Label(r, label, primaryText);
+            UnityEngine.GUI.enabled = was;
+            return clicked;
+        }
 
         /// <summary>
         /// A rounded button: filled amber while on (red for danger), else dark with a hover; danger buttons that
@@ -165,7 +217,8 @@ namespace AirCity.Dev
             bool hover = enabled && r.Contains(Event.current.mousePosition);
             var fill = on ? (danger ? DangerFill : AccentFill) : hover ? (danger ? DangerHover : ButtonHover) : ButtonFill;
             if (on && hover) fill = Color.Lerp(fill, Color.white, 0.15f);
-            Fill(r, fill, U(6f));
+            if (!enabled) fill = Color.Lerp(PanelFill, ButtonFill, .5f);
+            Fill(r, fill, U(9f));
             var style = on ? (danger ? dangerOnText : buttonOnText) : danger ? dangerText : buttonText;
             var hintStyle = on ? keyHintOn : keyHint;
             // tall buttons: the key in the bottom corner; short ones: beside the label
@@ -215,7 +268,8 @@ namespace AirCity.Dev
             bool hover = enabled && r.Contains(Event.current.mousePosition);
             var fill = on ? AccentFill : hover ? ButtonHover : ButtonFill;
             if (on && hover) fill = Color.Lerp(fill, Color.white, 0.15f);
-            Fill(r, fill, U(6f));
+            Fill(r, fill, U(12f));
+            if (on) Outline(r, GUI(Primary), U(12), U(2));
             bool was = UnityEngine.GUI.enabled;
             UnityEngine.GUI.enabled = was && enabled;
             bool clicked = UnityEngine.GUI.Button(r, new GUIContent("", tip), GUIStyle.none);
@@ -223,7 +277,7 @@ namespace AirCity.Dev
             if (Event.current.type != EventType.Repaint) return clicked;
             float inset = U(4f), text = sub != null ? U(30f) : U(20f);
             var well = new Rect(r.x + inset, r.y + inset, r.width - inset * 2f, r.height - inset - text);
-            Fill(well, Well, U(4f));
+            Fill(well, Well, U(8f));
             picture?.Invoke(well);
             UnityEngine.GUI.Label(new Rect(r.x, well.yMax + U(2f), r.width, U(16f)), label, on ? buttonOnText : buttonText);
             if (sub != null) UnityEngine.GUI.Label(new Rect(r.x, well.yMax + U(16f), r.width, U(12f)), sub, on ? cardSubOn : cardSub);
@@ -264,7 +318,7 @@ namespace AirCity.Dev
             r.x = Mathf.Clamp(r.x, margin, Mathf.Max(margin, Screen.width - r.width - margin));
             if (r.y < margin) r.y = m.y + U(22f);
             r.y = Mathf.Clamp(r.y, margin, Mathf.Max(margin, Screen.height - r.height - margin));
-            Fill(r, GUI(new Color(0.03f, 0.035f, 0.05f, 0.96f)), U(6f));
+            Fill(r, PanelFill, U(9f));
             Outline(r, PanelEdge, U(6f));
             UnityEngine.GUI.Label(new Rect(r.x + pad, r.y + pad, textWidth, Mathf.Max(1f, r.height - pad * 2f)), content, tooltipText);
         }

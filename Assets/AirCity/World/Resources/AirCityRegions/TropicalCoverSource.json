@@ -1,0 +1,47 @@
+{
+  "name": "Tropical",
+  "latitude": -16.503,
+  "longitude": -151.744,
+  "sourceExtentMetres": 12800,
+  "resolution": 513,
+  "format": "raw uint8 class code, south row first; no header",
+  "sha256": "7235e3f36f2c91dc66c6eb0012571c7490365ee0abd24d4bb4a81ad5f9ea1d37",
+  "waterFraction": 0.8272630894976232,
+  "classes": {
+    "10": {
+      "name": "Tree cover",
+      "fraction": 0.1264662631236962
+    },
+    "20": {
+      "name": "Shrubland",
+      "fraction": 7.5996792935338125e-06
+    },
+    "30": {
+      "name": "Grassland",
+      "fraction": 0.030307521022612846
+    },
+    "50": {
+      "name": "Built-up",
+      "fraction": 0.010050575865698467
+    },
+    "60": {
+      "name": "Bare / sparse vegetation",
+      "fraction": 0.0016947284824580403
+    },
+    "80": {
+      "name": "Permanent water",
+      "fraction": 0.8272630894976232
+    },
+    "90": {
+      "name": "Herbaceous wetland",
+      "fraction": 0.004107626658155026
+    },
+    "95": {
+      "name": "Mangroves",
+      "fraction": 0.00010259567046270647
+    }
+  },
+  "tiles": [
+    "https://esa-worldcover.s3.eu-central-1.amazonaws.com/v200/2021/map/ESA_WorldCover_10m_2021_v200_S18W153_Map.tif"
+  ]
+}

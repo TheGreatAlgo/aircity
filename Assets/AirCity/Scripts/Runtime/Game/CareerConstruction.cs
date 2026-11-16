@@ -8,64 +8,127 @@ using UnityEngine;
 
 namespace AirCity.Game
 {
+    public readonly struct ClearingQuote
+    {
+        public readonly int Price, Trees, Props;
+        public int Count => Trees + Props;
+        public ClearingQuote(int price, int trees, int props) { Price = price; Trees = trees; Props = props; }
+    }
+
     /// <summary>Preview and commit use the same footprint checks. Clearing, grading and construction are separate transactions.</summary>
     public static class CareerConstruction
     {
         public const int TreePrice = 24, StandPrice = 1800, ReceptionPrice = 4500;
-        public static bool Editable(CareerState state, Vector2 p) => state.Site != null && (state.Site.Parcel.Contains(p) ||
-            new Rect(state.Site.centre.x, state.Site.centre.y - 650f, ValleyWorld.RoadX + 35f - state.Site.centre.x, 1300f).Contains(p));
+        public const float MaxBuildHeight = ValleyWorld.HeightRange - 1f;
+        public const int BoulderPrice = 18, StonePrice = 4, LogPrice = 12, ShrubPrice = 5;
+        public static bool Editable(CareerState state, Vector2 p)
+        {
+            if (state.Site == null || !ValleyWorld.Finite(p.x) || !ValleyWorld.Finite(p.y) || !state.world.RegionBounds.Contains(p)) return false;
+            if (state.wholeRegion || state.mode == GameMode.Sandbox || state.BuildableBounds.Contains(p)) return true;
+            float roadX = state.world.RoadAt(p.y), centreX = state.Site.centre.x;
+            return Rect.MinMaxRect(Mathf.Min(centreX, roadX) - 35f, state.Site.centre.y - 650f,
+                Mathf.Max(centreX, roadX) + 35f, state.Site.centre.y + 650f).Contains(p);
+        }
         static bool Ready(CareerState state, CareerTool tool, out string why)
         {
-            why = state.Site == null ? "Buy a site first." : !state.handsOn ? "This save uses the original airport layout." :
-                state.charterActive ? "Wait for the aircraft before changing the airfield." : !state.layout.Unlocked(tool) ? "This tool has not unlocked yet." : null;
+            why = state.Site == null ? "Start building in a region first." : !state.handsOn ? "This save uses the original airport layout." :
+                state.charterActive ? "Wait for the aircraft before changing the airfield." : state.mode != GameMode.Sandbox && !state.layout.Unlocked(tool) ? "This tool has not unlocked yet." : null;
             return why == null;
         }
         static bool Pay(CareerState state, int price, out string why)
-        { why = state.funds < price ? "Not enough funds for this work." : null; if (why != null) return false; state.funds -= price; return true; }
+        { why = state.mode != GameMode.Sandbox && state.funds < price ? "Not enough funds for this work." : null; if (why != null) return false; if (state.mode != GameMode.Sandbox) state.funds -= price; return true; }
 
         public static List<int> Trees(CareerState state, Vector2 point, float radius)
         {
             var found = new List<int>();
-            for (int i = 0; i < state.world.trees.Count; i++)
+            var bounds = new Rect(point.x - radius, point.y - radius, radius * 2f, radius * 2f);
+            foreach (int i in ForestQuery.Candidates(state.world, bounds))
             {
                 var t = state.world.trees[i];
                 if (!t.removed && Editable(state, t.position) && Vector2.Distance(t.position, point) <= radius) found.Add(i);
             }
+            found.Sort(); // Keep the saved-tree order used by clearing previews and transactions.
             return found;
         }
-        public static bool Clear(CareerState state, Vector2 point, float radius, out string why, int treeIndex = -1)
+        public static bool Clearable(GroundCoverKind kind) => kind == GroundCoverKind.Boulder || kind == GroundCoverKind.Stone ||
+            kind == GroundCoverKind.Log || kind == GroundCoverKind.Shrub;
+
+        public static int PropPrice(GroundCoverInstance item)
+        {
+            int rate = item.kind == GroundCoverKind.Boulder ? BoulderPrice : item.kind == GroundCoverKind.Stone ? StonePrice :
+                item.kind == GroundCoverKind.Log ? LogPrice : item.kind == GroundCoverKind.Shrub ? ShrubPrice : 0;
+            return rate == 0 ? 0 : Mathf.Max(1, Mathf.CeilToInt(rate * item.scale * item.scale));
+        }
+
+        public static ClearingQuote QuoteClear(CareerState state, Vector2 point, float radius,
+            IEnumerable<GroundCoverInstance> ground = null, int treeIndex = -1)
+        {
+            ClearSelection(state, point, radius, ground, treeIndex, out var trees, out var props);
+            return Quote(trees, props);
+        }
+
+        static ClearingQuote Quote(List<int> trees, List<GroundCoverInstance> props)
+            => new ClearingQuote(trees.Count * TreePrice + props.Sum(PropPrice), trees.Count, props.Count);
+
+        static void ClearSelection(CareerState state, Vector2 point, float radius, IEnumerable<GroundCoverInstance> ground,
+            int treeIndex, out List<int> trees, out List<GroundCoverInstance> props)
+        {
+            trees = new List<int>(); props = new List<GroundCoverInstance>();
+            if (state?.world == null || !ValleyWorld.Finite(point.x) || !ValleyWorld.Finite(point.y) || !ValleyWorld.Finite(radius)) return;
+            radius = Mathf.Clamp(radius, 4f, 90f);
+            if (treeIndex >= 0)
+            {
+                if (treeIndex < state.world.trees.Count && !state.world.trees[treeIndex].removed && Editable(state, state.world.trees[treeIndex].position))
+                    trees.Add(treeIndex);
+                return; // Single-tree selection never removes an unselected nearby rock or shrub.
+            }
+            trees = Trees(state, point, radius);
+            float reach = radius + GroundCoverScatter.MaximumFootprintRadius;
+            ground ??= GroundCoverScatter.Generate(state.world, area: new Rect(point.x - reach, point.y - reach, reach * 2f, reach * 2f));
+            var selected = new HashSet<int>();
+            foreach (var item in ground)
+            {
+                if (item.id <= 0 || !Clearable(item.kind) || state.world.GroundPropRemoved(item.id) || !Editable(state, item.position)) continue;
+                float limit = radius + GroundCoverScatter.FootprintRadius(item.kind, item.scale);
+                if ((item.position - point).sqrMagnitude <= limit * limit && selected.Add(item.id)) props.Add(item);
+            }
+        }
+
+        public static bool Clear(CareerState state, Vector2 point, float radius, out string why, int treeIndex = -1,
+            IEnumerable<GroundCoverInstance> ground = null)
         {
             if (!Ready(state, CareerTool.ClearTrees, out why)) return false;
-            var indices = treeIndex >= 0 && treeIndex < state.world.trees.Count ? new List<int> { treeIndex } : Trees(state, point, Mathf.Clamp(radius, 4f, 90f));
-            indices.RemoveAll(i => state.world.trees[i].removed || !Editable(state, state.world.trees[i].position));
-            if (indices.Count == 0) { why = "Choose a tree on your land or in the airport road corridor."; return false; }
-            if (!Pay(state, indices.Count * TreePrice, out why)) return false;
+            ClearSelection(state, point, radius, ground, treeIndex, out var indices, out var props);
+            var quote = Quote(indices, props);
+            if (quote.Count == 0) { why = "This area is already clear."; return false; }
+            if (!Pay(state, quote.Price, out why)) return false;
             foreach (int i in indices)
             {
                 var tree = state.world.trees[i]; tree.removed = true; state.world.MarkGround(tree.position, 9f, .3f);
             }
+            state.world.RemoveGroundProps(props.Select(item => item.id));
             state.layout.clearedTrees += indices.Count; state.layout.Unlock(CareerTool.Level); return true;
         }
 
-        public static bool Level(CareerState state, Vector2 p, float radius, float target, bool commit, out int price, out string why)
+        public static bool Level(CareerState state, Vector2 p, float radius, float target, bool commit, out int price, out string why, Airport airport = null)
         {
             price = 0;
             if (!Ready(state, CareerTool.Level, out why)) return false;
             radius = Mathf.Clamp(radius, 15f, 90f);
-            if (!ValleyWorld.Finite(target) || target < 10f || target > 400f || !Editable(state, p) || !state.Site.Parcel.Contains(p))
-            { why = "Level ground within your airport land, between 10 and 400 m."; return false; }
-            if (state.world.trees.Any(t => !t.removed && Vector2.Distance(t.position, p) < radius + 6f))
+            if (!ValleyWorld.Finite(target) || target < 10f || target > MaxBuildHeight || !Editable(state, p) || !state.BuildableBounds.Contains(p))
+            { why = $"Level ground inside the region, between 10 and {MaxBuildHeight:0} m."; return false; }
+            if (ForestQuery.AnyWithin(state.world, p, radius + 6f))
             { why = "Remove the trees inside the brush before levelling."; return false; }
             // Changed grid samples also affect interpolated terrain up to one sample outside the brush.
-            if (TouchesConstruction(state, p, radius + state.world.Spacing))
+            if (TouchesConstruction(state, p, radius + state.world.Spacing) || TouchesAirport(airport, p, radius + state.world.Spacing))
             { why = "This brush could affect an existing structure or pavement. Demolish it before levelling here."; return false; }
-            float volume = state.world.BrushEarthwork(p, radius, target, state.Site.Parcel);
+            float volume = state.world.BrushEarthwork(p, radius, target, state.BuildableBounds);
             if (volume < 1f) { why = "This patch is already at the selected height."; return false; }
             price = Mathf.Max(15, Mathf.CeilToInt(volume * .055f));
-            if (state.funds < price) { why = "Not enough funds for this earthwork."; return false; }
+            if (state.mode != GameMode.Sandbox && state.funds < price) { why = "Not enough funds for this earthwork."; return false; }
             if (commit)
             {
-                state.funds -= price; state.world.LevelBrush(p, radius, target, state.Site.Parcel);
+                if (state.mode != GameMode.Sandbox) state.funds -= price; state.world.LevelBrush(p, radius, target, state.BuildableBounds);
                 state.layout.earthwork += volume; state.layout.Unlock(CareerTool.Runway);
             }
             why = null; return true;
@@ -87,6 +150,20 @@ namespace AirCity.Game
             }
             return false;
         }
+        static bool TouchesAirport(Airport airport, Vector2 point, float radius)
+        {
+            if (airport == null) return false;
+            var p = point - Geo.XZ(airport.transform.position);
+            foreach (var r in airport.Runways) if (Distance(p, Geo.XZ(r.start), Geo.XZ(r.end)) < radius + r.HalfWidthTotal) return true;
+            var net = airport.Taxiways;
+            foreach (var e in net.edges) if (Distance(p, net.At(e.a), net.At(e.b)) < radius + e.width * .5f) return true;
+            foreach (var s in net.stands) if (TouchesFootprint(p, radius, StandLayout.Of(s).Pad)) return true;
+            foreach (var a in airport.aprons) if (TouchesFootprint(p, radius, a.outline)) return true;
+            foreach (var t in airport.terminals) if (TouchesFootprint(p, radius, t.Outline())) return true;
+            foreach (var d in airport.Depots) if (Vector2.Distance(p, Geo.XZ(d.transform.localPosition)) < radius + 35f) return true;
+            foreach (var d in airport.GetComponentsInChildren<AirCity.Vehicles.BaggageDepot>()) if (Vector2.Distance(p, d.PaintArea.centre) < radius + Mathf.Max(d.PaintArea.width, d.PaintArea.length)) return true;
+            return false;
+        }
         static bool TouchesFootprint(Vector2 p, float radius, IList<Vector2> corners)
         {
             if (Geo.Inside(corners, p)) return true;
@@ -99,11 +176,16 @@ namespace AirCity.Game
         static bool Ground(CareerState state, IEnumerable<Vector2> samples, float elevation, out string why)
         {
             var points = samples.ToArray();
-            why = "Keep the footprint inside your airport land.";
-            if (points.Any(p => !ValleyWorld.Finite(p.x) || !ValleyWorld.Finite(p.y) || !state.Site.Parcel.Contains(p))) return false;
+            why = "Keep the footprint inside the region.";
+            if (points.Any(p => !ValleyWorld.Finite(p.x) || !ValleyWorld.Finite(p.y) || !state.BuildableBounds.Contains(p))) return false;
+            why = "Prepare dry land above sea level before building here.";
+            if (state.world.HasOcean && (elevation <= state.world.SeaLevel + .5f || points.Any(state.world.IsWater))) return false;
             why = "Clear the trees in this footprint first.";
             var bounds = Rect.MinMaxRect(points.Min(p => p.x) - 8f, points.Min(p => p.y) - 8f, points.Max(p => p.x) + 8f, points.Max(p => p.y) + 8f);
-            if (state.world.trees.Any(t => !t.removed && bounds.Contains(t.position) && points.Any(p => (p - t.position).sqrMagnitude < 64f))) return false;
+            if (ForestQuery.Candidates(state.world, bounds).Any(i => {
+                var t = state.world.trees[i];
+                return !t.removed && bounds.Contains(t.position) && points.Any(p => (p - t.position).sqrMagnitude < 64f);
+            })) return false;
             why = "Level this footprint to one height first. Use the terrain tool.";
             if (points.Any(p => Mathf.Abs(state.world.Height(p) - elevation) > .3f)) return false;
             why = null; return true;
@@ -133,10 +215,10 @@ namespace AirCity.Game
             if (state.HasAccess && state.accessRoadRoute.Skip(1).Select((p, i) => (a: state.accessRoadRoute[i], b: p))
                 .Any(e => Geo.Segments(a, b, e.a, e.b, .1f, out _))) { why = "Keep the runway clear of the public road."; return false; }
             price = Mathf.CeilToInt((length - (l.runwayBuilt ? state.RunwayLength : 0f)) * 20f);
-            if (state.funds < price) { why = "Not enough funds for this runway."; return false; }
+            if (state.mode != GameMode.Sandbox && state.funds < price) { why = "Not enough funds for this runway."; return false; }
             if (commit)
             {
-                state.funds -= price; l.runwayA = a; l.runwayB = b; l.elevation = height; l.runwayBuilt = true;
+                if (state.mode != GameMode.Sandbox) state.funds -= price; l.runwayA = a; l.runwayB = b; l.elevation = height; l.runwayBuilt = true;
                 l.Unlock(CareerTool.Taxiway); state.expanded = state.completedCharters > 0 && length >= 1000f;
             }
             return true;
@@ -158,8 +240,8 @@ namespace AirCity.Game
                 length += distance;
             }
             price = 200 + Mathf.CeilToInt(length * 8f);
-            if (state.funds < price) { why = "Not enough funds for this taxiway."; return false; }
-            if (commit) { state.funds -= price; l.taxiways.Add(new CareerTaxiway { points = new List<Vector2>(points) }); l.Unlock(CareerTool.Stand); }
+            if (state.mode != GameMode.Sandbox && state.funds < price) { why = "Not enough funds for this taxiway."; return false; }
+            if (commit) { if (state.mode != GameMode.Sandbox) state.funds -= price; l.taxiways.Add(new CareerTaxiway { points = new List<Vector2>(points) }); l.Unlock(CareerTool.Stand); }
             return true;
         }
 
@@ -191,7 +273,7 @@ namespace AirCity.Game
             for (float z = pad.near0; z <= pad.far; z += 5f) samples.Add(pad.At(x, z));
             if (!Ground(state, samples, state.layout.elevation, out why)) return false;
             if (samples.Any(p => Distance(p, state.layout.runwayA, state.layout.runwayB) < 30f)) { why = "The parking pad needs more clearance from the runway."; return false; }
-            if (!commit) { why = state.funds < StandPrice ? "Not enough funds for this stand." : null; return why == null; }
+            if (!commit) { why = state.mode != GameMode.Sandbox && state.funds < StandPrice ? "Not enough funds for this stand." : null; return why == null; }
             if (!Pay(state, StandPrice, out why)) return false;
             var l = state.layout; l.stand = new Vector2(stand.position.x, stand.position.z); l.standAlong = stand.Front;
             l.standHeading = stand.heading; l.standBuilt = true; l.Unlock(CareerTool.Road); return true;
@@ -200,9 +282,9 @@ namespace AirCity.Game
         public static bool Road(CareerState state, IList<Vector2> route, out string why)
         {
             if (!Ready(state, CareerTool.Road, out why)) return false;
-            why = "Start inside your airport land, then finish on the valley road.";
-            if (route == null || route.Count < 2 || route.Count > 32 || !state.Site.Parcel.Contains(route[0]) ||
-                !PublicRoadLayout.TrySnap(state.world, route[route.Count - 1], .2f, out _) || PublicRoadLayout.Length(route) > 4000f) return false;
+            why = "Start inside the region, then finish on an existing public road.";
+            if (route == null || route.Count < 2 || route.Count > 32 || !state.BuildableBounds.Contains(route[0]) ||
+                !PublicRoadLayout.TrySnap(state.world, route[route.Count - 1], .2f, out _) || PublicRoadLayout.Length(route) > ValleyWorld.Size * 2f) return false;
             for (int i = 1; i < route.Count; i++)
             {
                 var a = route[i - 1]; var b = route[i];
@@ -212,15 +294,21 @@ namespace AirCity.Game
                     if (Geo.Segments(a, b, route[j - 1], route[j], .01f, out _)) { why = "The access road cannot cross itself."; return false; }
                 foreach (var p in Strip(a, b, 6f))
                 {
-                    if (!Editable(state, p)) { why = "Keep the road inside your land and the airport road corridor."; return false; }
+                    if (!Editable(state, p)) { why = "Keep the road inside the region."; return false; }
                     if (Distance(p, state.layout.runwayA, state.layout.runwayB) < 30f || state.layout.TaxiSegments().Any(e => Distance(p, e.a, e.b) < 16f))
                     { why = "Keep public vehicles clear of the runway and taxiways."; return false; }
-                    if (Mathf.Abs(p.x - state.world.RiverX(p.y)) < 120f) { why = "The first access road must stay on land."; return false; }
+                    if (state.world.IsWater(p) || state.world.HasRiver && Mathf.Abs(p.x - state.world.RiverX(p.y)) < 120f) { why = "The first access road must stay on land."; return false; }
                 }
-                if (state.world.trees.Any(t => !t.removed && Distance(t.position, a, b) < 12f))
+                var treeBounds = Rect.MinMaxRect(Mathf.Min(a.x, b.x) - 12f, Mathf.Min(a.y, b.y) - 12f,
+                    Mathf.Max(a.x, b.x) + 12f, Mathf.Max(a.y, b.y) + 12f);
+                if (ForestQuery.Candidates(state.world, treeBounds).Any(index => {
+                    var tree = state.world.trees[index];
+                    return !tree.removed && Distance(tree.position, a, b) < 12f;
+                }))
                 { why = "Clear the trees along your chosen road route first."; return false; }
             }
-            why = null; return true;
+            why = PublicRoadLayout.ShapeProblem(state.world, route);
+            return why == null;
         }
         public static bool BuildRoad(CareerState state, IList<Vector2> route, out string why)
         {
@@ -254,7 +342,7 @@ namespace AirCity.Game
                 if (corners.Any(p => Distance(p, state.accessRoadRoute[i - 1], state.accessRoadRoute[i]) < 5f) ||
                     Distance(point, state.accessRoadRoute[i - 1], state.accessRoadRoute[i]) < 9f)
                 { why = "Place the building beside the road."; return false; }
-            if (!commit) { why = state.funds < ReceptionPrice ? "Not enough funds for reception." : null; return why == null; }
+            if (!commit) { why = state.mode != GameMode.Sandbox && state.funds < ReceptionPrice ? "Not enough funds for reception." : null; return why == null; }
             if (!Pay(state, ReceptionPrice, out why)) return false;
             state.layout.reception = point; state.layout.receptionHeading = heading; state.layout.receptionBuilt = true; return true;
         }
@@ -262,10 +350,10 @@ namespace AirCity.Game
         public static bool Validate(CareerState state, out string why)
         {
             var l = state.layout; why = "The saved player-built airport layout is invalid.";
-            if (l == null || l.taxiways == null || l.taxiways.Count > 32 || l.clearedTrees < 0 || l.clearedTrees > 120000 ||
+            if (l == null || l.taxiways == null || l.taxiways.Count > 32 || l.clearedTrees < 0 || l.clearedTrees > ValleyWorld.MaxTrees ||
                 !ValleyWorld.Finite(l.earthwork) || l.earthwork < 0f || l.unlocked < 0 || l.unlocked > 255 || !ValleyWorld.Finite(l.elevation)) return false;
-            bool Point(Vector2 p) => ValleyWorld.Finite(p.x) && ValleyWorld.Finite(p.y) && state.Site != null && state.Site.Parcel.Contains(p);
-            if (l.runwayBuilt && (!Point(l.runwayA) || !Point(l.runwayB) || state.RunwayLength < 699.9f || state.RunwayLength > 1400.1f || l.elevation < 10f || l.elevation > 400f)) return false;
+            bool Point(Vector2 p) => ValleyWorld.Finite(p.x) && ValleyWorld.Finite(p.y) && state.Site != null && state.BuildableBounds.Contains(p);
+            if (l.runwayBuilt && (!Point(l.runwayA) || !Point(l.runwayB) || state.RunwayLength < 699.9f || state.RunwayLength > 1400.1f || l.elevation < 10f || l.elevation > MaxBuildHeight)) return false;
             foreach (var t in l.taxiways) if (t == null || t.points == null || t.points.Count < 2 || t.points.Count > 32 || t.points.Any(p => !Point(p))) return false;
             if (l.standBuilt && (!l.runwayBuilt || l.taxiways.Count == 0 || !Point(l.stand) || !ValleyWorld.Finite(l.standHeading) || !ValleyWorld.Finite(l.standAlong.x) ||
                 !ValleyWorld.Finite(l.standAlong.y) || Mathf.Abs(l.standAlong.magnitude - 1f) > .01f || !l.TaxiSegments().Any(e => Distance(l.stand, e.a, e.b) < .5f))) return false;

@@ -1,11 +1,13 @@
-"""Long-haul quadjet with a partial upper deck, built procedurally. Proportions and figures follow the Boeing
-747-8 "Airplane Characteristics for Airport Planning" document (D6-58326-3, rev. E, January 2026): the side,
-plan and front views of its general-dimensions sheet (2.2.2) were traced into the profiles below, and heights
-were set from its ground-clearance table (2.3.2, the middle of each minimum / maximum range).
+"""Long-haul quadjet with a partial upper deck, built procedurally. An original design: a smooth pointed nose
+running straight up into the flight deck on top of a forward upper-deck hump that ends in a short fairing, a
+broad fin over a low tailplane, split winglets and long-duct nacelles. Door stations and sills, gear positions,
+span and runway figures are a 747-8-sized code F quadjet's, from its airport-planning document (D6-58326-3,
+rev. E, January 2026), so stands, bridges and service vehicles see a real-sized aircraft; the shape is not
+traced from it.
 
 Stations `s` are metres aft of the nose tip. Blender Y = s - S_REF, so the model origin sits on the ground
-under the turn centre of the main gears (the effective main-gear centre of the 747-8 turning-radii table).
-Nose points -Y, port wing is +X, Z up.
+under the turn centre of the main gears (the effective main-gear centre of the turning-radii table). Nose
+points -Y, port wing is +X, Z up.
 """
 import math
 
@@ -32,39 +34,55 @@ def P(x, s, z):
 
 # ============================================================== fuselage
 
-KEEL = 2.24             # keel of the constant section (6.50 m wide; 747-8 general dimensions)
+KEEL = 2.24             # keel of the constant section (6.50 m wide)
 HUMP = 10.04            # upper-deck crown
 CROWN = 9.02            # main-deck crown aft of the hump
 HALF_WIDTH = 3.24
-TIP_Z = 5.70            # radome tip, level with the main-deck window belt
+TIP_Z = 5.20            # radome tip, just under the main-deck window belt
 ZM = 5.50               # widest line of the constant section
 
-# Traced from the side / plan views of the general-dimensions sheet (line centres), heights above the ground.
-# The top line climbs from the radome over the flight-deck "brow" (steeper at the windshield) onto the
-# upper-deck hump, which ends in a long fairing down to the main-deck crown at s ~35.
-TOP = [(0.008, 5.83), (0.05, 5.98), (0.12, 6.10), (0.28, 6.27), (0.53, 6.48), (0.8, 6.66), (1.05, 6.81),
-       (1.5, 7.08), (2.0, 7.37), (2.5, 7.63), (3.0, 7.90), (3.5, 8.14), (4.0, 8.38), (4.3, 8.56), (4.6, 8.80),
-       (4.9, 9.05), (5.2, 9.27), (5.6, 9.50), (6.0, 9.67), (6.5, 9.82), (7.0, 9.93), (7.5, 9.99), (8.3, 10.03),
-       (9.0, HUMP), (24.5, HUMP), (25.5, 10.00), (26.5, 9.94), (27.5, 9.86), (28.5, 9.75), (29.5, 9.62),
-       (30.5, 9.49), (31.5, 9.36), (32.5, 9.23), (33.5, 9.12), (34.5, 9.05), (35.5, CROWN), (60.0, CROWN),
-       (70.0, 9.00), (73.6, 8.95), (75.0, 8.80), (76.05, 8.62)]
-BOTTOM = [(0.008, 5.57), (0.05, 5.42), (0.12, 5.28), (0.28, 5.10), (0.53, 4.90), (0.8, 4.72), (1.05, 4.57),
-          (1.6, 4.29), (2.15, 4.03), (2.7, 3.81), (3.2, 3.62), (3.7, 3.46), (4.2, 3.31), (5.2, 3.10), (6.2, 2.90),
-          (7.2, 2.74), (8.3, 2.57), (9.3, 2.46), (10.3, 2.38), (11.4, 2.31), (12.5, 2.26), (14.0, KEEL),
-          (50.0, KEEL),
-          # tail upsweep to the APU exhaust
-          (50.8, 2.30), (52.0, 2.42), (53.5, 2.62), (55.0, 2.86), (56.5, 3.15), (58.0, 3.50), (59.5, 3.73),
-          (61.0, 4.04), (62.5, 4.39), (64.0, 4.67), (65.5, 5.00), (67.0, 5.31), (68.5, 5.63), (70.0, 5.95),
-          (71.5, 6.27), (73.0, 6.63), (74.2, 7.00), (75.2, 7.62), (76.05, 8.10)]
-HALF = [(0.008, 0.16), (0.1, 0.42), (0.25, 0.63), (0.5, 0.88), (0.8, 1.07), (1.2, 1.25), (1.6, 1.37),
-        (2.0, 1.49), (2.5, 1.64), (3.0, 1.79), (3.5, 1.93), (4.0, 2.07), (4.5, 2.19), (5.0, 2.29), (5.5, 2.38),
-        (6.0, 2.47), (6.5, 2.55), (7.0, 2.63), (7.5, 2.71), (8.0, 2.78), (9.0, 2.87), (10.0, 2.95), (11.0, 3.06),
-        (12.0, 3.14), (13.0, 3.20), (14.0, 3.23), (15.0, HALF_WIDTH), (56.0, HALF_WIDTH), (57.0, 3.13),
-        (58.0, 3.04), (59.0, 2.95), (60.0, 2.82), (61.0, 2.65), (62.0, 2.53), (63.0, 2.36), (64.0, 2.18),
-        (65.0, 2.00), (66.0, 1.85), (67.0, 1.66), (68.0, 1.50), (69.0, 1.33), (70.0, 1.12), (71.0, 0.92),
-        (72.0, 0.73), (73.0, 0.56), (74.0, 0.42), (75.0, 0.32), (76.05, 0.26)]
+# A smooth, pointed nose (not traced from any aircraft): every nose line rises from the tip (0) to the constant
+# section (1) as 1 - (1 - t^a)^b, t = s / length (a < 1 gives a pointed tip, b sets how soon the line levels
+# off). The top line climbs in one long sweep straight up the windshield onto the hump, with no brow.
+NOSE_UP = (15.5, 0.86, 2.30)    # (length, a, b): side view, tip -> hump crown
+NOSE_LO = (13.0, 0.64, 3.00)    # side view, tip -> keel
+NOSE_W = (14.5, 0.66, 2.45)     # plan view, centre line -> full width
+HUMP_END = (26.8, 32.6)         # the hump crown ends here and fairs down to the main-deck crown
+
+
+def _rise(s, shape):
+    length, a, b = shape
+    t = min(max(s / length, 0.0), 1.0)
+    return 1.0 - (1.0 - t ** a) ** b
+
+
+def _nose_samples(length):
+    """Stations for sampling a nose profile, dense at the tip where it curves fastest."""
+    return [0.008] + [length * (1.0 - math.cos(a)) for a in np.linspace(0.05, math.pi / 2, 30)]
+
+
+def _hump_fairing():
+    """The hump's short, S-shaped fairing down to the main-deck crown."""
+    s0, s1 = HUMP_END
+    return [(s, HUMP - (HUMP - CROWN) * float(smoothstep(s0, s1, s))) for s in np.linspace(s0, s1, 13)]
+
+
+TOP = ([(s, TIP_Z + (HUMP - TIP_Z) * _rise(s, NOSE_UP)) for s in _nose_samples(NOSE_UP[0])] +
+       _hump_fairing() +
+       [(60.0, CROWN), (70.0, 9.00), (73.6, 8.95), (75.0, 8.80), (76.05, 8.62)])
+BOTTOM = ([(s, TIP_Z - (TIP_Z - KEEL) * _rise(s, NOSE_LO)) for s in _nose_samples(NOSE_LO[0])] +
+          [(14.0, KEEL), (50.0, KEEL),
+           # tail upsweep to the APU exhaust
+           (50.8, 2.30), (52.0, 2.42), (53.5, 2.62), (55.0, 2.86), (56.5, 3.15), (58.0, 3.50), (59.5, 3.73),
+           (61.0, 4.04), (62.5, 4.39), (64.0, 4.67), (65.5, 5.00), (67.0, 5.31), (68.5, 5.63), (70.0, 5.95),
+           (71.5, 6.27), (73.0, 6.63), (74.2, 7.00), (75.2, 7.62), (76.05, 8.10)])
+HALF = ([(s, max(HALF_WIDTH * _rise(s, NOSE_W), 0.15)) for s in _nose_samples(NOSE_W[0])] +
+        [(15.0, HALF_WIDTH), (56.0, HALF_WIDTH), (57.0, 3.13),
+         (58.0, 3.04), (59.0, 2.95), (60.0, 2.82), (61.0, 2.65), (62.0, 2.53), (63.0, 2.36), (64.0, 2.18),
+         (65.0, 2.00), (66.0, 1.85), (67.0, 1.66), (68.0, 1.50), (69.0, 1.33), (70.0, 1.12), (71.0, 0.92),
+         (72.0, 0.73), (73.0, 0.56), (74.0, 0.42), (75.0, 0.32), (76.05, 0.26)])
 # height of the widest line: the radome tip, settling to the main deck; the tail cone's middle
-WIDEST = [(0.008, TIP_Z), (1.0, 5.69), (3.0, 5.70), (5.0, 5.68), (8.0, 5.62), (12.0, 5.55), (15.0, ZM),
+WIDEST = [(0.008, TIP_Z), (2.0, 5.30), (5.0, 5.42), (9.0, 5.50), (15.0, ZM),
           (55.0, ZM), (56.0, 5.55), (58.0, 5.95), (60.0, 6.25), (62.0, 6.55), (64.0, 6.82), (66.0, 7.05),
           (68.0, 7.30), (70.0, 7.55), (72.0, 7.78), (74.0, 8.00), (76.05, 8.36)]
 
@@ -116,7 +134,7 @@ class Fuselage(BaseFuselage):
     hw = profile(HALF)
     fm = _fm_profile()
     # the upper-deck bubble keeps fuller sides than the main-deck crown
-    nt = profile([(0.008, 2.0), (6.0, 2.05), (10.0, 2.15), (24.0, 2.15), (33.0, 2.0), (S_END, 2.0)])
+    nt = profile([(0.008, 2.0), (6.0, 2.05), (10.0, 2.15), (26.5, 2.15), (32.6, 2.0), (S_END, 2.0)])
     nb = profile([(0.008, 2.0), (14.0, 2.15), (20.0, 2.2), (26.0, 2.45), (42.0, 2.45), (50.0, 2.2), (60.0, 2.0),
                   (S_END, 2.0)])
 
@@ -248,19 +266,18 @@ def build_windows():
 
 # ============================================================== wing
 
-# Planform traced from the plan view (line centres): leading edge 24.45 m aft of the nose at the fuselage
-# side, ~42 deg inboard and ~40 deg outboard; trailing edge kinked at 10.3 m span. The raked tip sweeps both
-# edges further back over the last 3.2 m (tip 52.6 / 55.25 m aft of the nose at 34.2 m: 68.4 m span).
+# Planform: leading edge 24.45 m aft of the nose at the fuselage side, ~42 deg inboard and ~40 deg outboard;
+# trailing edge kinked at 10.3 m span; a plain tip (3.4 m chord) at 32.5 m carrying a split winglet, whose
+# upper blade leans outboard to a 68.4 m span.
 WING_SIDE = HALF_WIDTH
-WING_TIP = 34.20
-RAKE = 31.0             # the raked tip starts here
+WING_TIP = 32.50
 LE_PTS = [(0.0, 21.45), (WING_SIDE, 24.45), (4.0, 25.17), (6.0, 26.96), (9.0, 29.80), (12.0, 32.54),
           (14.0, 34.38), (17.0, 37.13), (21.0, 40.84), (24.0, 43.33), (26.0, 45.01), (28.0, 46.68), (30.0, 48.36),
-          (RAKE, 49.22), (32.6, 50.66), (33.6, 51.80), (WING_TIP, 52.60)]
-TE_PTS = [(0.0, 39.0), (WING_SIDE, 39.25), (10.3, 41.50), (RAKE, 53.05), (32.7, 54.20), (WING_TIP, 55.25)]
+          (WING_TIP, 50.45)]
+TE_PTS = [(0.0, 39.0), (WING_SIDE, 39.25), (10.3, 41.50), (WING_TIP, 53.89)]
 WING_KINK = 10.3
 WING_Z0 = 3.35          # chord-line height of the leading edge at the fuselage side
-DIHEDRAL = math.radians(6.1)        # tip ~6.65 m above the ground (747-8 M: 6.51-6.80 m)
+DIHEDRAL = math.radians(6.1)        # tip ~6.55 m above the ground
 WING_HINGE = 0.74       # rear spar (flap / aileron hinge) as a fraction of the local chord
 WING_AF = "2415"
 _le_tab = np.array(LE_PTS)
@@ -284,7 +301,7 @@ def wing_z(y):
 
 
 def wing_thickness(y):
-    return float(np.interp(abs(y), [0, WING_SIDE, WING_KINK, RAKE, WING_TIP], [0.90, 0.90, 0.72, 0.56, 0.50]))
+    return float(np.interp(abs(y), [0, WING_SIDE, WING_KINK, WING_TIP], [0.90, 0.90, 0.72, 0.54]))
 
 
 def wing_station(y, h=WING_HINGE, scale_t=None, c_override=None):
@@ -316,8 +333,8 @@ def hinge_point(y):
 # trailing-edge pieces per side: (name, from, to); "filler" pieces are fixed. Two flaps (the inboard one ends at
 # the kink so its hinge stays straight; the fixed piece behind the inboard engine stands for the high-speed
 # aileron) and one outboard aileron per side keep LOD0 within its draw-call budget.
-TE_PIECES = [("Flap_{}_In", WING_SIDE + 0.10, WING_KINK), ("filler", WING_KINK, 12.6),
-             ("Flap_{}_Out", 12.6, 24.9), ("filler", 24.9, 25.1), ("Aileron_{}", 25.1, 30.95)]
+TE_PIECES = [("Flap_{}_In", WING_SIDE + 0.10, WING_KINK), ("filler", WING_KINK, 14.0),
+             ("Flap_{}_Out", 14.0, 24.9), ("filler", 24.9, 25.1), ("Aileron_{}", 25.1, 30.95)]
 TIP_START = 31.0
 
 
@@ -332,7 +349,7 @@ def build_wing():
     lifting_surface(wing, [wing_station(y) for y in ys], WING_AF, "Body", "wing", flip=True)
     out = {"Wing": wing}
     for sgn, side in ((1, "L"), (-1, "R")):
-        tip = [wing_station(sgn * y, h=None) for y in (TIP_START - 0.03, 31.6, 32.2, 32.7, 33.2, 33.6, 33.95, WING_TIP)]
+        tip = [wing_station(sgn * y, h=None) for y in np.linspace(TIP_START - 0.03, WING_TIP, 4)]
         lifting_surface(wing, tip, WING_AF, "Body", "wing", flip=(sgn > 0))
         for name, y0, y1 in TE_PIECES:
             yy = np.linspace(y0, y1, max(int((y1 - y0) / 1.4) + 2, 2))
@@ -341,6 +358,41 @@ def build_wing():
             lifting_surface(target, [wing_station(sgn * y) for y in yy], WING_AF, "Body", tag, part="ctrl",
                             flip=(sgn > 0))
     return out
+
+
+def _blade(sgn, start, path, chord0, chord1, sweep, thin):
+    """Stations along a winglet blade: `path` = [(dx outboard, dz up, cant)], chord tapering chord0 -> chord1, the
+    leading edge sweeping `sweep` m aft along the way."""
+    seg = [0.0] + [math.hypot(path[k][0] - path[k - 1][0], path[k][1] - path[k - 1][1]) for k in range(1, len(path))]
+    u = np.cumsum(seg) / sum(seg)
+    sts = []
+    for (dx, dz, phi), t in zip(path, u):
+        up = Vector((-sgn * math.sin(phi), 0.0, math.cos(phi)))
+        sts.append(dict(le=Vector((sgn * (WING_TIP + dx), Y(start + sweep * t ** 1.15), wing_z(WING_TIP) + dz)),
+                        chord_dir=Vector((0, 1, 0)), up=up, c=chord0 - (chord0 - chord1) * t ** 0.85, h=None,
+                        scale_t=thin * (1 - 0.30 * t)))
+    return sts
+
+
+def build_winglets():
+    """Split winglets: a tall upper blade bending up out of the tip through a tight arc and leaning 14 deg
+    outboard, and a short ventral blade pointing down and out from under the tip."""
+    b = MeshBuilder()
+    tip = wing_station(WING_TIP, h=None)
+    c0, t0 = tip["c"], tip["scale_t"]
+    R, lean = 0.85, math.radians(76)
+    up = [(R * math.sin(phi), R * (1 - math.cos(phi)), phi) for phi in np.linspace(0, lean, 9)]
+    x1, z1 = up[-1][0], up[-1][1]
+    up += [(x1 + d * math.cos(lean), z1 + d * math.sin(lean), lean) for d in (0.6, 1.2, 1.8, 2.4, 3.0, 3.45)]
+    # ventral blade: starts inside the tip a third of the way back, 55 deg below the horizontal
+    dn_lean = math.radians(-55)
+    dn = [(-0.05 + d * math.cos(dn_lean), 0.05 + d * math.sin(dn_lean), dn_lean) for d in (0.0, 0.4, 0.8, 1.2, 1.55)]
+    for sgn in (1, -1):
+        lifting_surface(b, _blade(sgn, le_s(WING_TIP), up, c0, 0.75, 2.75, t0), WING_AF, "Body", "winglet",
+                        flip=(sgn > 0))
+        lifting_surface(b, _blade(sgn, le_s(WING_TIP) + 0.35 * c0, dn, 0.62 * c0, 0.55, 1.15, 0.85), "0010", "Body",
+                        "winglet", flip=(sgn > 0))
+    return b
 
 
 # Flap-track fairings ("canoes") under the wing, at the spans the plan view shows them
@@ -365,18 +417,19 @@ def build_flap_tracks():
 
 # ============================================================== engines
 
-# GEnx-2B-sized nacelles (~3.2 m across, ~5.1 m fan cowl, ~7.1 m to the plug tip in the side view): the
-# Narrowbody's nacelle profile scaled KL along, KR across.
+# Long-duct nacelles (~3.2 m across, the cowl running back almost to the mixed exhaust, ~7.3 m to the plug tip):
+# the Narrowbody's nacelle profile scaled KL along, KR across, with a stretched aft cowl.
 KL = 1.36
 KR = 1.52
 # (engine number, span, intake-lip station, centre height): 1 = left outboard ... 4 = right outboard.
-# Spans 11.93 / 21.18 m from the centre line, intakes 27.25 / 35.86 m aft of the nose (general dimensions);
-# nacelle bottoms 0.85 / 1.98 m (ground clearances P / N).
+# Spans 13.2 / 23.2 m from the centre line, intakes ~5.2 m ahead of the leading edge; nacelle bottoms 0.99 /
+# 2.20 m above the ground.
 NACELLE_R = KR * 1.055
-ENGINES = [(1, 21.18, 35.86, 1.98 + NACELLE_R), (2, 11.93, 27.25, 0.85 + NACELLE_R),
-           (3, -11.93, 27.25, 0.85 + NACELLE_R), (4, -21.18, 35.86, 1.98 + NACELLE_R)]
-NACELLE = [(0.0, 0.90), (0.03, 0.955), (0.10, 0.99), (0.25, 1.02), (0.6, 1.045), (1.3, 1.055), (2.0, 1.04),
-           (2.7, 0.99), (3.3, 0.90), (3.75, 0.80)]
+ENGINES = [(1, 23.20, 37.50, 2.20 + NACELLE_R), (2, 13.20, 28.45, 0.99 + NACELLE_R),
+           (3, -13.20, 28.45, 0.99 + NACELLE_R), (4, -23.20, 37.50, 2.20 + NACELLE_R)]
+NACELLE = [(0.0, 0.90), (0.03, 0.955), (0.10, 0.99), (0.25, 1.02), (0.6, 1.045), (1.3, 1.055), (2.0, 1.045),
+           (2.8, 1.00), (3.5, 0.93), (4.1, 0.83), (4.6, 0.72)]
+NOZZLE = 4.6            # end of the cowl (the mixed exhaust), in nacelle units
 
 
 def _k(pts):
@@ -391,15 +444,18 @@ def build_engine(x, inlet_s, z):
     revolve(b, _k([(0.0, 0.90), (0.05, 0.865), (0.25, 0.845), (0.85, 0.835)]), o, (0, 1, 0), "Metal", "intake",
             segs=44, flip=True)
     revolve(b, _k([(0.85, 0.835), (0.86, 0.24)]), o, (0, 1, 0), "Dark", "fanface", segs=44, flip=True)
-    revolve(b, _k([(3.75, 0.80), (3.70, 0.74), (3.45, 0.70)]), o, (0, 1, 0), "DarkMetal", "fanduct", segs=44, flip=True)
-    revolve(b, _k([(3.45, 0.70), (3.8, 0.66), (4.3, 0.58), (4.65, 0.50)]), o, (0, 1, 0), "Metal", "core", segs=32)
-    revolve(b, _k([(4.65, 0.50), (4.62, 0.44), (4.40, 0.42)]), o, (0, 1, 0), "DarkMetal", "core", segs=32, flip=True)
-    revolve(b, _k([(4.40, 0.40), (4.75, 0.33), (5.05, 0.18), (5.20, 0.02)]), o, (0, 1, 0), "DarkMetal", "plug", segs=24)
-    # pylon: a thin blade from inside the nacelle top, along the core, up and back into the wing
+    # mixed exhaust: the cowl's inner lip, a dark ring closing the duct, and the plug
+    revolve(b, _k([(NOZZLE, 0.72), (NOZZLE - 0.06, 0.67), (NOZZLE - 0.45, 0.63)]), o, (0, 1, 0), "DarkMetal", "fanduct",
+            segs=44, flip=True)
+    revolve(b, _k([(NOZZLE - 0.45, 0.63), (NOZZLE - 0.45, 0.50)]), o, (0, 1, 0), "DarkMetal", "fanduct", segs=32,
+            flip=True)
+    revolve(b, _k([(NOZZLE - 0.45, 0.50), (NOZZLE - 0.1, 0.46), (NOZZLE + 0.35, 0.30), (NOZZLE + 0.7, 0.10),
+                   (NOZZLE + 0.82, 0.02)]), o, (0, 1, 0), "DarkMetal", "plug", segs=24)
+    # pylon: a thin blade from inside the nacelle top, past the nozzle, up and back into the wing
     le_w = le_s(x)
     top = wing_surface_z(x, le_w + 2.4) + 0.30
     sts = []
-    for zz, le, te in ((z + 0.55 * KR, inlet_s + 1.2 * KL, inlet_s + 5.3 * KL),
+    for zz, le, te in ((z + 0.62 * KR, inlet_s + 1.2 * KL, inlet_s + (NOZZLE + 0.55) * KL),
                        (0.5 * (z + 1.0 * KR + top), inlet_s + 1.0 * KL, le_w + 3.6),
                        (top, le_w + 0.25, le_w + 5.4)):
         sts.append(dict(le=Vector((x, Y(le), zz)), chord_dir=Vector((0, 1, 0)), up=Vector((1, 0, 0)), c=te - le,
@@ -436,16 +492,15 @@ def build_engine(x, inlet_s, z):
 
 # ============================================================== tail
 
-# Tailplane traced from the plan view: 21.99 m span, LE 62.36 m on the centre line with 0.932 m of sweep per
-# metre (43 deg); TE 72.36 + 0.277 per metre; elevator hinge at 0.70 chord. 7 deg dihedral puts the tip 8.65 m
-# above the ground (747-8 L: 8.58-9.12 m).
+# Tailplane: 22.0 m span, LE 61.6 m on the centre line with 0.70 m of sweep per metre (35 deg); TE 71.0 + 0.30
+# per metre (a broad 5.0 m tip chord); elevator hinge at 0.70 chord; 5 deg dihedral.
 HT_Z = 7.30
-HT_ROOT_LE = 62.36
+HT_ROOT_LE = 61.60
 HT_SPAN = 11.0
-HT_LE_TAN = 0.932
-HT_TE0, HT_TE_TAN = 72.36, 0.277
+HT_LE_TAN = 0.70
+HT_TE0, HT_TE_TAN = 71.00, 0.30
 HT_HINGE = 0.70
-HT_DIHEDRAL = math.radians(7.0)
+HT_DIHEDRAL = math.radians(5.0)
 EL_ROOT = 1.85          # elevator inboard end, clear of the tail cone
 EL_TIP = 10.55
 
@@ -479,13 +534,13 @@ def build_htail():
     return out
 
 
-# Fin traced from the side view: root (on the 9.0 m crown line) LE 60.3 m, chord 11.9 m, LE sweep 1.17 m
-# per metre of height; tip 19.38 m above the ground (747-8: 19.4 m; ground clearance K 18.97-19.51 m),
-# chord 3.8 m, its trailing edge at 76.25 m (the overall length). Rudder hinge at 0.68 chord.
+# A broad fin: root (on the 9.0 m crown line) LE 59.2 m, chord 13.0 m, leading edge swept 40 deg; tip 19.6 m
+# above the ground, chord 6.0 m, square-cut. A long, low dorsal fillet runs forward from its root. Rudder hinge
+# at 0.68 chord.
 VT_ROOT_Z = 9.0
-VT_TOP_Z = 19.38
-VT_ROOT_LE, VT_TIP_LE = 60.30, 72.45
-VT_ROOT_C, VT_TIP_C = 11.90, 3.80
+VT_TOP_Z = 19.60
+VT_ROOT_LE, VT_TIP_LE = 59.20, 68.10
+VT_ROOT_C, VT_TIP_C = 13.00, 6.00
 VT_HINGE = 0.68
 VT_BOTTOM = 8.40        # the fin surface starts inside the tail cone
 
@@ -509,22 +564,22 @@ def vt_hinge(z):
     return st["le"] + st["chord_dir"] * (st["c"] * st["h"])
 
 
-RUDDER = (9.35, 18.85)
+RUDDER = (9.35, 19.05)
 
 
 def build_vtail():
     out = {}
     fin = MeshBuilder()
-    lifting_surface(fin, [vt_station(z) for z in np.linspace(VT_BOTTOM, 18.87, 13)], "0010", "Body", "vtail")
-    caps = [vt_station(z, h=None, scale_t=t) for z, t in ((18.85, 1.0), (19.15, 0.85), (VT_TOP_Z, 0.5))]
+    lifting_surface(fin, [vt_station(z) for z in np.linspace(VT_BOTTOM, 19.07, 13)], "0010", "Body", "vtail")
+    caps = [vt_station(z, h=None, scale_t=t) for z, t in ((19.05, 1.0), (19.38, 0.85), (VT_TOP_Z, 0.5))]
     lifting_surface(fin, caps, "0010", "Body", "vtail")
     # dorsal fillet blending the fin root into the crown
-    s0, s1 = 56.4, 61.6
+    s0, s1 = 49.5, 60.6
     rings = []
-    for s in np.linspace(s0, s1, 12):
+    for s in np.linspace(s0, s1, 14):
         t = (s - s0) / (s1 - s0)
         zt = float(Fuselage.zt(s))
-        ztop = zt + 0.01 + (10.45 - zt) * t ** 2.2
+        ztop = zt + 0.01 + (10.25 - zt) * t ** 1.8
         wb = 0.16 + 0.34 * math.sin(math.pi * t) ** 0.6
         wt = 0.03 + 0.18 * t
         port = []
@@ -635,13 +690,13 @@ NAV_S = le_s(WING_TIP - 0.25) + 0.30
 BEACON_TOP_S = 37.0
 BEACON_BOTTOM_S = 44.0
 LANDING = (5.0, 26.9)           # (span, station) under the wing root
-LOGO_LIGHT = (3.2, 67.6)        # (span, station) on the stabiliser
+LOGO_LIGHT = (3.2, 66.6)        # (span, station) on the stabiliser
 
 
 def build_details():
     b = MeshBuilder()
     for sx, mat in ((1, "LightRed"), (-1, "LightGreen")):
-        # nav light at the raked tip's leading edge, strobe behind it
+        # nav light at the tip's leading edge (under the winglet root), strobe behind it
         y = WING_TIP - 0.25
         tip_z = wing_station(y, h=None)["le"].z
         revolve(b, [(-0.12, 0.001), (-0.07, 0.06), (0.05, 0.065), (0.12, 0.001)],
@@ -677,8 +732,8 @@ def build_details():
     zc = float(Fuselage.zt(45.7)) - 0.18
     revolve(b, [(s - s0, r) for s, r in sat], P(0, s0, zc), (0, 1, 0), "Body", "satcom", segs=20)
     # pitot probes on the nose below the flight deck
-    for sx, z in ((1, 6.55), (-1, 6.55), (1, 6.15)):
-        s = 2.6
+    for sx, z in ((1, 6.05), (-1, 6.05), (1, 5.65)):
+        s = 3.4
         x = sx * Fuselage.side_x(s, z)
         tube(b, [P(x, s, z), P(x + sx * 0.15, s - 0.03, z), P(x + sx * 0.16, s - 0.26, z)], lambda t: 0.016, "Metal",
              "detail", segs=6)

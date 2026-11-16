@@ -1,5 +1,5 @@
-"""Long-haul quadjet with a partial upper deck (proportions and figures of the 747-8 Intercontinental): the model
-definition the shared pipeline (../Common/pipeline.py) builds.
+"""Long-haul quadjet with a partial upper deck (747-8-sized, an original shape): the model definition the shared
+pipeline (../Common/pipeline.py) builds.
 
 Stations `s` are metres aft of the nose; Blender Y = s - S_REF. Passenger windows (main and upper deck) and
 doors are painted into the shading map rather than modelled, as on the other airliners.
@@ -30,6 +30,7 @@ def build():
     wing = parts.build_wing()
     body.merge(wing.pop("Wing"))
     body.merge(parts.build_flap_tracks())
+    body.merge(parts.build_winglets())
     ht = parts.build_htail()
     body.merge(ht.pop("HStab"))
     vt = parts.build_vtail()
@@ -75,10 +76,10 @@ COLLIDER_RATIO = 0.3
 # ============================================================== UV atlas
 
 UV_TOP_BOTTOM = {"wing", "wing_flap", "wing_aileron", "wing_filler", "htail", "elevator"}
-UV_SIDE = {"vtail", "rudder", "dorsal", "pylon"}
+UV_SIDE = {"vtail", "rudder", "dorsal", "pylon", "winglet"}
 DENSITY = {"wing": 0.42, "wing_flap": 0.42, "wing_aileron": 0.42, "wing_filler": 0.32, "htail": 0.5, "elevator": 0.5,
            "wing_cap": 0.1, "htail_cap": 0.2, "vtail_cap": 0.2, "elevator_cap": 0.2, "wing_flap_cap": 0.15,
-           "wing_aileron_cap": 0.15, "wing_filler_cap": 0.15, "rudder_cap": 0.2,
+           "wing_aileron_cap": 0.15, "wing_filler_cap": 0.15, "rudder_cap": 0.2, "winglet_cap": 0.2,
            "nacelle": 0.75, "pylon": 0.5, "wing_track": 0.3, "pylon_cap": 0.2, "gearleg": 0.25, "spinner": 0.5, "satcom": 0.4}
 BOTTOM_DENSITY = 0.5
 
@@ -115,8 +116,8 @@ def _nacelles(p):
 
 def scheme_classic(p):
     """Cheatline under the main-deck windows sweeping up into the fin, a pinstripe below, painted engines."""
-    knots = [(0.5, 5.15), (3.0, 5.33), (8.0, MAIN_WIN_Z - 0.55), (55.0, MAIN_WIN_Z - 0.55), (58.0, 6.3), (60.5, 8.0),
-             (62.0, 9.6), (63.8, 11.0), (67.3, 14.0), (70.8, 17.0), (74.3, 20.0)]   # up the fin ~1.2 m behind its LE
+    knots = [(0.5, 5.15), (3.0, 5.33), (8.0, MAIN_WIN_Z - 0.55), (54.5, MAIN_WIN_Z - 0.55), (56.6, 6.3), (58.8, 7.9),
+             (60.9, 9.6), (62.1, 11.0), (64.6, 14.0), (67.1, 17.0), (69.6, 20.0)]   # up the fin ~1.2 m behind its LE
     d = curve_dist(p.s, p.z, knots)
     zone = (p.fus | p.vt) * p.inside(-_radome(p))
     r = p.band(d, -0.52, 0.18) * zone
@@ -148,9 +149,9 @@ def scheme_two_tone(p):
 
 
 def scheme_trainer(p):
-    """Charter / 'eurowhite': coloured nose cone, engine cowls, raked wingtips and fin tip, window-line stripe."""
+    """Charter / 'eurowhite': coloured nose cone, engine cowls, winglets and fin tip, window-line stripe."""
     r = np.maximum(p.inside(_radome(p)) * p.fus, _nacelles(p))
-    g = np.maximum(p.f(p.wing) * p.inside(parts.RAKE - np.abs(p.x)), p.inside(17.8 - p.z) * p.vt)
+    g = np.maximum(p.f(p.group("winglet")), p.inside(17.8 - p.z) * p.vt)
     d = p.z - (MAIN_WIN_Z - 0.62)
     b = p.band(d, -0.10, 0.10) * p.fus * p.inside(3.5 - p.s) * p.inside(p.s - 60.0) * (np.abs(p.nx) > 0.35)
     return r, g, b
@@ -166,7 +167,7 @@ REG_FACES_U = (61.6, 68.2)
 REG_FACES_V = (-1.6, 0.5)
 REG_TEX_W = 1024          # ~150 px/m on the patch (the atlas is ~28): sharp 0.6 m letters
 
-LOGO_BOX = (68.0, 73.4, 12.2, 16.8)
+LOGO_BOX = (66.0, 71.6, 12.0, 16.6)
 
 # ============================================================== shading, dirt
 
@@ -175,8 +176,8 @@ WINDOW_PITCH = 0.508
 
 def _window_rows():
     doors_main = [s for s, _ in MAIN_DOORS]
-    main = [s for s in np.arange(2.45, 59.9, WINDOW_PITCH) if all(abs(s - d) > 0.85 for d in doors_main)]
-    upper = [s for s in np.arange(9.6, 26.4, WINDOW_PITCH) if abs(s - UPPER_EXIT[0]) > 0.8]
+    main = [s for s in np.arange(4.48, 59.9, WINDOW_PITCH) if all(abs(s - d) > 0.85 for d in doors_main)]
+    upper = [s for s in np.arange(10.6, 26.4, WINDOW_PITCH) if abs(s - UPPER_EXIT[0]) > 0.8]
     return main, upper
 
 
@@ -267,7 +268,7 @@ def _side(s, z, sign):
 
 
 FWD, AFT, UP, DOWN = (0, -1, 0), (0, 1, 0), (0, 0, 1), (0, 0, -1)
-_fuel_y = 14.5
+_fuel_y = 17.5
 _fuel_s = parts.le_s(_fuel_y) + 2.0
 
 POINTS = [
@@ -329,11 +330,11 @@ VIEWS = {
     "hump": ((-30.0, Y(4.0), 16.0), (0.0, Y(20.0), 8.0), 40),
     "photo": ((26.0, _nose - 21.0, 3.4), (0.0, _nose + 1.5, 6.8), 50),
     "tail_close": ((-36.0, Y(84.0), 22.0), (0.0, Y(68.0), 12.5), 40),
-    "engine_close": ((-22.0, Y(13.0), 4.5), (-11.9, Y(29.0), 2.8), 40),
-    "engine_rear": ((-18.0, Y(52.0), 4.2), (-11.9, Y(33.0), 2.8), 40),
+    "engine_close": ((-23.0, Y(14.0), 4.5), (-13.2, Y(30.0), 2.9), 40),
+    "engine_rear": ((-19.0, Y(53.0), 4.3), (-13.2, Y(34.5), 2.9), 40),
     "gear_close": ((-14.0, Y(50.0), 2.4), (-3.5, Y(37.4), 1.2), 40),
-    "wingtip": ((-48.0, Y(38.0), 13.0), (-33.0, Y(52.5), 6.6), 50),
-    "wingtip_top": ((-31.0, Y(53.0), 40.0), (-31.0, Y(53.0), 6.5), -14.0),
+    "wingtip": ((-48.0, Y(38.0), 13.0), (-33.0, Y(51.5), 7.5), 50),
+    "wingtip_top": ((-30.5, Y(52.5), 40.0), (-30.5, Y(52.5), 6.5), -14.0),
     "dorsal_close": ((-20.0, Y(52.0), 15.0), (0.0, Y(60.0), 10.0), 40),
     "game": ((-120.0, -86.0, 108.0), (0.0, 0.0, 4.0), 32),
     # orthographic frames for overlaying the traced drawings: centre (Y(38.1), 9.5), width 82 m

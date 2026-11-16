@@ -24,6 +24,7 @@ from mathutils import Matrix, Vector
 
 import airlines
 import cargo_doors
+import deicing
 import font as fontlib
 import paint
 import texturing
@@ -660,6 +661,7 @@ def write_profile(model, paths, px_per_m, reg, font, bounds, wing, service):
         "bounds": {"min": to_unity((hi[0], hi[1], lo[2])), "max": to_unity((lo[0], lo[1], hi[2]))},
         "wingOutline": wing,
         "serviceFootprints": service,
+        "deicingWing": deicing.sections(model),
         "atlasSize": texturing.TEX,
         "texelsPerMetre": px_per_m,
         "detail": f"Textures/{model.NAME}_Detail.png",

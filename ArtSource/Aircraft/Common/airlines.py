@@ -1,5 +1,7 @@
 """Example airlines. Liveries are model-independent: every aircraft type paints every style, so these
 show up on all of them (and become AircraftLiveryAssets in Assets/AirCity/Liveries)."""
+import os
+
 import numpy as np
 
 # name: style, base, color1, color2, color3, registration colour, default registration, tail logo (or None)
@@ -10,6 +12,7 @@ LIVERIES = {
     "FlightSchool": ("Trainer", "#F7F7F5", "#C62026", "#C62026", "#1F2F57", "#1F2F57", "N35FS", None),
     "RegionalAir":  ("TwoTone", "#F7F7F4", "#B8BEC6", "#0F6B4F", "#0F6B4F", "#0F6B4F", "N208RA", "RegionalAir"),
     "BushYellow":   ("TwoTone", "#F1B91C", "#1E1E1E", "#F7F7F4", "#1E1E1E", "#1E1E1E", "C-FBSH", None),
+    "BlossomPink":  ("Swoosh",  "#F8F6F5", "#E2457F", "#7D1A45", "#E2457F", "#7D1A45", "N520BP", "BlossomPink"),
 }
 
 LOGO_SIZE = 256
@@ -60,4 +63,61 @@ def logo_regional(n=LOGO_SIZE):
     return rgba
 
 
-LOGOS = {"SunsetRed": logo_sunset, "RegionalAir": logo_regional}
+SOURCE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "Source")
+
+
+def _load_alpha(path):
+    """Alpha of a PNG as floats 0..1, row 0 = bottom (the logo convention). Blender inside the pipeline, PIL for
+    previews outside it."""
+    try:
+        import bpy
+        img = bpy.data.images.load(path, check_existing=True)
+        img.reload()
+        px = np.empty(img.size[0] * img.size[1] * 4, np.float32)
+        img.pixels.foreach_get(px)
+        return px.reshape(img.size[1], img.size[0], 4)[..., 3]          # Blender stores rows bottom-up
+    except ImportError:
+        from PIL import Image
+        return np.asarray(Image.open(path).convert("RGBA"), np.float32)[::-1, :, 3] / 255.0
+
+
+def _sample(a, x, y):
+    """Bilinear sample of a 2-D array at pixel coordinates (centres at +0.5); 0 outside."""
+    h, w = a.shape
+    x, y = x - 0.5, y - 0.5
+    x0, y0 = np.floor(x).astype(int), np.floor(y).astype(int)
+    fx, fy = x - x0, y - y0
+    out = np.zeros(x.shape, np.float32)
+    for dx, dy, wgt in ((0, 0, (1 - fx) * (1 - fy)), (1, 0, fx * (1 - fy)), (0, 1, (1 - fx) * fy), (1, 1, fx * fy)):
+        xi, yi = x0 + dx, y0 + dy
+        ok = (xi >= 0) & (xi < w) & (yi >= 0) & (yi < h)
+        out += np.where(ok, a[np.clip(yi, 0, h - 1), np.clip(xi, 0, w - 1)], 0.0) * wgt
+    return out
+
+
+def logo_pink_head(n=LOGO_SIZE):
+    """A cameo: the hand-drawn head-and-ponytail silhouette (Source/BlossomPink.png, a magenta cut-out on
+    transparent) in the livery's pink on a white disc, so the pink head reads on the pink fin and the face stays
+    well inside the fin. Square, like the other logos, so Unity's power-of-two import leaves it alone."""
+    a = _load_alpha(os.path.join(SOURCE, "BlossomPink.png"))
+    k = max(a.shape[0] // n, 1)                              # box-filter first, then resample: no aliasing
+    h, w = a.shape[0] // k * k, a.shape[1] // k * k
+    a = a[:h, :w].reshape(h // k, k, w // k, k).mean(axis=(1, 3))
+    h, w = a.shape
+    cx, cy = 0.50 * w, 0.49 * h                              # centre of the smallest circle round the figure
+    ys, xs = np.nonzero(a > 0.5)
+    r_src = float(np.hypot(xs - cx, ys - cy).max())
+    x, y = _grid(n)
+    disc_r, head_r = 0.98, 0.84                              # disc and head radii, as fractions of the half-size
+    scale = head_r * (n / 2) / r_src                         # logo pixels per source pixel
+    head = np.clip(_sample(a, cx + x * (n / 2) / scale, cy + y * (n / 2) / scale), 0, 1)
+    white = np.array([0.98, 0.97, 0.97], np.float32)
+    c1 = LIVERIES["BlossomPink"][2]
+    pink = np.array([int(c1[i:i + 2], 16) / 255.0 for i in (1, 3, 5)], np.float32)
+    rgba = np.zeros((n, n, 4), np.float32)
+    rgba[..., :3] = white * (1 - head[..., None]) + pink * head[..., None]
+    rgba[..., 3] = _cov(np.hypot(x, y) - disc_r, n)
+    return rgba
+
+
+LOGOS = {"SunsetRed": logo_sunset, "RegionalAir": logo_regional, "BlossomPink": logo_pink_head}

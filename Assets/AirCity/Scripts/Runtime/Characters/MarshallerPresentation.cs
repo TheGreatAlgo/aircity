@@ -13,8 +13,11 @@ namespace AirCity.Characters
         readonly Dictionary<StandMarshaller,Visual> visuals = new Dictionary<StandMarshaller,Visual>();
         readonly List<StandMarshaller> removed = new List<StandMarshaller>();
         Airport Airport => GetComponent<Airport>();
-        void LateUpdate() { if (Application.isPlaying) Present(); }
-        public void Present()
+        void LateUpdate() { if (Application.isPlaying) Present(Time.deltaTime*Airport.timeScale); }
+        /// <summary>Pose the marshallers without advancing their motion (edit mode, tests).</summary>
+        public void Present() => Present(Application.isPlaying ? Time.deltaTime*Airport.timeScale : 0f);
+        /// <summary>Pose the marshallers after <paramref name="dt"/> game seconds (review tools step this themselves).</summary>
+        public void Present(float dt)
         {
             if (crewPrefab == null || wandPrefab == null) return;
             var active = Airport.Marshalling.Crew;
@@ -37,7 +40,16 @@ namespace AirCity.Characters
                 bool visible = !Application.isPlaying || camera == null ||
                     (camera.transform.position-transform.TransformPoint(worker.Position)).sqrMagnitude < 250f*250f;
                 visual.rig.gameObject.SetActive(visible); if (!visible) continue;
-                visual.rig.Apply(worker.Pose);
+                var pose = worker.Pose; pose.leftGrip = pose.rightGrip = RampCrewGrip.Wand;
+                // While signalling, the marshaller watches the cockpit, not the wands.
+                bool signalling = worker.Phase != MarshallerPhase.WalkingIn && worker.Phase != MarshallerPhase.WalkingOut;
+                if (signalling && worker.Flight.aircraft != null)
+                {
+                    var cockpit = Airport.transform.InverseTransformPoint(worker.Flight.aircraft.transform.position) + Vector3.up * 3f;
+                    var look = Quaternion.Inverse(pose.rotation) * (cockpit - pose.position);
+                    if (look.sqrMagnitude > .01f) pose.lookAt = look;
+                }
+                visual.rig.Apply(pose,dt,Airport.timeScale);
                 bool guiding = worker.Phase != MarshallerPhase.WalkingIn && worker.Phase != MarshallerPhase.WalkingOut;
                 Vector3 Direction(bool left) => guiding ? Airport.transform.TransformDirection(worker.WandDirection(left)) : Vector3.down;
                 visual.left.SetPositionAndRotation(visual.rig.LeftPalm,Quaternion.FromToRotation(Vector3.up,Direction(true)));

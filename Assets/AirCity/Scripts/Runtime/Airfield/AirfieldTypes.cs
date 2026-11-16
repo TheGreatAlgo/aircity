@@ -89,6 +89,8 @@ namespace AirCity.Airfield
         /// <summary>A stand's or de-icing bay's pad: uv0 in the stand's frame (slab joints line up with it and with
         /// its neighbours at the same angle), kept nearly clear of snow like aprons.</summary>
         Stand = 7,
+        /// <summary>Road asphalt: broad weathering and tyre polish, without aircraft rubber zones.</summary>
+        Road = 8,
     }
 
     /// <summary>ICAO aerodrome reference code letters, by wingspan, raised for aircraft longer than that code's
@@ -164,6 +166,7 @@ namespace AirCity.Airfield
         {
             AirfieldKind.Runway => Runway,
             AirfieldKind.Taxiway or AirfieldKind.Junction => Taxiway,
+            AirfieldKind.Road => Road,
             AirfieldKind.Apron => Apron,
             AirfieldKind.Stand => Stand,
             AirfieldKind.Shoulder => Shoulder,

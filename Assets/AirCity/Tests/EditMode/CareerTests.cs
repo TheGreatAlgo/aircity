@@ -21,14 +21,15 @@ namespace AirCity.Tests.Game
             CollectionAssert.AreEqual(first.heights, second.heights);
             Assert.AreEqual(first.trees.Count, second.trees.Count);
             Assert.AreEqual(first.trees[100].position, second.trees[100].position);
-            Assert.AreNotEqual(first.heights[1000], other.heights[1000]);
+            CollectionAssert.AreEqual(first.heights, other.heights, "Internal seeds cannot change the selected geographic footprint.");
+            Assert.AreNotEqual(first.trees[100].position, other.trees[100].position);
             Assert.AreEqual(randomState, UnityEngine.Random.state);
         }
 
         [TestCase(0)] [TestCase(-1)] [TestCase(int.MinValue)] [TestCase(int.MaxValue)] [TestCase(19770616)]
-        public void EveryStartingSiteIsAffordableAndHasClearTerrainApproaches(int seed)
+        public void EveryStartingPocketIsAffordableAndHasClearLocalApproaches(int seed)
         {
-            var generated = ValleyWorld.Generate(seed);
+            var generated = ValleyWorld.GenerateLegacy(seed);
             Assert.IsTrue(generated.Validate(out string why), why);
             for (int index = 0; index < 3; index++)
             {
@@ -45,7 +46,7 @@ namespace AirCity.Tests.Game
                 Assert.AreEqual(0, state.world.TreeCount(site.Preparation));
                 for (float x = -400f; x <= 400f; x += 25f)
                     Assert.That(state.world.Height(site.centre + new Vector2(x, -65f)), Is.EqualTo(site.elevation).Within(.001f));
-                for (float x = -3000f; x <= 3000f; x += 100f)
+                for (float x = -550f; x <= 550f; x += 50f)
                 {
                     float altitude = site.elevation + Mathf.Max(0f, Mathf.Abs(x) - 350f) * Mathf.Tan(3f * Mathf.Deg2Rad);
                     Assert.LessOrEqual(state.world.Height(site.centre + new Vector2(x, 0f)), altitude + 3f);

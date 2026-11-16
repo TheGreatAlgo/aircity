@@ -381,7 +381,7 @@ namespace AirCity.Tests.Airfield
             var airport = AirfieldSetup.BuildSandboxAirport();
             spawned.Add(airport.gameObject);
             airport.windFrom = wind;
-            var jets = airport.GetComponentsInChildren<AirCity.Aircraft.Aircraft>();
+            var jets = airport.GetComponentsInChildren<AirCity.Aircraft.Aircraft>().Where(a => !a.type.Light).ToArray();
             Assert.GreaterOrEqual(jets.Length, 4, "narrow-bodies and a wide-body (and the code F types once built)");
             foreach (var a in jets)
             {
@@ -432,7 +432,7 @@ namespace AirCity.Tests.Airfield
             var airport = AirfieldSetup.BuildSandboxAirport();
             spawned.Add(airport.gameObject);
             var flights = new List<Flight>();
-            foreach (var a in airport.GetComponentsInChildren<AirCity.Aircraft.Aircraft>())
+            foreach (var a in airport.GetComponentsInChildren<AirCity.Aircraft.Aircraft>().Where(a => !a.type.Light))
             {
                 var f = airport.Traffic.Depart(a, out string problem);
                 Assert.IsNotNull(f, $"{a.name}: {problem}");

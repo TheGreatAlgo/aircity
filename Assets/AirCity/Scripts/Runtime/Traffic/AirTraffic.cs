@@ -177,7 +177,7 @@ namespace AirCity.Traffic
             }
             var route = PlanDeparture(a, null, out var start, out problem);
             if (route == null) return null;
-            var f = new Flight(this, FlightKind.Departure, a, route) { start = start };
+            var f = new Flight(this, FlightKind.Departure, a, route) { start = start, DeicingCompleted = airport.Deicing.CompletedFor(a) };
             flights.Add(f);
             return f;
         }
@@ -205,7 +205,7 @@ namespace AirCity.Traffic
             var fwd = Geo.XZ(t.InverseTransformDirection(a.transform.forward)).normalized;
             var starts = DepartureStarts(type, pos, fwd, out problem);
             if (starts.Count == 0) return null;
-            var route = planner.Departure(starts, choices, out problem, out from);
+            var route = planner.Departure(starts, choices, out problem, out from, airport.Deicing.CompletedFor(a));
             if (route != null && from != null)
             {
                 route.standTo = from.clearOfStand;
@@ -638,7 +638,7 @@ namespace AirCity.Traffic
                 {
                     path.Pose(d, out var p, out var facing, out _, out _);
                     if ((pos - p).sqrMagnitude > (a.type.Length + f.type.Length) * (a.type.Length + f.type.Length)) continue;
-                    var me = AirportMaintenance.Outline(p, facing, f.type, 0f)[0];
+                    var me = AirportMaintenance.Outline(p, facing, f.type, 0f, airport.PavementElevationAt(p))[0];
                     foreach (var o in shape)
                         if (me.Overlaps(o)) return a.name;
                 }
@@ -996,13 +996,13 @@ namespace AirCity.Traffic
             {
                 if (a == null || a.type == null) continue;
                 var p = t.InverseTransformPoint(a.transform.position);
-                if (p.y > 3f) continue;
+                if (p.y - airport.PavementElevationAt(new Vector2(p.x,p.z)) > 3f) continue;
                 var d = Geo.XZ(t.InverseTransformDirection(a.transform.forward));
                 if (d.sqrMagnitude < 1e-6f) continue;
                 var f = FlightOf(a);
                 bool parked = f == null && !a.Moving && airport.Maintenance.TowOf(a) == null;
                 var at = new Vector2(p.x, p.z);
-                outlines.Add((a, parked, AirportMaintenance.Outline(at, d.normalized, a.type, parked ? 0.5f : 1.5f), at));
+                outlines.Add((a, parked, AirportMaintenance.Outline(at, d.normalized, a.type, parked ? 0.5f : 1.5f, p.y), at));
             }
             return outlines;
         }
@@ -1024,6 +1024,7 @@ namespace AirCity.Traffic
             var others = Outlines();
             var vehicles = airport.Maintenance.VehicleBoxes(f.aircraft);
             vehicles.AddRange(airport.Baggage.VehicleBoxes());
+            vehicles.AddRange(airport.Deicing.VehicleBoxes());
             float reach = f.type.Length + 2f * look;
             for (float d = along + 1.5f; d <= end + 1e-3f; d += 2f)
             {
@@ -1034,7 +1035,7 @@ namespace AirCity.Traffic
                     if (a == f.aircraft) continue;
                     if (parked && (d >= f.Route.standFrom || d <= f.Route.standTo)) continue;
                     if ((at - p).sqrMagnitude > (reach + a.type.Length) * (reach + a.type.Length)) continue;
-                        me ??= AirportMaintenance.Outline(p, facing, f.type, 0f);
+                        me ??= AirportMaintenance.Outline(p, facing, f.type, 0f, airport.PavementElevationAt(p));
                     foreach (var b in me)
                         foreach (var o in shape)
                             if (b.Overlaps(o))
@@ -1045,7 +1046,7 @@ namespace AirCity.Traffic
                             }
                 }
                 if (vehicles.Count == 0) continue;
-                me ??= AirportMaintenance.Outline(p, facing, f.type, 0f);
+                me ??= AirportMaintenance.Outline(p, facing, f.type, 0f, airport.PavementElevationAt(p));
                 var nose = me[0];
                 nose.c += nose.az * (VehicleGap * 0.5f);
                 nose.hz += VehicleGap * 0.5f;
@@ -1082,8 +1083,8 @@ namespace AirCity.Traffic
                     for (float d = 0f; d <= push.Length + 2.9f; d += 3f)
                     {
                         push.Sample(Mathf.Min(d, push.Length), out var p, out var heading, out _, out _);
-                        swept.Add((AirportMaintenance.Outline(p, heading, f.type, PushClearance)[0], Vector2.zero));
-                        swept.Add((AirportMaintenance.Box.Of(p, heading, tugBounds, PushClearance), Vector2.zero));
+                        swept.Add((AirportMaintenance.Outline(p, heading, f.type, PushClearance, airport.PavementElevationAt(p))[0], Vector2.zero));
+                        swept.Add((AirportMaintenance.Box.Of(p, heading, tugBounds, PushClearance, airport.PavementElevationAt(p)), Vector2.zero));
                     }
                     list.Add((f.aircraft, tug, swept));
                     continue;
@@ -1095,7 +1096,7 @@ namespace AirCity.Traffic
                 for (float d = f.Along; d <= end; d += 3f)
                 {
                     f.Route.path.Pose(d, out var p, out var facing, out _, out _);
-                    boxes.Add((AirportMaintenance.Outline(p, facing, f.type, TrackClearance)[0], facing));
+                    boxes.Add((AirportMaintenance.Outline(p, facing, f.type, TrackClearance, airport.PavementElevationAt(p))[0], facing));
                 }
                 list.Add((f.aircraft, f.PushTug, boxes));
             }
@@ -1122,7 +1123,7 @@ namespace AirCity.Traffic
                 {
                     path.Pose(d, out var p, out var facing, out _, out _);
                     if ((v.c - p).sqrMagnitude > 900f || Vector2.Dot(v.az, facing) > 0.7f) continue;
-                    if (!AirportMaintenance.Outline(p, facing, f.type, TrackClearance)[0].Overlaps(v)) continue;
+                    if (!AirportMaintenance.Outline(p, facing, f.type, TrackClearance, airport.PavementElevationAt(p))[0].Overlaps(v)) continue;
                     // it goes on, under the wings, clear of the fuselage (WaitsFor)
                     heldFor[f.aircraft] = v.team;
                     return v.what;
@@ -1149,7 +1150,7 @@ namespace AirCity.Traffic
             for (float d = 0f; d <= push.Length + 2.9f; d += 3f)
             {
                 push.Sample(Mathf.Min(d, push.Length), out var p, out var heading, out _, out _);
-                swept.Add(AirportMaintenance.Outline(p, heading, f.type, 3f)[0]);
+                swept.Add(AirportMaintenance.Outline(p, heading, f.type, 3f, airport.PavementElevationAt(p))[0]);
             }
             foreach (var (a, parked, shape, pos) in Outlines())
             {
@@ -1161,7 +1162,7 @@ namespace AirCity.Traffic
                 for (float d = g.Along; d <= Mathf.Min(g.Along + 60f, g.Route.path.Length); d += 5f)
                 {
                     g.Route.path.Pose(d, out var q, out var facing, out _, out _);
-                    var at = AirportMaintenance.Outline(q, facing, g.type, 0f)[0];
+                    var at = AirportMaintenance.Outline(q, facing, g.type, 0f, airport.PavementElevationAt(q))[0];
                     if (swept.Exists(w => w.Overlaps(at))) return a.name;
                 }
             }
@@ -1185,8 +1186,8 @@ namespace AirCity.Traffic
                 {
                     push.Sample(Mathf.Min(d, push.Length), out var p, out var heading, out _, out _);
                     if ((v.c - p).sqrMagnitude > 1600f) continue;
-                    if (AirportMaintenance.Outline(p, heading, f.type, PushClearance)[0].Overlaps(v) ||
-                        AirportMaintenance.Box.Of(p, heading, tugBounds, PushClearance).Overlaps(v)) return v.what;
+                    if (AirportMaintenance.Outline(p, heading, f.type, PushClearance, airport.PavementElevationAt(p))[0].Overlaps(v) ||
+                        AirportMaintenance.Box.Of(p, heading, tugBounds, PushClearance, airport.PavementElevationAt(p)).Overlaps(v)) return v.what;
                 }
             }
             return null;
@@ -1223,6 +1224,8 @@ namespace AirCity.Traffic
         internal bool RouteValid(Flight f)
         {
             var net = airport.Taxiways;
+            foreach (var stop in f.Route.deicingStops)
+                if (!f.DeicingCompleted && stop.at >= f.Along - 1f && !airport.Deicing.StopMatches(f.Route, stop, f.type)) return false;
             float reached = f.AwaitingPush ? float.MinValue : f.Along + 1f;
             foreach (var t in f.Route.traversals)
             {

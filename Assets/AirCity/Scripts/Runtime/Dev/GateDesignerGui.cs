@@ -6,12 +6,12 @@ namespace AirCity.Dev
     /// <summary>The gate build palette: opaque paper surfaces, blue actions, generous spacing and quiet controls.</summary>
     static class GateDesignerGui
     {
-        public static readonly Color Ink = new Color(0.13f, 0.21f, 0.29f);
-        public static readonly Color Muted = new Color(0.40f, 0.48f, 0.56f);
-        public static readonly Color Blue = new Color(0.08f, 0.46f, 0.72f);
-        public static readonly Color Teal = new Color(0.12f, 0.64f, 0.65f);
-        public static readonly Color Paper = new Color(0.97f, 0.98f, 0.99f);
-        public static readonly Color Surface = new Color(0.91f, 0.94f, 0.96f);
+        public static readonly Color Ink = DevGui.Ink;
+        public static readonly Color Muted = DevGui.Muted;
+        public static readonly Color Blue = DevGui.Primary;
+        public static readonly Color Teal = DevGui.Success;
+        public static readonly Color Paper = DevGui.Paper;
+        public static readonly Color Surface = DevGui.Surface;
         public static readonly Color Border = new Color(0.83f, 0.88f, 0.92f);
         public static readonly Color Red = new Color(0.76f, 0.24f, 0.25f);
         public static GUIStyle Title, Label, Bold, Small, Caption, Hint, Input, NumberInput, Centre, ButtonText, ButtonOn, DangerText, ErrorCentre, Tab;
@@ -65,10 +65,7 @@ namespace AirCity.Dev
 
         public static void Panel(Rect rect)
         {
-            DevGui.Cover(rect);
-            DevGui.Fill(new Rect(rect.x, rect.y + U(6), rect.width, rect.height), C(new Color(0.03f, 0.09f, 0.14f, 0.22f)), U(18));
-            DevGui.Fill(rect, C(Paper), U(16));
-            DevGui.Outline(rect, C(Color.white), U(16));
+            DevGui.Panel(rect);
         }
         public static void Fill(Rect rect, Color color, float radius = 8) => DevGui.Fill(rect, C(color), U(radius));
         public static void Outline(Rect rect, Color color, float radius = 8, float width = 1) => DevGui.Outline(rect, C(color), U(radius), U(width));

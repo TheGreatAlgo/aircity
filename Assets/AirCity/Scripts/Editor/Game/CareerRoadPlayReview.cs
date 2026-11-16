@@ -56,7 +56,9 @@ namespace AirCity.EditorTools.Game
                     Go(1, 2f); return;
                 }
                 var entrance = game.State.Site.Entrance;
-                var point = stage <= 2 ? entrance + new Vector2(180f, -180f) : new Vector2(ValleyWorld.RoadX, entrance.y - 180f);
+                float roadZ = entrance.y - 180f, roadX = game.State.world.RoadAt(roadZ);
+                float side = Mathf.Sign(roadX - entrance.x);
+                var point = stage <= 2 ? entrance + new Vector2(side * 180f, -180f) : new Vector2(roadX, roadZ);
                 var screen = game.view.GetComponent<Camera>().WorldToScreenPoint(new Vector3(point.x, game.valley.DisplayHeight(point), point.y));
                 if (stage <= 5 && Mouse.current != null) InputState.Change(Mouse.current.position, new Vector2(screen.x, screen.y));
                 if (EditorApplication.timeSinceStartup < next) return;

@@ -116,7 +116,8 @@ Shader "AirCity/Building"
             float3 _LightDirection;
             float3 _LightPosition;
 
-            float4 vertShadow(Attributes v) : SV_POSITION
+            struct ShadowVaryings { float4 positionCS : SV_POSITION; float3 positionWS : TEXCOORD0; };
+            ShadowVaryings vertShadow(Attributes v)
             {
                 float3 positionWS = TransformObjectToWorld(v.positionOS.xyz);
                 float3 normalWS = TransformObjectToWorldNormal(v.normalOS);
@@ -125,10 +126,10 @@ Shader "AirCity/Building"
             #else
                 float3 lightDirection = _LightDirection;
             #endif
-                return ApplyShadowClamping(TransformWorldToHClip(ApplyShadowBias(positionWS, normalWS, lightDirection)));
+                ShadowVaryings output;output.positionWS=positionWS;output.positionCS=ApplyShadowClamping(TransformWorldToHClip(ApplyShadowBias(positionWS,normalWS,lightDirection)));return output;
             }
 
-            half4 fragShadow() : SV_Target { return 0; }
+            half4 fragShadow(ShadowVaryings i) : SV_Target { AirCityClipUnderground(i.positionWS);return 0; }
             ENDHLSL
         }
 
@@ -144,7 +145,7 @@ Shader "AirCity/Building"
             #pragma vertex vert
             #pragma fragment fragDepth
 
-            half fragDepth(Varyings i) : SV_Target { return i.positionCS.z; }
+            half fragDepth(Varyings i) : SV_Target { AirCityClipUnderground(i.positionWS);return i.positionCS.z; }
             ENDHLSL
         }
 
@@ -160,7 +161,7 @@ Shader "AirCity/Building"
             #pragma fragment fragNormals
             #pragma multi_compile_fragment _ _GBUFFER_NORMALS_OCT
 
-            half4 fragNormals(Varyings i) : SV_Target { return AirfieldPackNormal(normalize(i.normalWS)); }
+            half4 fragNormals(Varyings i) : SV_Target { AirCityClipUnderground(i.positionWS);return AirfieldPackNormal(normalize(i.normalWS)); }
             ENDHLSL
         }
     }

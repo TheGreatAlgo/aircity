@@ -26,6 +26,13 @@ namespace AirCity.Vehicles
         ContainerDolly = 10,
         ContainerULD = 11,
         ContainerLoader = 12,
+        DeicingTruck = 13,
+        /// <summary>Bunded deicing-fluid storage with a pump and delivery coupling.</summary>
+        DeicingTank = 14,
+        /// <summary>A road delivery tanker carrying deicing fluid to a supply area.</summary>
+        DeicingTanker = 15,
+        /// <summary>Compact recovery and filtration skid at a deicing supply area.</summary>
+        DeicingRecycler = 16,
     }
 
     public enum VehicleLightType
@@ -202,7 +209,8 @@ namespace AirCity.Vehicles
         public string liftPart;
 
         /// <summary>The depot, the control towers and the jet bridges: placed, never driven.</summary>
-        public bool IsBuilding => kind == VehicleKind.Depot || kind == VehicleKind.Tower || kind == VehicleKind.JetBridge;
+        public bool IsBuilding => kind == VehicleKind.Depot || kind == VehicleKind.Tower || kind == VehicleKind.JetBridge ||
+            kind == VehicleKind.DeicingTank || kind == VehicleKind.DeicingRecycler;
         public bool IsTug => kind == VehicleKind.Tug;
         public bool IsBaggageEquipment => kind == VehicleKind.BaggageTractor || IsBaggageTrailer || kind == VehicleKind.BeltLoader || kind == VehicleKind.ContainerLoader;
         public bool IsBaggageTrailer => kind == VehicleKind.BaggageCart || kind == VehicleKind.ContainerDolly;

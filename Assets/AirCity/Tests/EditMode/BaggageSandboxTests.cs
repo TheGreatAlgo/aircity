@@ -253,7 +253,7 @@ namespace AirCity.Tests
             finally { Application.logMessageReceived -= LoadingLog; }
             if (warned) LogAssert.Expect(LogType.Warning, renderTargetWarning);
             UnityEditor.SessionState.SetFloat("AirCity.Baggage.PlayRequested",(float)UnityEditor.EditorApplication.timeSinceStartup);
-            // ... and again entering Play with the scene's showcase rows of every type (the editor swaps its render
+            // ... and again entering Play with the scene's aircraft and equipment (the editor swaps its render
             // target once more as the larger scene is backed up and reloaded)
             warned = false;
             Application.logMessageReceived += LoadingLog;

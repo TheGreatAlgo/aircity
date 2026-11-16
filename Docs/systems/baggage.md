@@ -365,6 +365,71 @@ each batch atomically after its final visual handling cycle. Dispatch/arrivals r
 their existing timers while terminal work is deferred. Crew are assigned to their equipment set; a separately
 managed workforce, shifts, fatigue, staffing costs and scanner/reconciliation gameplay are future work.
 
+### Human-pace performance
+
+Baggage work is time-compressed (`BaggagePacing.WorkRate` 18), so `BaggageCrew` stays the simulation's timing model
+and no longer drives what the player sees. `BaggageCrewPerformance` (owned by `BaggageStation`, stepped in game
+seconds after each simulation step, never read by the simulation) acts the simulation out at human pace: the driver
+lets go of the wheel, turns out, rises, steps down, walks round the drawbar to the cart; the loader operator walks up
+the treads and the belt walkway, stoops for the last metres and kneels through the door. Handlers pick, lift, carry
+and place one bag at a time at walking pace (1.35 m/s, 1.1 m/s carrying); one carried bag stands for many.
+
+Performers read the simulation's own future: `BaggageBagFlow.RemainingHandling` (bags left at the transfer
+interval, plus conveyor time per further batch) tells the ground handler when to set off back to the tractor so they
+are seated when the train is released, and the hold handler's deadline adds the train's drive home, which the loader
+waits for. Nobody gets off for less work than the walk there and back plus a few seconds. Where the future is not
+knowable (cancellation, a recall) they hurry to a jog; if a vehicle moves while a performer is not seated, the
+performer is placed in the seat (`BaggageCrewPerformance.Placements`, zero in the standard scenes at ×1).
+
+`BaggageBagFlow` shows the bags. During an aircraft transfer the cart piles and the hold trail the ledger: a bag
+leaves its pile in a handler's hands or sinks quietly into its column, rides the belt at 1.45 m/s, 0.62 m apart,
+and is taken by the handler at the far end or rises quietly into a free slot. Bags only start moving once a handler
+works (or is seconds from) the source end. What the belt cannot deliver before the release goes from pile to pile
+directly, spread over the remaining seconds (`DirectBags`). When the train or loader moves, every pile equals the
+ledger. Outside aircraft transfers and depot handovers the piles copy the ledger.
+
+Depot handovers (`UnloadingArrivals`, `CollectingDepartures`) run the same flow between the carts and the bay's depot
+conveyor (`BaggageDepot.Feed` by the carts, `Door` in the hall wall): the far end is the hall, which takes and gives
+bags at the simulation's own pace (no hands there). The team stays aboard the train (the simulation never boards
+them at a depot); each working bay has its own hall handler (`BaggageBayHand`, drawn by `BaggageDepotPresentation`,
+not one of the leasable staff) who waits by the conveyor ends, is claimed by the fleet's `BaggageCrewPerformance`
+while its train stands in the bay (ground worker 2), walks to the cart, picks, carries and places at the same human
+pace, and is back by the conveyor before the train leaves. Arrivals and departures are two states in one stay, so
+the hand times each carry against the state's own remaining time (`BaggageBagFlow.StateRemaining`) and the walk home
+against the whole stay; bags already riding into the hall when arrivals end finish the ride (`Ghosts`). The literal
+`BaggageCrew.DepotPose` / `BaggageDepot.BagAt` remain the simulation's model and are no longer drawn. Staff not on a
+team wait in a loose group by the hall's side wall, half turned to each other; now and then one turns, shifts a
+step or looks at the bays, and the rig shifts their weight.
+
+Hired second handlers (`GroundWorkers`/`HoldWorkers` 2) are never boarded by the simulation; the performance gives
+them a seat and a way to work, so nobody appears or vanishes in view. The second cart handler rides sitting sideways
+on the tractor's rear deck on the working side, gets off with the driver (or once the driver is clear of the deck),
+walks to work and is back on the deck a few seconds before the driver needs to be seated (`RiderLead`). The second
+hold handler rides on the loader's power-unit cover behind the operator's seat, follows the operator in at docking
+once they are a few metres ahead, works the hold from a post 0.7 m across, and is out a few seconds before the
+operator (`HoldRiderLead`). Both take bags from the same flow at their own spot and pace.
+
+Two handlers sharing a cart work side by side: each has their own post along the cart and their own lane to the belt
+foot, waits at the end of the lane (0.9 m from the foot) while the other is at the foot, and steps in when it is free;
+the gate is decided at the lane end only, two at their lane ends at once let the senior go first. Every walker keeps
+an arm's length (0.8 m hip to hip; 0.68 m kneeling in the hold, where the posts are 0.7 m apart) from everyone else on
+foot: the part of a step toward a colleague is taken off, so they slow and slide round. Ground before hold and first
+before second have right of way: a junior who stays blocked by a walking senior steps off their line, one blocked by a
+colleague at work walks round them, and a senior only stops short of touching (0.72 m) a junior getting out of the
+way; a junior follows a senior going the same way 0.9 m back. Riders leave the work `RiderLead`/`HoldRiderLead` (6 s)
+before their side's first handler, and anyone held up on the way back to a seat hurries.
+
+A bag in someone's hands is drawn between the palms the rig shows (`BaggageLoadVisuals.InHands`), so at a fast clock,
+where the rig's hands ease at screen rate and trail the performer's targets, the bag stays in the hands.
+`BaggagePerformancePlayModeTests` runs the standard turnaround and the four-worker Sandbox through the clock 0, 1, 12,
+30, 0 with a blocked-access pause at x1 and checks: no errors, no last resorts at x1/x12, carried bags within 2 cm of
+both palms at x1/x12, nobody faster than 2.6 m/s, and no two performers on foot closer than 0.6 m.
+
+Review clips: `BaggagePerformanceReview.FromCommandLine` (`-performanceOnly wide,ground,hold,x12,freeze,helpers,depot`
+or `probe` for numbers only) writes `Captures/RampCrewNew/performance/after/`; `depot` also writes `depot-staff` (the
+waiting staff, roof off), and the Sandbox run logs the least hip separation of any two performers on foot. `BaggageSimulationTrace` writes a
+deterministic trace of turnarounds with and without presentation for before/after comparison.
+
 Container tractors have seated drivers; container loaders have standing operators at the controls. ULDs remain
 roller-transferred. The same shared worker uses three skinned LODs, a single material per LOD and four uniform/skin
 palettes. `RampCrewRig` solves limbs against palm targets; carried bags attach to a hand socket. The presentation
@@ -547,7 +612,8 @@ clear of the engine intake; trains circulate outward around the wings. `Stand.ba
 `baggageExitNode` optionally choose approach/exit road nodes; zero chooses nearby nodes. Plans check the cart
 through every turn, loader approaches and reverse withdrawal, apron/road coverage, closed roads, taxiway exclusion, generated aircraft-part footprints,
 terminals and bridge-part envelopes over assigned docking/retraction motions. Working space is reserved jointly across jobs. Live equipment
-and aircraft checks can stop either vehicle; traffic and maintenance also see baggage equipment. The cart
+and aircraft checks can stop either vehicle, including deicing trucks; traffic, maintenance and deicing
+drivers also see baggage equipment. The cart
 continues between route legs without resetting its articulation.
 
 `BaggageTurnaround` unloads hold → cart → arrivals, moves to dispatch, collects dispatch → cart, then loads
@@ -859,3 +925,11 @@ incompatible equipment cannot take a job; trailer hitches remain connected throu
 stay within equipment reach; occupied footprints cannot overlap; departures wait until equipment is clear;
 and deleting/reconfiguring a stand releases reservations without losing baggage records. Run these as
 headless checks when the corresponding simulation exists, alongside visual captures for the mechanical poses.
+
+
+## 3D road integration (2026-11-15)
+
+Service-road routes sample shared curved alignments and retain their selected deck elevations through
+`VehiclePath`, tractor/cart poses and rendering. Equipment traffic footprints carry vertical intervals, and
+`AircraftServiceClearance` first checks vertical separation. Ground aircraft support never reads the lower
+road profile. This permits underpass trips without phantom aircraft conflicts at the crossing.

@@ -1,3 +1,8 @@
+> Player-facing Career and Sandbox now share `NewGame.unity`, `DevAirfieldTool` and `DevToolbar`.
+> `Sandbox.unity` below is the populated development fixture. The shared toolbar includes terrain/reception
+> operations supplied by the existing terrain tools. Both modes use the full airport save and the same road
+> transaction. See [shared game architecture](new-game.md#shared-game-architecture).
+
 # Dev tools, commands and verification
 
 How to build, test and look at things without the GUI, and the sandbox controls. Nothing here is game UI.
@@ -95,16 +100,17 @@ python3 -c "import xml.etree.ElementTree as E;t=E.parse('Logs/editmode.xml').get
 |---|---|
 | AirCity ▸ Aircraft ▸ Create Missing Prefabs and Example Liveries | aircraft prefabs and example liveries |
 | AirCity ▸ Aircraft ▸ Render Thumbnails | menu thumbnails |
-| AirCity ▸ Dev ▸ Rebuild Sandbox Scene | recreates Sandbox.unity from scratch, with a plain grey apron and no airport: run Add Sandbox Airport afterwards |
+| AirCity ▸ Dev ▸ Rebuild Sandbox Scene | recreates the complete sandbox airport with one aircraft per type at stands |
 | AirCity ▸ Airfield ▸ Create Materials | airfield materials (missing ones only) |
 | AirCity ▸ Airfield ▸ Add Sandbox Airport | rebuilds the sandbox airport |
 | AirCity ▸ Vehicles ▸ Create Missing Prefabs | vehicle and depot prefabs |
 
 ## Sandbox scene (Assets/AirCity/Scenes/Sandbox.unity)
 
-It contains one parked aircraft per livery on the apron (widebodies: one row of three liveries), the sandbox airport (see
-[airfield.md](airfield.md)) with four jets parked on its stands, and the depot (with two small tugs and a large
-one). The camera carries `DevOrbitCamera`, `DevSandboxControls`,
+It contains one aircraft of each of the eight types, parked at connected stands in the sandbox airport (see
+[airfield.md](airfield.md)). The narrowbody is the working baggage turnaround; the light aircraft uses the GA ramp.
+There is no separate livery display apron. The maintenance depot has two small and two large tugs.
+The camera carries `DevOrbitCamera`, `DevSandboxControls`,
 `DevAirfieldTool` and `DevToolbar` (the toolbar adds itself if a scene's camera lacks it).
 
 ### HUD (`DevToolbar`, `DevGui`)
@@ -113,7 +119,7 @@ one). The camera carries `DevOrbitCamera`, `DevSandboxControls`,
 HUD, so the opening stages use the same panels, icon buttons, typography, amber selection and scaling.
 Tooltips wrap to the viewport in both scenes. Sandbox-specific controls remain in `DevToolbar`:
 
-- **Bottom (2026-11-02):** the tools as square icon buttons in groups: Select | Runway, Taxiway, Road, Apron | Lights |
+- **Bottom (2026-11-02):** the tools as square icon buttons in groups: Select | Runway, Taxiway, Road, Street, Apron | Lights |
   Terminal, Stand, Bridge, Gates | De-icing bay, Depot | Delete. Hover a button for its name and what it does; clicking the tool
   that's on again goes back to Select. The icons come from `ArtSource/UI/icons.py`. On a narrow screen the buttons get smaller so the
   bar fits.
@@ -148,6 +154,29 @@ in a gate designer text field.
 
 How it's built:
 
+- The shared HUD uses warm opaque paper, navy type, teal actions and amber selections. `DevGui` supplies
+  the same rounded buttons, cards, status pills and fluid/progress meters to inspectors, management and the
+  career HUD; the gate designer uses that palette too. Inspector headers, 32-unit controls and spacing are
+  shared. Long inspectors and sidebars scroll within the viewport instead of running under the toolbar.
+- **Deicing** is one snowflake tool with **Pads / Buildings / Objects** tabs. Buildings includes the supply
+  station and its recycling upgrade; Objects includes truck parking, outside-road connections and the fleet
+  order entry point. **Manage airport** opens the area-aware deicing workspace. There is no separate tank
+  toolbar button to discover.
+  Its compact browser is 520 × 208 HUD units and sits beside the right inspector rather than underneath it.
+  Unselected pad silhouettes use teal for contrast. The supply placement outline shows its boundary only;
+  the former unlabelled entrance-to-refill guide inside it has been removed.
+  Supply stations have four road snap targets at the FILL/UNLOAD lane ends. The road tool names the target
+  while snapping; station placement also snaps onto existing service roads. Ctrl/Cmd keeps placement free.
+- Construction drafts use the actual equipment prefabs or the final procedural mesh builders, preserving
+  textures and materials. Supply tanks, parking trucks, depots, baggage halls, terminals, apron surfaces and
+  stand pads appear in the world before placement. Drafts own no operational simulation objects and hide
+  when the cursor is over the HUD; cancelling disposes them. Runway, road and bridge drafts retain their
+  existing final-geometry previews.
+- Orientation uses shared **− / angle / +** buttons and **Snap 15° / Free angle**. Z/Shift+Z turns ±45°;
+  Shift+wheel turns 15° with snapping, 5° freely, or 1° with Alt. Camera Q/E remains available. Road-aligned
+  baggage halls retain their two valid road-facing directions. Polygon tools rotate their draft around the
+  first corner. Ctrl/Cmd+drag anchors a supply station or parking bay while freely turning it; release places
+  it only if it fits. These controls apply to the current draft, before any purchase.
 - Fonts and sizes scale with the screen height (`DevGui.Scale`: 1 up to 1000 px tall, at most 2.5), so text stays
   sharp on Retina.
 - Panels mark their rects. While the pointer is over one (`DevGui.PointerOverHud`), clicks and scrolls don't reach
@@ -176,7 +205,7 @@ How it's built:
 | B | next build tool: select / runway / taxiway / road / apron / terminal / depot / stand / de-icing bay / bridge |
 | Placing (all tools) | free by default. A point sticks to something already built only within about 14 pixels (never under 1.5 m), or anywhere on the pavement of a line of its own kind. A ring shows where the next point goes before any click: cyan where it sticks (the inspector says "joins …"), white where it's free, red where it can't go. **Hold Shift for steps:** lines turn in 10° steps counted from what they start on or near (a taxiway, road, runway, apron or stand edge; else the line's last stretch; else the nearest runway; else north), so they run parallel, square or 10°, 20° … off it, and come in whole 5 m |
 | Runway tool: click, click (or drag); right-click / Esc | like the line tools: a ring shows where the threshold goes. Click it, then the other threshold, or drag from one to the other. The runway is built as the cursor moves, so it shows as it will look (its surface and width can still be changed in the tray), and the inspector gives its designation and length. Shorter than 100 m, the ring turns red and it won't end there. Shift: 10° from north and 50 m steps. Right-click (not a right-drag, which turns the camera) or Esc drops it |
-| Taxiway / road tool: click, right-click / Esc | add points; end the line (a right-drag turns the camera and leaves the line going). The next stretch is built as it will look (surface, paint, verges; `TaxiwayPreview`, never part of the airport), from the last point to the cursor, with a faint outline that turns red where it can't go. It stays while the pointer is over the HUD, so a width or surface picked in the tray shows on it. A taxiway sticks to taxiways and runways and joins a road only when clicked on the road's pavement; a road sticks to roads and joins a taxiway or runway only when clicked on it (so a road laid beside a taxiway stays beside it). The road tool lays 7 m service roads (only paint across paved aprons); it also sticks to a point 12 m in front of a depot's doors and to the head of a parking stand (edge on the pad's edge, running on half a road width past each corner; coming at it end-on, onto the head). A line that would cross a stand turns red and won't build |
+| Taxiway / road tool: click, right-click / Esc | add points; end the line (a right-drag turns the camera and leaves the line going). The next stretch is built as it will look (surface, paint, verges; `TaxiwayPreview`, never part of the airport), from the last point to the cursor, with a faint outline that turns red where it can't go. It stays while the pointer is over the HUD, so a width or surface picked in the tray shows on it. A taxiway sticks to taxiways and runways and joins a road only when clicked on the road's pavement; a road sticks to roads and joins a taxiway or runway only when clicked on it (so a road laid beside a taxiway stays beside it). The road tool lays 7 m service roads (only paint across paved aprons); it also sticks to a point 12 m in front of a depot's doors and to the head of a parking stand (edge on the pad's edge, running on half a road width past each corner; coming at it end-on, onto the head). A line that would cross a stand turns red and won't build, as does one that would meet another section at under 15° or leave a section too short for the junctions at its ends (`TaxiwayNetwork.JoinProblem`: "put the point on the junction, or further from it") |
 | Apron tool: click, drag, right-click / Esc | click corners; they stick to the corners and edges of aprons and stand pads, so a new apron joins an existing one edge to edge. Click the first corner again or right-click to finish; Esc drops it. Dragging from the first press lays a rectangle lined up with what it starts on (an apron or stand edge, a taxiway or road), else the nearest runway. The outline is green, or red with the reason in the inspector (edges crossing, too small, overlapping an apron of a surface it can't overlap). V / the surface chips pick the surface, also for a selected apron |
 | Terminal tool: click, drag, right-click / Esc | a terminal's footprint, drawn like an apron (corners stick to aprons' and stands' corners and edges; drag for a rectangle). It may not stand on a runway, taxiway, road or stand pad, nor overlap another terminal (red, with the reason). Click a terminal to select it. [ ] (or the Floors stepper) sets the floors, 1–4, also for the selected one |
 | Shift+scroll on a selected terminal (Alt: fine) | the wall nearest the cursor is outlined in cyan; scrolling bows it out or in, 2 m a notch (Alt 0.5 m), up to a half circle. A bulge that would hit something isn't made (the inspector says why) |
@@ -269,3 +298,20 @@ powered belts, automatic sorting and buffer storage. Depot working-bay occupancy
 from hired teams. **AirCity > Vehicles > Create Baggage Depot Family Review** opens a separate three-size
 asset comparison. `BaggageDepotFamilyReview.Run` verifies real handling for all three sizes and captures
 exterior/interior views in `Captures/BaggageDepotFamily/`; see [the asset brief](../assets/BaggageDepot.md).
+
+## Street tool (public roads, 2026-11-14)
+
+The Street tool lays landside public roads: two-lane street, four-lane avenue, six-lane boulevard, one-way 1/2/3
+lanes, country road, highway. Pick the type from the tray. Crossings become junctions, with traffic lights where town
+roads meet. See [public-roads.md](public-roads.md), "Building them". `AirfieldSetup` gives the tool the traffic
+signal prefab and kerb material; in the editor it finds them by path if a scene predates it.
+
+
+## 3D road integration (2026-11-15)
+
+The Road/Street inspector exposes Auto/Ground/Bridge/Tunnel, typed elevation, held +/- and Page Up/Down,
+and a horizontal bend slider. Tunnel mode opens the temporary underground cutaway; Surface view restores it.
+Select/Delete use visible deck heights and public roads can be removed by section. Native graphics review:
+`AirCity.EditorTools.Game.PavementOwnershipReview.RunStructuresFromCommandLine`; warm cursor benchmark:
+`AirCity.EditorTools.Game.PavementOwnershipReview.RunPerformanceFromCommandLine`. Run in an isolated project
+with graphics, not the user's open editor. Captures and reports are described in [public roads](public-roads.md).

@@ -65,6 +65,10 @@ The user's choices (2026-10-23):
 | `Scripts/Editor/Vehicles/*` | `.vehicle` importer, model postprocessor (doors in every LOD), `VehicleSetup` (prefabs and materials) |
 | `ArtSource/Vehicles/` | Blender pipeline for the models: see [assets/SnowPlough.md](../assets/SnowPlough.md), [Mower.md](../assets/Mower.md), [Tugs.md](../assets/Tugs.md), [Depot.md](../assets/Depot.md) (the control towers share it: [ControlTowers.md](../assets/ControlTowers.md)) |
 
+`VehicleAssetPostprocessor` loads URP Lit by package path and declares its shader dependency. Background import
+workers may have no active render pipeline; using that state to choose Standard makes equipment render pink in
+URP and loses the bridge atlas bindings. Importer version 9 refreshes existing vehicle models.
+
 ## API
 
 ```csharp
@@ -229,6 +233,8 @@ no tugs at all.
 - **Footprints:**
   - Aircraft: `AircraftType.bounds` at their pose, plus 2.5 m.
   - Vehicles: `VehicleType.bounds`, plus 0.3 m. Vehicles standing in their bays don't count.
+  - Deicing trucks: their current body boxes participate in both route planning and live avoidance;
+    deicing drivers also yield to maintenance and baggage equipment.
 - **Look-ahead:** each vehicle out looks along its own path as far as it needs to stop, plus about 6 m and a quarter
   of its length. It stops short (2.5 m) of the first footprint it would touch, and `Status` says what it's waiting
   for.
@@ -448,3 +454,12 @@ imported `VehicleType` (the importer overwrites it on the next regenerate).
 | `PushBack_TwoAtOnceGoToTheSmallTugThenTheLargeOne` | dispatch by size, two tugs out at once never touching |
 | `PushBack_SaysWhyNot` | light aircraft, taxi-out stand, off a stand, aircraft in the way, no tugs |
 | `PushBack_TheAircraftGoingAwaySendsTheTugHome` | deleted mid-push |
+
+
+## 3D road integration (2026-11-15)
+
+`VehiclePath` carries optional per-point road elevations. Maintenance road routes sample curved alignments,
+keep right and bind only their selected service edges. Rendering and avoidance use the sampled deck. Actor
+`Box` footprints optionally carry a vertical interval; existing purely planar geometry queries retain their
+old meaning. `IVehicleRouteBlocker` checks actual 3D road samples beneath parked aircraft rather than blocking
+an underpass from its XZ overlap alone. Aircraft tracks use the ground pavement's elevation.

@@ -144,6 +144,22 @@ def road():
     return i
 
 
+def street():
+    """A street crossing with a traffic light: two roads meeting, a zebra crossing, a signal on its pole."""
+    i = Icon()
+    i.rect(6, 52, 122, 88)                     # the main road across
+    i.rect(40, 88, 76, 126)                    # the side road coming in
+    for x in (46, 54, 62, 70):                 # zebra stripes across the side road
+        i.rect(x - 2.5, 94, x + 2.5, 108, on=False)
+    i.line([(14, 70), (32, 70)], 4, on=False)  # lane dashes on the main road
+    i.line([(84, 70), (102, 70)], 4, on=False)
+    i.rect(94, 10, 98, 52)                     # the signal: pole and head with three lamps
+    i.rect(86, 6, 106, 40, radius=4)
+    for y in (13, 23, 33):
+        i.circle(96, y, 3.6, on=False)
+    return i
+
+
 def apron():
     """An apron with three parking lead-in lines and their stop bars."""
     i = Icon()
@@ -204,6 +220,19 @@ def stand():
     plane(i, 64, 14, 96)
     i.rect(30, 6, 98, 10, radius=2)        # stop bar ahead of the nose
     i.rect(62, 112, 66, 126)                # lead-in line behind
+    return i
+
+
+def deicing_storage():
+    """Horizontal fluid tank with a fill hose and containment base."""
+    i = Icon()
+    i.rect(12, 101, 116, 113, radius=3)
+    i.rect(18, 31, 102, 91, radius=19)
+    i.rect(30, 40, 90, 82, radius=12, on=False)
+    i.rect(40, 19, 61, 31, radius=3)
+    i.rect(32, 87, 41, 103)
+    i.rect(78, 87, 87, 103)
+    i.line([(101, 57), (115, 57), (115, 84), (105, 84)], 7)
     return i
 
 
@@ -329,9 +358,9 @@ def level_ground():
 
 
 ICONS = {
-    "select": select, "runway": runway, "taxiway": taxiway, "road": road, "apron": apron, "terminal": terminal,
+    "select": select, "runway": runway, "taxiway": taxiway, "road": road, "street": street, "apron": apron, "terminal": terminal,
     "depot": depot, "lights": lights, "stand": stand, "deice": deice, "bridge": bridge, "gates": gates, "delete": delete,
-    "baggage": baggage,
+    "baggage": baggage, "deicing-storage": deicing_storage,
     "clear-trees": clear_trees, "level-ground": level_ground,
 }
 

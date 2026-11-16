@@ -69,10 +69,10 @@ namespace AirCity.EditorTools.Game
                 };
                 result.oldStamp = Measure("Original stamp: level + full roads, heightmap and forest rebuild", () => { Level(); view.RefreshLand(false); });
                 result.oldRelease = Measure("Original release: full surface and groundcover + queued save", () => { view.RefreshSurface(); game.QueueAutosave(); }, store.FlushPending);
-                Mesh road = view.transform.Find("Public road network/Asphalt and junctions").GetComponent<MeshFilter>().sharedMesh;
+                Mesh road = view.transform.Find("Public road network").GetComponentsInChildren<MeshFilter>().First(f=>f.name=="Asphalt and junctions").sharedMesh;
                 result.newStamp = Measure("Player stamp: level + local heightmap and surviving tree heights", () => { Level(); game.PlayerChanged(CareerTool.Level, bounds); });
                 result.newRelease = Measure("Player release: queue local surface/props + detached save", () => game.FinishTerrainStroke(CareerTool.Level, bounds), store.FlushPending);
-                result.roadsPreserved = road == view.transform.Find("Public road network/Asphalt and junctions").GetComponent<MeshFilter>().sharedMesh;
+                result.roadsPreserved = road == view.transform.Find("Public road network").GetComponentsInChildren<MeshFilter>().First(f=>f.name=="Asphalt and junctions").sharedMesh;
                 result.surfaceTiles = view.PendingSurfaceTiles; result.groundCoverTiles = view.PendingGroundCoverTiles;
                 var frames = new List<double>();
                 for (int sample = -1; sample < Samples; sample++)

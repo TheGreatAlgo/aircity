@@ -73,7 +73,7 @@ namespace AirCity.Vehicles
         internal bool ClearContainer(ContainerTurnaround job, BaggageVehiclePose pose, VehicleType type)
         {
             if (!job.Plan.Clear(pose, type)) return false;
-            var box = Box.Of(pose.position, pose.facing, type.bounds, 0.3f);
+            var box = Box.Of(pose, type.bounds, 0.3f, airport);
             if (job.Fleet.Station.accessBlocked && job.Plan.reservation.Contains(box.c)) return false;
             foreach (var other in liveObstacles) if (box.Overlaps(other)) return false;
             foreach (var fleet in fleets.Values) foreach (var other in Boxes(fleet)) if (box.Overlaps(other)) return false;
@@ -81,31 +81,31 @@ namespace AirCity.Vehicles
             {
                 if (fleet == job.Fleet)
                 {
-                    if (type != fleet.Station.loaderType && box.Overlaps(Box.Of(fleet.LoaderPose.position, fleet.LoaderPose.facing, fleet.Station.loaderType.bounds, 0.2f))) return false;
+                    if (type != fleet.Station.loaderType && box.Overlaps(Box.Of(fleet.LoaderPose, fleet.Station.loaderType.bounds, 0.2f, airport))) return false;
                     if (type == fleet.Station.loaderType && fleet.Train != null &&
-                        (box.Overlaps(Box.Of(fleet.Train.Tractor.position, fleet.Train.Tractor.facing, fleet.Station.tractorType.bounds, 0.2f)) ||
-                         box.Overlaps(Box.Of(fleet.Train.Cart.position, fleet.Train.Cart.facing, fleet.Station.dollyType.bounds, 0.2f)))) return false;
+                        (box.Overlaps(Box.Of(fleet.Train.Tractor, fleet.Station.tractorType.bounds, 0.2f, airport)) ||
+                         box.Overlaps(Box.Of(fleet.Train.Cart, fleet.Station.dollyType.bounds, 0.2f, airport)))) return false;
                 }
                 else foreach (var other in ContainerBoxes(fleet)) if (box.Overlaps(other)) return false;
             }
             return true;
         }
-        static IEnumerable<Box> ContainerBoxes(ContainerFleet fleet)
+        IEnumerable<Box> ContainerBoxes(ContainerFleet fleet)
         {
             if (fleet.Train==null) yield break;
             var station = fleet.Station;
             if (fleet.Train != null)
             {
-                yield return Box.Of(fleet.Train.Tractor.position, fleet.Train.Tractor.facing, station.tractorType.bounds, 0.3f);
-                yield return Box.Of(fleet.Train.Cart.position, fleet.Train.Cart.facing, station.dollyType.bounds, 0.3f);
+                yield return Box.Of(fleet.Train.Tractor, station.tractorType.bounds, 0.3f, airport);
+                yield return Box.Of(fleet.Train.Cart, station.dollyType.bounds, 0.3f, airport);
             }
-            yield return Box.Of(fleet.LoaderPose.position, fleet.LoaderPose.facing, station.loaderType.bounds, 0.3f);
+            yield return Box.Of(fleet.LoaderPose, station.loaderType.bounds, 0.3f, airport);
             if (fleet.Job != null && fleet.Job.SideTransfer)
             {
                 var c = station.loaderType.container;
                 var p = c.mainTransfer; p.x = -(c.deckWidth + c.sideBridgeReach) * 0.5f;
                 yield return Box.Of(fleet.LoaderPose.Point(p), fleet.LoaderPose.facing,
-                    new Bounds(Vector3.zero, new Vector3(c.sideBridgeReach, 0.2f, 1.8f)), 0.2f);
+                    new Bounds(Vector3.zero, new Vector3(c.sideBridgeReach, 0.2f, 1.8f)), 0.2f, airport.PavementElevationAt(fleet.LoaderPose.position));
             }
         }
     }

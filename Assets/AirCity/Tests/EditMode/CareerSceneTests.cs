@@ -37,6 +37,8 @@ namespace AirCity.Tests.Game
         {
             var state = CareerState.New(19770616, false); Assert.IsTrue(state.Build(out _, site));
             while (!state.IsOpen) Assert.IsTrue(state.Build(out string why), why);
+            const float idleSeconds = 125.5f;
+            state.operatingSeconds = idleSeconds;
             game.Initialize(state, false);
             Assert.IsNotNull(game.Airport.Taxiways.Connection(game.Airport.Taxiways.stands[0]));
             int money = state.funds;
@@ -56,11 +58,17 @@ namespace AirCity.Tests.Game
             }
             var pose = game.ActiveFlight.aircraft.transform.position;
             var phase = game.ActiveFlight.Phase; var elapsed = state.charterElapsed;
-            var resumed = JsonUtility.FromJson<CareerState>(JsonUtility.ToJson(state));
+            float operating = state.operatingSeconds, roadClock = state.roadTrafficSeconds;
+            var date = CareerClock.Date(operating);
+            Assert.AreEqual(idleSeconds + elapsed, operating);
+            var resumed = JsonUtility.FromJson<CareerState>(JsonUtility.ToJson(CareerSnapshot.Capture(state)));
             game.Initialize(resumed, false);
             Assert.AreEqual(phase, game.ActiveFlight.Phase);
             Assert.That(Vector3.Distance(pose, game.ActiveFlight.aircraft.transform.position), Is.LessThan(.005f));
             Assert.AreEqual(elapsed, resumed.charterElapsed);
+            Assert.AreEqual(operating, resumed.operatingSeconds, "Loading must preserve idle time and count the replayed charter only once.");
+            Assert.AreEqual(roadClock, resumed.roadTrafficSeconds);
+            Assert.AreEqual(date, CareerClock.Date(resumed.operatingSeconds));
             Assert.AreEqual(money - CareerState.CharterCost, resumed.funds);
             for (int i = 0; i < 1800 && resumed.charterActive; i++) game.Advance(1f);
             Assert.AreEqual(1, resumed.completedCharters, game.Message);

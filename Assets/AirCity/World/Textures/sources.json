@@ -2,8 +2,9 @@
   "license": "CC0-1.0",
   "license_url": "https://polyhaven.com/license",
   "ForestFloor": "https://polyhaven.com/a/forest_leaves_02",
-  "RockSurface": "https://polyhaven.com/a/rock_01",
+  "RockSurface": "https://polyhaven.com/a/rock_face_03",
   "Meadow": "https://ambientcg.com/view?id=Grass004",
   "DryMeadow": "Grass004 with restrained dry-grass exposure tint",
-  "generator": "ArtSource/World/ground_textures.py"
+  "generator": "ArtSource/World/ground_textures.py",
+  "RockSurface_authors": "Dario Barresi (photography), Rico Cilliers (processing)"
 }

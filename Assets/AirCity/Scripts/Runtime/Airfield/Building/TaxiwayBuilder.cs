@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
+using AirCity.World;
 
 namespace AirCity.Airfield.Building
 {
@@ -8,9 +9,10 @@ namespace AirCity.Airfield.Building
     /// Taxiway geometry, paint and lights from the network graph:
     ///  - a node joining two edges of the same kind becomes a curve whose centreline radius suits the width's
     ///    aircraft (RunwayRules.TaxiwayTurnRadius), shortened if the edges are short;
-    ///  - any other node becomes a junction: a polygon whose corners between neighbouring edges are rounded
-    ///    with fillets. A node on a runway treats the runway as two wide edges, so taxiways flare into it (the
-    ///    part under the runway is hidden by the runway, which sits higher);
+    ///  - any other node becomes a junction (JunctionShape, shared with public roads): every edge cut back clear of
+    ///    the others, the corners between neighbouring edges rounded with fillets, narrow edges flared into wide
+    ///    ones, for any angle. A node on a runway treats the runway as two wide edges, so taxiways flare into it
+    ///    (the part under the runway is hidden by the runway, which sits higher);
     ///  - paint: yellow centrelines with curved lead-ins through junctions, holding-position markings where a
     ///    taxiway meets a runway;
     ///  - lit edges: blue edge lights along straights, curves and fillets; red stop bars at the holding
@@ -38,8 +40,8 @@ namespace AirCity.Airfield.Building
             public Vector2 dir;
             public float hw, length;
             public float cut;             // where the edge's straight strip starts, metres from the node
-            public float leftStart, rightStart;
-            public readonly List<Vector2> gap = new List<Vector2>();   // outline to the next arm (counter-clockwise)
+            public float need;            // the least a junction here needs along it (JunctionShape.Needs)
+            public readonly List<Vector2> gap = new List<Vector2>();   // kerb to the next arm (counter-clockwise), mouth corners left out
             public bool Real => edge != null;
             public bool Road => edge != null && edge.IsRoad;
         }
@@ -50,7 +52,8 @@ namespace AirCity.Airfield.Building
             public Vector2 p;
             public readonly List<Arm> arms = new List<Arm>();
             public List<Vector2> arc;     // curve nodes: the centreline from arms[0] to arms[1]
-            public List<Vector2> outline; // junctions
+            public List<Vector2> outline; // junctions (empty where the arms just meet end to end)
+            public bool fits = true;      // false: a section here is too short for what meets it (JunctionShape)
             public Arm ArmOf(TaxiwayEdge e) => arms.Find(a => a.edge == e);
         }
 
@@ -105,9 +108,90 @@ namespace AirCity.Airfield.Building
             return free;
         }
 
+        void Prepare()
+        {
+            if (joints.Count > 0) return;
+            foreach (var n in net.nodes) joints[n.id] = Arms(n);
+            foreach (var j in joints.Values) Needs(j);
+            foreach (var j in joints.Values) Layout(j);
+        }
+
+        // Curves and junctions have level crossfall. Their adjoining straight grades terminate at
+        // the actual mouths, rather than interpolating across the unbuilt corner of the graph.
+        public TaxiwayElevation Elevation(bool includeStructures=false,bool roadsOnly=false)
+        {
+            Prepare();
+            var profile = new TaxiwayElevation();
+            foreach (var e in net.edges)
+            {
+                if((!includeStructures && e.structure!=RoadStructure.Ground)||(roadsOnly&&!e.IsRoad))continue;
+                var a = joints[e.a]; var b = joints[e.b]; var aa = a.ArmOf(e); var ab = b.ArmOf(e);
+                if (aa == null || ab == null) continue;
+                float h0=a.node.runway!=null?Mathf.Lerp(a.node.position.y,b.node.position.y,aa.cut/aa.length):a.node.position.y;
+                float h1=b.node.runway!=null?Mathf.Lerp(b.node.position.y,a.node.position.y,ab.cut/ab.length):b.node.position.y;
+                if(e.IsRoad&&(e.alignment.curved||e.alignment.smooth))
+                {
+                    var path=net.Path(e);float end=path.Length-ab.cut;int count=Mathf.Max(1,Mathf.CeilToInt((end-aa.cut)/4f));
+                    for(int i=0;i<count;i++)
+                    {
+                        var p=Geo.XZ(path.Offset(Mathf.Lerp(aa.cut,end,i/(float)count),0,aa.cut,ab.cut));
+                        var q=Geo.XZ(path.Offset(Mathf.Lerp(aa.cut,end,(i+1f)/count),0,aa.cut,ab.cut));
+                        profile.Add(p,RoadHeight(e,p),q,RoadHeight(e,q),e.width*.5f);
+                    }
+                }
+                else profile.Add(a.p + aa.dir * aa.cut, h0, b.p + ab.dir * ab.cut, h1, e.width * .5f);
+            }
+            foreach (var j in joints.Values)
+            {
+                if((!includeStructures && !j.arms.Any(a=>a.Real && a.edge.structure==RoadStructure.Ground))||(roadsOnly&&!j.arms.Any(a=>a.Road)))continue;
+                if (j.arc != null)
+                    for (int i = 1; i < j.arc.Count; i++) profile.Add(j.arc[i-1], j.node.position.y, j.arc[i], j.node.position.y, j.arms[0].hw);
+                else if (j.outline != null) profile.Add(j.p, j.outline, j.node.position.y);
+            }
+            return profile;
+        }
+
+        public IEnumerable<(Alignment3D path,RoadStructure structure,float half,float from,float to,TaxiwayEdge edge)> StructurePaths()
+        {
+            Prepare();
+            foreach(var edge in net.edges)if(edge.IsRoad&&edge.structure!=RoadStructure.Ground)
+                yield return(net.Path(edge),edge.structure,edge.width*.5f,joints[edge.a].ArmOf(edge).cut,net.Path(edge).Length-joints[edge.b].ArmOf(edge).cut,edge);
+            foreach(var joint in joints.Values)if(joint.arc!=null&&joint.arms[0].edge.IsRoad&&joint.arms[0].edge.structure!=RoadStructure.Ground)
+                for(int i=1;i<joint.arc.Count;i++)yield return(new Alignment3D(Geo.X0Z(joint.arc[i-1],joint.node.position.y),Geo.X0Z(joint.arc[i],joint.node.position.y)),joint.arms[0].edge.structure,joint.arms[0].hw,0,-1,null);
+        }
+
+        public float RoadHeight(TaxiwayEdge edge,Vector2 p)
+        {
+            Prepare();var path=net.Path(edge);float height=path.Height(path.ClosestParameter(p));
+            var ja=joints[edge.a];var jb=joints[edge.b];
+            if(ja.arms.Count>1)height=Mathf.Lerp(height,ja.node.position.y,1-Mathf.SmoothStep(0,1,Mathf.InverseLerp(ja.ArmOf(edge).cut,ja.ArmOf(edge).cut+20,Vector2.Distance(p,ja.p))));
+            if(jb.arms.Count>1)height=Mathf.Lerp(height,jb.node.position.y,1-Mathf.SmoothStep(0,1,Mathf.InverseLerp(jb.ArmOf(edge).cut,jb.ArmOf(edge).cut+20,Vector2.Distance(p,jb.p))));
+            return height;
+        }
+        public void Warp(MeshData mesh,IReadOnlyList<StandLayout> stands,bool direction=false,bool fixtures=false)
+        {
+            var profile=Elevation();
+            var special=new bool[owners.Count];var shared=new float[owners.Count];
+            for(int i=0;i<owners.Count;i++)
+            {
+                var owner=owners[i];special[i]=owner.edges.Any(e=>e.IsRoad&&(e.structure!=RoadStructure.Ground||e.alignment.smooth||e.alignment.curved));
+                if(special[i]&&owner.joint)
+                {
+                    var first=owner.edges[0];int node=owner.edges.All(e=>e.a==first.a||e.b==first.a)?first.a:first.b;shared[i]=net.Node(node).position.y;
+                }
+            }
+            float Height(int vertex,Vector2 p)
+            {
+                int id=mesh.owners[vertex];
+                if(id>=0&&id<owners.Count&&special[id])return owners[id].joint?shared[id]:RoadHeight(owners[id].edges[0],p);
+                return Airport.SupportElevation(p,profile,runways,stands);
+            }
+            AirfieldElevation.WarpOwned(mesh,Height,direction,fixtures);
+        }
+
         public void Build(SurfaceBuilder surface, PaintBuilder paint, LightBuilder lights)
         {
-            foreach (var n in net.nodes) joints[n.id] = Layout(n);
+            Prepare();
             foreach (var e in net.edges)
             {
                 Own(surface, paint, new[] { e }, false);
@@ -132,14 +216,16 @@ namespace AirCity.Airfield.Building
 
         // ------------------------------------------------------------------ layout
 
-        Joint Layout(TaxiwayNode node)
+        /// <summary>A node's arms, sorted counter-clockwise (laid out later, once every node's needs are known).</summary>
+        Joint Arms(TaxiwayNode node)
         {
             var j = new Joint { node = node, p = Geo.XZ(node.position) };
             foreach (var e in net.EdgesAt(node.id))
             {
                 var other = net.Node(e.a == node.id ? e.b : e.a);
                 if (other == null) continue;
-                var d = Geo.XZ(other.position) - j.p;
+                var path=net.Path(e);var tangent=path.Tangent(e.a==node.id?0:1)*(e.a==node.id?1:-1);
+                var d=Geo.XZ(tangent).normalized*path.Length;
                 float len = d.magnitude;
                 if (len < 0.01f) continue;
                 j.arms.Add(new Arm { edge = e, dir = d / len, hw = e.width * 0.5f, length = len });
@@ -152,24 +238,36 @@ namespace AirCity.Airfield.Building
                 if (s > 1f) j.arms.Add(new Arm { dir = -r.Axis2D, hw = r.HalfWidthTotal, length = s });
             }
             j.arms.Sort((a, b) => Geo.Angle(a.dir).CompareTo(Geo.Angle(b.dir)));
-            int real = j.arms.FindAll(a => a.Real).Count;
-            if (real == 0 || j.arms.Count == 1) return j;     // nothing here, or a dead end (flat end, cut 0)
-            if (real == 2 && j.arms.Count == 2 && TryCurve(j)) return j;
-            Junction(j);
             return j;
+        }
+
+        /// <summary>What each arm needs at its node: how far out its strip must start to clear the other arms.</summary>
+        static void Needs(Joint j)
+        {
+            if (j.arms.Count < 2) return;
+            var need = JunctionShape.Needs(j.arms.ConvertAll(a => new JunctionArm(a.dir, a.hw, a.length, a.length)));
+            for (int i = 0; i < j.arms.Count; i++) j.arms[i].need = need[i];
+        }
+
+        void Layout(Joint j)
+        {
+            int real = j.arms.FindAll(a => a.Real).Count;
+            if (real == 0 || j.arms.Count == 1) return;     // nothing here, or a dead end (flat end, cut 0)
+            if (real == 2 && j.arms.Count == 2 && TryCurve(j)) return;
+            Junction(j);
         }
 
         bool TryCurve(Joint j)
         {
             var a0 = j.arms[0];
             var a1 = j.arms[1];
-            if (Mathf.Abs(a0.edge.width - a1.edge.width) > 0.01f || a0.edge.surface != a1.edge.surface || a0.edge.road != a1.edge.road) return false;
+            if (a0.edge.structure!=a1.edge.structure || a0.edge.alignment.curved || a1.edge.alignment.curved || Mathf.Abs(a0.edge.width - a1.edge.width) > 0.01f || a0.edge.surface != a1.edge.surface || a0.edge.road != a1.edge.road) return false;
             float alpha = Mathf.Acos(Mathf.Clamp(Vector2.Dot(a0.dir, a1.dir), -1f, 1f));
             if (alpha > Mathf.PI - 3f * Mathf.Deg2Rad || alpha < 25f * Mathf.Deg2Rad) return false;
             float radius = RunwayRules.TaxiwayTurnRadius(a0.edge.width);
             float tanHalf = Mathf.Tan(alpha * 0.5f);
             float cut = radius / tanHalf;
-            float maxCut = 0.45f * Mathf.Min(a0.length, a1.length);
+            float maxCut = Mathf.Min(Limit(j, a0), Limit(j, a1));
             if (cut > maxCut)
             {
                 cut = maxCut;
@@ -183,74 +281,42 @@ namespace AirCity.Airfield.Building
             return true;
         }
 
+        /// <summary>A junction's shape (JunctionShape): every arm cut back clear of the others, kerb fillets in the
+        /// corners (kerb-sized where a road is involved, aircraft-sized between taxiways), flares where a narrow arm
+        /// meets a wide one. The outline is star-shaped about the node; each arm's gap is its kerb to the next arm.</summary>
         void Junction(Joint j)
         {
             int n = j.arms.Count;
+            var shape = new List<JunctionArm>(n);
+            foreach (var a in j.arms) shape.Add(new JunctionArm(a.dir, a.hw, a.length, Limit(j, a)));
+            j.outline = JunctionShape.SolveCached(j.p, shape, (i, k) => CornerRadius(j.arms[i], j.arms[k]), out j.fits);
             for (int i = 0; i < n; i++)
             {
                 var a = j.arms[i];
-                var b = j.arms[(i + 1) % n];
-                float phi = Geo.AngleCcw(a.dir, b.dir) * Mathf.Rad2Deg;
-                var la = j.p + Geo.Left(a.dir) * a.hw;
-                var rb = j.p + Geo.Right(b.dir) * b.hw;
+                a.cut = shape[i].cut;
                 a.gap.Clear();
-                if (phi < 175f && Geo.Lines(la, a.dir, rb, b.dir, out float ta, out float tb))
-                {
-                    ta = Mathf.Max(ta, 0f);
-                    tb = Mathf.Max(tb, 0f);
-                    var corner = la + a.dir * ta;
-                    float w = !a.Real ? b.edge.width : !b.Real ? a.edge.width : Mathf.Min(a.edge.width, b.edge.width);
-                    float rf = a.Road || b.Road ? RoadCornerRadius : RunwayRules.TaxiwayTurnRadius(w) - w * 0.5f;
-                    float tanHalf = Mathf.Tan(phi * 0.5f * Mathf.Deg2Rad);
-                    float tdist = rf / tanHalf;
-                    float maxT = Mathf.Min(Limit(a) - ta, Limit(b) - tb);
-                    if (tdist > maxT)
-                    {
-                        tdist = Mathf.Max(maxT, 0f);
-                        rf = tdist * tanHalf;
-                    }
-                    if (rf < 0.3f)
-                    {
-                        a.gap.Add(corner);
-                        a.leftStart = ta;
-                        b.rightStart = tb;
-                    }
-                    else
-                    {
-                        Geo.Fillet(corner, a.dir, b.dir, rf, out var centre);
-                        Geo.Arc(a.gap, centre, corner + a.dir * tdist, corner + b.dir * tdist, 1.5f);
-                        a.leftStart = ta + tdist;
-                        b.rightStart = tb + tdist;
-                    }
-                }
-                else if (phi <= 185f)
-                {
-                    a.gap.Add(la);
-                    if ((rb - la).sqrMagnitude > 1e-4f) a.gap.Add(rb);
-                    a.leftStart = 0f;
-                    b.rightStart = 0f;
-                }
-                else
-                {
-                    // reflex gap: round the outside of the junction around the node
-                    Geo.Arc(a.gap, j.p, la, rb, 1.5f);
-                    a.leftStart = 0f;
-                    b.rightStart = 0f;
-                }
-            }
-            j.outline = new List<Vector2>();
-            foreach (var a in j.arms)
-            {
-                a.cut = Mathf.Min(Mathf.Max(a.leftStart, a.rightStart), Limit(a));
-                j.outline.Add(j.p + a.dir * a.cut + Geo.Right(a.dir) * a.hw);
-                j.outline.Add(j.p + a.dir * a.cut + Geo.Left(a.dir) * a.hw);
-                j.outline.AddRange(a.gap);
+                var kerb = shape[i].kerb;
+                for (int k = 1; k < kerb.Count - 1; k++) a.gap.Add(kerb[k]);   // the mouth corners are added where it's used
             }
         }
 
-        /// <summary>How far along an arm a junction may reach: under half a taxiway edge (the other end needs
-        /// room too), or to just short of a runway's end.</summary>
-        static float Limit(Arm a) => a.Real ? 0.45f * a.length : Mathf.Max(a.length - 0.5f, 0f);
+        /// <summary>Kerb radius between two neighbouring arms: kerb-sized where a road is involved, else sized for the
+        /// narrower taxiway's aircraft (a runway counts as the taxiway beside it).</summary>
+        static float CornerRadius(Arm a, Arm b)
+        {
+            if (a.Road || b.Road) return RoadCornerRadius;
+            float w = !a.Real && !b.Real ? 2f * Mathf.Min(a.hw, b.hw) : !a.Real ? b.edge.width : !b.Real ? a.edge.width : Mathf.Min(a.edge.width, b.edge.width);
+            return RunwayRules.TaxiwayTurnRadius(w) - w * 0.5f;
+        }
+
+        /// <summary>How far along an arm a junction or bend may reach: its share of the edge with whatever is at the
+        /// edge's other end (JunctionShape.Reach), or to just short of a runway's end.</summary>
+        float Limit(Joint j, Arm a)
+        {
+            if (!a.Real) return Mathf.Max(a.length - 0.5f, 0f);
+            float there = joints.TryGetValue(TaxiwayNetwork.Other(a.edge, j.node.id), out var far) ? far.ArmOf(a.edge)?.need ?? 0f : 0f;
+            return JunctionShape.Reach(a.length, a.need, there);
+        }
 
         // ------------------------------------------------------------------ pieces
 
@@ -268,12 +334,21 @@ namespace AirCity.Airfield.Building
             float hw = e.width * 0.5f;
             float s0 = armA.cut, s1 = len - armB.cut;
             bool unpaved = !e.surface.IsPaved();
-            if (s1 - s0 > 0.01f)
+            bool roundA=e.IsRoad && ja.arms.Count==1,roundB=e.IsRoad && jb.arms.Count==1;
+            float radius=Mathf.Min(2f,hw*.6f,(s1-s0)*.2f);
+            if(roundA)s0+=radius;if(roundB)s1-=radius;
+            if(e.IsRoad && (e.alignment.curved||e.alignment.smooth||e.structure!=RoadStructure.Ground))BuildCurvedRoad(e,ja,jb,armA,armB,s0,s1,surface,paint);
+            else if (s1 - s0 > 0.01f)
                 surface.Rect(Sub(e.surface), ja.p, u, s0, s1, -hw, hw, e.IsRoad ? AirfieldHeights.Road : AirfieldHeights.Taxiway,
-                    AirfieldKind.Taxiway, 0f, unpaved ? SurfaceBuilder.Fringe : 0f, false);
+                    e.IsRoad?AirfieldKind.Road:AirfieldKind.Taxiway, 0f, unpaved ? SurfaceBuilder.Fringe : 0f, false);
+            if(e.IsRoad)
+            {
+                if(roundA)surface.Polygon(Sub(e.surface),SurfaceBuilder.RoadEndOutline(ja.p,-u,hw,radius),AirfieldHeights.Road,AirfieldKind.Road);
+                if(roundB)surface.Polygon(Sub(e.surface),SurfaceBuilder.RoadEndOutline(jb.p,u,hw,radius),AirfieldHeights.Road,AirfieldKind.Road);
+            }
             if (e.IsRoad)
             {
-                BuildRoadPaint(e, ja, armA, jb, armB, paint);
+                if(!e.alignment.curved&&!e.alignment.smooth&&e.structure==RoadStructure.Ground)BuildRoadPaint(e, ja, armA, jb, armB, paint);
                 return;
             }
             if (unpaved) return;
@@ -300,6 +375,27 @@ namespace AirCity.Airfield.Building
             }
         }
 
+        void BuildCurvedRoad(TaxiwayEdge edge,Joint a,Joint b,Arm aa,Arm ab,float from,float to,SurfaceBuilder surface,PaintBuilder paint)
+        {
+            var path=net.Path(edge);int steps=Mathf.Max(1,Mathf.CeilToInt((to-from)/4f));float half=edge.width*.5f;
+            Vector2 At(float s,float x)=>Geo.XZ(path.Offset(s,x,aa.cut,ab.cut));
+            for(int i=0;i<steps;i++)
+            {
+                float s0=Mathf.Lerp(from,to,i/(float)steps),s1=Mathf.Lerp(from,to,(i+1f)/steps);int first=surface.mesh.Count;
+                void Vertex(float s,float x){var p=At(s,x);surface.mesh.Vertex(Geo.X0Z(p,AirfieldHeights.Road),Vector3.up,new Color(surface.state.wear,surface.state.snow,surface.state.grass,1),new Vector4(x,s),new Vector4((float)AirfieldKind.Road,0));}
+                Vertex(s0,-half);Vertex(s1,-half);Vertex(s1,half);Vertex(s0,half);surface.mesh.Quad(Sub(edge.surface),first,first+1,first+2,first+3);
+            }
+            paint.frame=RunwayFrame.None;
+            List<Vector2> Line(float x)
+            {
+                int count=Mathf.Max(1,Mathf.CeilToInt((to-from)/2f));var points=new List<Vector2>(count+1);
+                for(int i=0;i<=count;i++)points.Add(At(Mathf.Lerp(from,to,i/(float)count),x));return points;
+            }
+            paint.Strip(Line(-half+RoadEdgeInset),RoadLineHalfWidth,PaintBuilder.White,true);paint.Strip(Line(half-RoadEdgeInset),RoadLineHalfWidth,PaintBuilder.White,true);
+            paint.Dashes(Line(0),RoadLineHalfWidth,3,6,PaintBuilder.White,true);
+            RoadEnd(a,aa,path.Length-ab.cut,paint);RoadEnd(b,ab,path.Length-aa.cut,paint);
+        }
+
         // ------------------------------------------------------------------ service roads
 
         const float RoadLineHalfWidth = 0.075f, RoadEdgeInset = 0.3f;
@@ -312,7 +408,9 @@ namespace AirCity.Airfield.Building
             var u = armA.dir;
             float hw = e.width * 0.5f;
             paint.frame = RunwayFrame.Along(ja.p, u);
-            float p0 = Mathf.Max(PaintEnd(ja, armA), GiveWayAt(ja, armA)), p1 = len - Mathf.Max(PaintEnd(jb, armB), GiveWayAt(jb, armB));
+            float radius=Mathf.Min(2f,hw*.6f,len*.2f);
+            bool roundA=ja.arms.Count==1,roundB=jb.arms.Count==1;
+            float p0=Mathf.Max(PaintEnd(ja,armA),GiveWayAt(ja,armA),roundA?radius:0f),p1=len-Mathf.Max(PaintEnd(jb,armB),GiveWayAt(jb,armB),roundB?radius:0f);
             if (p1 - p0 > 0.5f)
             {
                 foreach (float sgn in new[] { -1f, 1f })
@@ -322,6 +420,8 @@ namespace AirCity.Airfield.Building
                 }
                 paint.Dashes(ja.p + u * p0, ja.p + u * p1, RoadLineHalfWidth, 3f, 6f, PaintBuilder.White, true);
             }
+            if(roundA)paint.Strip(SurfaceBuilder.RoadEndOutline(ja.p+u*RoadEdgeInset,-u,hw-RoadEdgeInset,Mathf.Max(.1f,radius-RoadEdgeInset)),RoadLineHalfWidth,PaintBuilder.White,true);
+            if(roundB)paint.Strip(SurfaceBuilder.RoadEndOutline(jb.p-u*RoadEdgeInset,u,hw-RoadEdgeInset,Mathf.Max(.1f,radius-RoadEdgeInset)),RoadLineHalfWidth,PaintBuilder.White,true);
             RoadEnd(ja, armA, len - armB.cut, paint);
             RoadEnd(jb, armB, len - armA.cut, paint);
         }
@@ -499,7 +599,7 @@ namespace AirCity.Airfield.Building
             // the arc runs in from arm 0 and out along arm 1: its ends sit square to the straights
             var d0 = -j.arms[0].dir;
             var d1 = j.arms[1].dir;
-            surface.Strip(Sub(e.surface), j.arc, hw, e.IsRoad ? AirfieldHeights.Road : AirfieldHeights.Taxiway, AirfieldKind.Taxiway, 0f,
+            surface.Strip(Sub(e.surface), j.arc, hw, e.IsRoad ? AirfieldHeights.Road : AirfieldHeights.Taxiway, e.IsRoad?AirfieldKind.Road:AirfieldKind.Taxiway, 0f,
                 unpaved ? SurfaceBuilder.Fringe : 0f, d0, d1);
             if (unpaved) return;
             paint.frame = RunwayFrame.None;
@@ -529,7 +629,7 @@ namespace AirCity.Airfield.Building
             // only roads meeting: as low as the roads (under aprons); anything with a taxiway or a runway in it
             // stays at taxiway height
             bool roads = j.node.runway == null && j.arms.All(a => a.Road);
-            surface.Fan(Sub(kind), j.p, j.outline, roads ? AirfieldHeights.Road : AirfieldHeights.Taxiway, AirfieldKind.Junction,
+            surface.Fan(Sub(kind), j.p, j.outline, roads ? AirfieldHeights.Road : AirfieldHeights.Taxiway, roads?AirfieldKind.Road:AirfieldKind.Junction,
                 kind.IsPaved() ? 0f : SurfaceBuilder.Fringe);
             if (!kind.IsPaved()) return;
             if (RoadJunction(j))

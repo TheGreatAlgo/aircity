@@ -99,8 +99,7 @@ namespace AirCity.Tests.World
         {
             var state = CareerState.New(42, false); Assert.IsTrue(state.Build(out _, 0));
             while (state.Step != CareerStep.AccessRoad) Assert.IsTrue(state.Build(out string why), why);
-            var entrance = state.Site.Entrance;
-            var route = new[] { entrance, entrance + new Vector2(180f, -180f), new Vector2(ValleyWorld.RoadX, entrance.y - 180f) };
+            var route = CustomRoute(state);
             int price = state.Quote(accessRoute: route).cost, funds = state.funds;
             Assert.Greater(price, state.Quote().cost);
             Assert.IsTrue(state.Build(out string problem, accessRoute: route), problem);
@@ -121,7 +120,7 @@ namespace AirCity.Tests.World
             var state = CareerState.New(42, false); state.Build(out _, 0);
             while (state.Step != CareerStep.AccessRoad) state.Build(out _);
             var before = JsonUtility.ToJson(state);
-            var route = new[] { state.Site.Entrance, state.Site.centre, new Vector2(ValleyWorld.RoadX, state.Site.centre.y) };
+            var route = new[] { state.Site.Entrance, state.Site.centre, new Vector2(state.world.RoadAt(state.Site.centre.y), state.Site.centre.y) };
             Assert.IsFalse(state.Build(out _, accessRoute: route)); Assert.AreEqual(before, JsonUtility.ToJson(state));
         }
 
@@ -137,6 +136,22 @@ namespace AirCity.Tests.World
             Assert.IsTrue(graph.Validate(out problem), problem);
             var entrance = graph.nodes.Single(n => n.terminalEntrance == "airport-reception");
             Assert.IsTrue(graph.nodes.Where(n => Mathf.Abs(n.position.z) >= 3199f).All(n => graph.HasRoute(entrance.id, n.id)));
+        }
+
+        [Test]
+        public void AccessRoadJoinsTheRoadProfileEvenWhenNaturalTerrainIsHigherBetweenNodes()
+        {
+            var world = new ValleyWorld { heights = new float[ValleyWorld.Resolution * ValleyWorld.Resolution] };
+            for (int i = 0; i < world.heights.Length; i++) world.heights[i] = 80f;
+            world.publicRoad.Add(new Vector2(0f, -100f)); world.publicRoad.Add(new Vector2(0f, 100f));
+            var graph = PublicRoadNetwork.FromWorld(world);
+            world.LevelBrush(Vector2.zero, 15f, 120f, world.RegionBounds);
+            Assert.Greater(world.Height(Vector2.zero), 100f);
+            var site = new AirportSite { centre = new Vector2(0f, 155f), elevation = 80f };
+            Assert.IsTrue(graph.AddAirportAccess(world, site, new[] { site.Entrance, Vector2.zero }, out string why, false), why);
+            var junction = graph.nodes.Single(n => graph.At(n.id).Count() == 3);
+            Assert.AreEqual(80f, junction.position.y, .001f);
+            Assert.IsTrue(graph.Validate(out why), why);
         }
 
         [Test]
@@ -160,8 +175,7 @@ namespace AirCity.Tests.World
         {
             var state = CareerState.New(seed, false); state.Build(out _, 0);
             while (state.Step != CareerStep.AccessRoad) state.Build(out _);
-            var start = state.Site.Entrance;
-            Assert.IsTrue(state.Build(out string why, accessRoute: new[] { start, start + new Vector2(180f, -180f), new Vector2(ValleyWorld.RoadX, start.y - 180f) }), why);
+            Assert.IsTrue(state.Build(out string why, accessRoute: CustomRoute(state)), why);
             var geometry = new PublicRoadGeometry(state.publicRoads, null, null, state.world.Height);
             var terrain = new TerrainData { heightmapResolution = ValleyWorld.Resolution, size = new Vector3(ValleyWorld.Size, ValleyWorld.HeightRange, ValleyWorld.Size) };
             try
@@ -181,7 +195,14 @@ namespace AirCity.Tests.World
             finally { Object.DestroyImmediate(terrain); Destroy(geometry); }
         }
 
+        static Vector2[] CustomRoute(CareerState state)
+        {
+            var start = state.Site.Entrance;
+            float z = start.y - 180f, side = Mathf.Sign(state.world.RoadAt(z) - start.x);
+            return new[] { start, start + new Vector2(side * 180f, -180f), new Vector2(state.world.RoadAt(z), z) };
+        }
+
         static void Destroy(PublicRoadGeometry geometry)
-        { foreach (var mesh in new[] { geometry.pavement, geometry.shoulders, geometry.markings, geometry.structures }) Object.DestroyImmediate(mesh); }
+        { foreach (var mesh in new[] { geometry.pavement, geometry.shoulders, geometry.markings, geometry.structures, geometry.kerbMesh, geometry.medianGrass }) Object.DestroyImmediate(mesh); }
     }
 }

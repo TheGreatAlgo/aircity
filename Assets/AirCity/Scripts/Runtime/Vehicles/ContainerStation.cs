@@ -81,8 +81,8 @@ namespace AirCity.Vehicles
             loader.mainHeight = fleet.MainHeight; loader.frontHeight = fleet.FrontHeight; loader.stabilisers = fleet.Stabilisers;
             loader.sideGateOpen = loader.bridgeExtended = fleet.Job != null && fleet.Job.SideTransfer;
             loader.restraintsReleased = fleet.Job != null && fleet.Job.PlatformTransfer; loader.Apply();
-            if (driver != null) driver.Apply(BaggageCrew.Workstation(tractorType, fleet.Train.Tractor));
-            if (loaderOperator != null) loaderOperator.Apply(BaggageCrew.Workstation(loaderType, fleet.LoaderPose));
+            if (driver != null) driver.Apply(BaggageCrew.Workstation(tractorType, fleet.Train.Tractor), dt, airport.timeScale);
+            if (loaderOperator != null) loaderOperator.Apply(BaggageCrew.Workstation(loaderType, fleet.LoaderPose), dt, airport.timeScale);
             foreach (var visual in unitVisuals.Values) if (visual != null) visual.gameObject.SetActive(false);
             foreach (var unit in airport.Baggage.Containers.Units)
             {

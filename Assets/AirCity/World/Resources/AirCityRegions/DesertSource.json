@@ -1,0 +1,24 @@
+{
+  "name": "Desert",
+  "location": "Moab canyon country, Utah",
+  "latitude": 38.57,
+  "longitude": -109.55,
+  "sourceExtentMetres": 8000,
+  "resolution": 513,
+  "hasOcean": false,
+  "minElevation": 1201.3087158203125,
+  "maxElevation": 1791.26904296875,
+  "seaFraction": 0.0,
+  "sha256": "090478dd4140b8b5a5ab13fe9ecc7e4080155829d0dc9557662cedf8a5869354",
+  "tiles": [
+    "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/13/1602/3142.png",
+    "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/13/1602/3143.png",
+    "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/13/1602/3144.png",
+    "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/13/1603/3142.png",
+    "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/13/1603/3143.png",
+    "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/13/1603/3144.png",
+    "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/13/1604/3142.png",
+    "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/13/1604/3143.png",
+    "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/13/1604/3144.png"
+  ]
+}

@@ -24,14 +24,14 @@ namespace AirCity.Tests.World
                 Assert.IsNotNull(view.trees);
                 view.Build(world, refreshGroundCover: false);
                 Physics.SyncTransforms();
-                var road = root.transform.Find("Public road network/Asphalt and junctions").GetComponent<MeshFilter>().sharedMesh;
+                var road = root.transform.Find("Public road network").GetComponentsInChildren<MeshFilter>().First(f=>f.name=="Asphalt and junctions").sharedMesh;
                 var forest = root.GetComponentInChildren<ForestRenderer>();
                 var batches = Field<IList>(forest, "batches").Cast<object>().ToArray();
                 var transforms = batches.Select(b => Field<Matrix4x4[]>(b, "matrices")).ToArray();
                 var treePositions = ForestMatrices(forest).Select(m => new Vector2(m.m03, m.m23)).ToArray();
                 int count = forest.TreeCount;
                 // Include roads and all heightmap boundaries, not just the starter parcel.
-                foreach (var p in new[] { world.sites[0].centre, new Vector2(ValleyWorld.RoadX, 0f),
+                foreach (var p in new[] { world.sites[0].centre, new Vector2(world.RoadAt(0f), 0f),
                     new Vector2(-3200f, -3200f), new Vector2(3200f, 3200f) })
                 {
                     const float radius = 90f;
@@ -39,7 +39,7 @@ namespace AirCity.Tests.World
                     world.LevelBrush(p, radius, world.Height(p) + 3f, new Rect(-3201f, -3201f, 6402f, 6402f));
                     view.RefreshLand(area);
                 }
-                Assert.AreSame(road, root.transform.Find("Public road network/Asphalt and junctions").GetComponent<MeshFilter>().sharedMesh);
+                Assert.AreSame(road, root.transform.Find("Public road network").GetComponentsInChildren<MeshFilter>().First(f=>f.name=="Asphalt and junctions").sharedMesh);
                 Assert.AreEqual(count, forest.TreeCount);
                 CollectionAssert.AreEqual(treePositions, ForestMatrices(forest).Select(m => new Vector2(m.m03, m.m23)).ToArray());
                 for (int i = 0; i < batches.Length; i++) Assert.AreSame(transforms[i], Field<Matrix4x4[]>(batches[i], "matrices"));
@@ -49,10 +49,23 @@ namespace AirCity.Tests.World
                 try
                 {
                     var expected = geometry.GradedHeights(world);
-                    var actual = view.Terrain.terrainData.GetHeights(0, 0, ValleyWorld.Resolution, ValleyWorld.Resolution);
+                    int native = view.Terrain.terrainData.heightmapResolution;
+                    int factor = (native - 1) / (ValleyWorld.Resolution - 1);
+                    var actual = view.Terrain.terrainData.GetHeights(0, 0, native, native);
                     for (int z = 0; z < ValleyWorld.Resolution; z++)
                     for (int x = 0; x < ValleyWorld.Resolution; x++)
-                        Assert.AreEqual(expected[z * ValleyWorld.Resolution + x] / ValleyWorld.HeightRange, actual[z, x], .00002f);
+                        Assert.AreEqual(expected[z * ValleyWorld.Resolution + x] / ValleyWorld.HeightRange, actual[z * factor, x * factor], .00002f);
+                    // Native points between saved samples must also match a complete rebuild after local edits.
+                    if (factor > 1)
+                        for (int z = 1; z < native - 1; z += 13)
+                        for (int x = 1; x < native - 1; x += 11)
+                        {
+                            int sx = x / factor, sz = z / factor;
+                            float tx = x / (float)factor - sx, tz = z / (float)factor - sz;
+                            float a = expected[sz * ValleyWorld.Resolution + sx], b = expected[sz * ValleyWorld.Resolution + sx + 1];
+                            float c = expected[(sz + 1) * ValleyWorld.Resolution + sx], d = expected[(sz + 1) * ValleyWorld.Resolution + sx + 1];
+                            Assert.AreEqual(Mathf.Lerp(Mathf.Lerp(a,b,tx),Mathf.Lerp(c,d,tx),tz) / ValleyWorld.HeightRange,actual[z,x],.00002f);
+                        }
                     // Picking must see the edited terrain immediately, before any surface queue is drained.
                     var p = world.sites[0].centre;
                     p = new Vector2(Mathf.Round(p.x / world.Spacing) * world.Spacing, Mathf.Round(p.y / world.Spacing) * world.Spacing);
@@ -107,7 +120,8 @@ namespace AirCity.Tests.World
                     for (int z = 0; z < 128; z++)
                     for (int x = 0; x < 128; x++)
                     for (int layer = 0; layer < 6; layer++) Assert.AreEqual(expected[z, x, layer], actual[z, x, layer], .012f);
-                    details.Rebuild(world, view.DisplayHeight, geometry);
+                    // Compare the same world, including the generated villages/harbour's kept-clear footprints.
+                    details.Rebuild(world, view.DisplayHeight, geometry, Field<List<GroundCoverExclusion>>(view, "coverExclusions"));
                     Assert.AreEqual(localInstances.Count, details.Instances.Count);
                     foreach (var item in details.Instances) Assert.AreEqual(item, localInstances[item.position]);
                     var fullMatrices = CoverMatrices(details).ToDictionary(m => new Vector2(m.m03, m.m23));
