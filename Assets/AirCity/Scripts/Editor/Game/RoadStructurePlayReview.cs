@@ -78,7 +78,7 @@ namespace AirCity.EditorTools.Game
                 case 74:
                     StructureCharge(false);if(!Capture("3d-04-airside-underpass-preview"))return;Click(StructureGui(BoreDeepEnd));Go(75);break;
                 case 75:
-                    StructureCommitted();Require(game.Airport.Taxiways.edges.Count==3,"A separated crossing created a false graph junction.");
+                    StructureCommitted();Require(!game.Airport.Taxiways.nodes.Any(n=>Vector2.Distance(new Vector2(n.position.x,n.position.z),new Vector2(0,220))<1f),"A separated crossing created a false graph junction.");
                     Require(Mathf.Abs(game.Airport.RoadElevationAt(new Vector2(0,220),-10)+10)<.05f,"The underpass elevation was lost.");
                     Require(Mathf.Abs(game.Airport.PavementElevationAt(new Vector2(0,220)))<.05f,"The taxiway was pulled down into the tunnel.");
                     Require(Mathf.Abs(game.State.world.Height(new Vector2(0,220))-100)<.01f,"The covered tunnel excavated its roof terrain.");
@@ -129,6 +129,211 @@ namespace AirCity.EditorTools.Game
                     SessionState.SetInt(Key+"Stage",100);RestoreInput();EditorApplication.ExitPlaymode();break;
             }
         }
+        // ------------------------------------------------------------------ connection flows (RoadConnectionFixture)
+
+        /// <summary>The bridge and tunnel connection flows a to e through actual mouse clicks on the shared tools, on
+        /// the RoadConnectionFixture region: captures in Captures/NewGame/PavementOwnership/conn-*.png, results in
+        /// Logs/road-connections-play-review.json. Each flow must join the roads it is clicked onto.</summary>
+        public static void RunConnectionsFromCommandLine(){Begin(true);SessionState.SetBool(Key+"StructuresOnly",false);SessionState.SetBool(Key+"ConnectionsOnly",true);}
+        static Func<bool>[] connectionSteps;
+        static PublicRoadNetwork connectionBefore;
+        static int airsideBefore;
+        static readonly System.Collections.Generic.List<string> connectionResults=new System.Collections.Generic.List<string>();
+        [Serializable]sealed class ConnectionsResult {public string result,utc;public string[] flows;}
+        static Vector2 Gui(Vector3 world)
+        {var v=game.view.GetComponent<Camera>().WorldToViewportPoint(world);return new Vector2(v.x*width,(1-v.y)*height);}
+        /// <summary>A free point where the marker ring sits: at the tool's working level.</summary>
+        static Vector3 Free(Vector2 p)=>new Vector3(p.x,(float)typeof(DevAirfieldTool).GetMethod("RoadTargetHeight",Instance).Invoke(tool,new object[]{p}),p.y);
+        static float StreetLevel(Vector2 p)
+        {var g=tool.Streets.network;var e=g.segments.OrderBy(s=>g.Path(s).DistanceTo(p)).First();var path=g.Path(e);return path.Height(path.ClosestParameter(p));}
+        /// <summary>A road's surface (in the underground view, its outline drawn over the cutaway).</summary>
+        static Vector3 RoadAt(Vector2 p,float y)=>new Vector3(p.x,y+.2f,p.y);
+        /// <summary>Frames a flow; its points must stay left of the inspector panel on the right of the Game view.</summary>
+        static void Over(Vector2 centre,float range,float tilt=65,float bearing=0)=>game.view.FocusPoint(new Vector3(centre.x,RoadConnectionFixture.Land(centre),centre.y),range,tilt,bearing);
+        static void Hover(Vector3 world){pointer=Gui(world);SendMouse(EventType.MouseMove);}
+        static void Away(){pointer=new Vector2(720,20);SendMouse(EventType.MouseMove);}
+        static string Built(PublicRoadNetwork before)
+        {
+            var g=tool.Streets.network;var made=g.segments.Where(e=>before.Segment(e.id)==null).ToList();
+            return string.Join(", ",made.Select(e=>$"{e.structure} {g.Path(e).Length:0} m"));
+        }
+        static int StreetNode(Vector2 p)=>tool.Streets.network.nodes.Where(n=>Vector2.Distance(PublicRoadNetwork.XZ(n.position),p)<.6f).Select(n=>n.id).DefaultIfEmpty(-1).First();
+        static void Joined(string flow,Vector2 a,Vector2 b)
+        {
+            var g=tool.Streets.network;int na=StreetNode(a),nb=StreetNode(b);
+            Require(na>0&&nb>0&&g.HasRoute(na,nb),flow+": the roads clicked are not joined. "+tool.StreetProblem);
+            Require(g.Validate(out string why),flow+": "+why);
+            connectionResults.Add(flow+": joined; built "+Built(connectionBefore));
+        }
+        static bool Snapped(string what,bool street=true)
+        {
+            string snap=street?tool.StreetSnapName:tool.SnapText,problem=street?tool.StreetProblem:tool.RoadProblem;
+            Require(snap!=null&&snap.Contains(what),"The cursor did not snap to "+what+": "+(snap??"nothing")+" / "+problem);
+            Require(string.IsNullOrEmpty(problem),problem);return true;
+        }
+        static Func<bool>[] ConnectionSteps()
+        {
+            var origin=Vector3.zero;
+            Vector2 W(Vector2 local)=>local+new Vector2(origin.x,origin.z);
+            return new Func<bool>[]
+            {
+                ()=>{game.Initialize(RoadConnectionFixture.State(),false);game.Paused=true;tool=game.BuildTools;RoadConnectionFixture.AddAirside(game);
+                    origin=game.Airport.transform.position;connectionResults.Clear();return true;},
+                // a. Bridge pressed first; R1 → over R3 → down onto R2
+                ()=>{tool.SetTool(DevTool.Street);tool.SetStreetStyle(PublicRoadStyle.Urban);tool.SetRoadMode(RoadBuildMode.Bridge);connectionBefore=tool.Streets.network.Clone();
+                    Over(new Vector2(-1500,-1300),620);return true;},
+                ()=>{Click(Gui(RoadAt(new Vector2(-1700,-1300),StreetLevel(new Vector2(-1700,-1300)))));return true;},
+                ()=>{Click(Gui(Free(new Vector2(-1580,-1300))));return true;},
+                ()=>{Click(Gui(Free(new Vector2(-1420,-1300))));return true;},
+                ()=>{Hover(RoadAt(new Vector2(-1300,-1300),StreetLevel(new Vector2(-1300,-1300))));return true;},
+                ()=>Snapped("two-lane street")&&Capture("conn-a1-bridge-points-at-street-below-and-ramps-to-it"),
+                ()=>{Click(Gui(RoadAt(new Vector2(-1300,-1300),StreetLevel(new Vector2(-1300,-1300)))));return true;},
+                ()=>{Joined("a (bridge R1 → over R3 → R2)",RoadConnectionFixture.R1A,RoadConnectionFixture.R2A);tool.SetTool(DevTool.Select);
+                    game.view.FocusPoint(new Vector3(-1500,104,-1300),330,24,-35);Away();return true;},
+                ()=>Capture("conn-a2-bridge-joined-to-both-streets-over-a-third"),
+                // c. Tunnel pressed after starting on R4; under the hill; up onto R5 through the underground guide
+                ()=>{tool.SetTool(DevTool.Street);tool.SetRoadMode(RoadBuildMode.Automatic);tool.SetRoadElevation(0);connectionBefore=tool.Streets.network.Clone();
+                    Over(new Vector2(-1420,-900),620);return true;},
+                ()=>{Click(Gui(RoadAt(new Vector2(-1750,-900),StreetLevel(new Vector2(-1750,-900)))));return true;},
+                ()=>{tool.SetRoadMode(RoadBuildMode.Tunnel);Hover(Free(new Vector2(-1620,-900)));return true;},
+                ()=>{Click(Gui(Free(new Vector2(-1620,-900))));return true;},
+                ()=>{Click(Gui(Free(new Vector2(-1380,-900))));return true;},
+                ()=>{Hover(RoadAt(new Vector2(-1250,-900),StreetLevel(new Vector2(-1250,-900))));return true;},
+                ()=>{Hover(RoadAt(new Vector2(-1250,-900),StreetLevel(new Vector2(-1250,-900))));return true;},
+                ()=>Snapped("two-lane street")&&Capture("conn-c1-underground-guide-tunnel-comes-up-to-street"),
+                ()=>{Click(Gui(RoadAt(new Vector2(-1250,-900),StreetLevel(new Vector2(-1250,-900)))));return true;},
+                ()=>{Joined("c (tunnel R4 → under the hill → R5)",RoadConnectionFixture.R4A,RoadConnectionFixture.R5A);tool.SetTool(DevTool.Select);tool.SetRoadUnderground(false);
+                    game.view.FocusPoint(new Vector3(-1660,100,-900),260,28,40);Away();return true;},
+                ()=>Capture("conn-c2-tunnel-ramp-from-street-into-hill"),
+                // d1. Tunnel pressed first: T1's end joins T2's middle underground
+                ()=>{tool.SetTool(DevTool.Street);tool.SetRoadMode(RoadBuildMode.Tunnel);connectionBefore=tool.Streets.network.Clone();Over(new Vector2(-1760,-500),420);return true;},
+                ()=>{Hover(RoadAt(RoadConnectionFixture.T1B,RoadConnectionFixture.TunnelLevel));return true;},
+                ()=>{Click(Gui(RoadAt(RoadConnectionFixture.T1B,RoadConnectionFixture.TunnelLevel)));return true;},
+                ()=>{Click(Gui(RoadAt(new Vector2(-1650,-500),RoadConnectionFixture.TunnelLevel)));return true;},
+                ()=>{Joined("d1 (tunnel T1's end → T2's middle)",RoadConnectionFixture.T1A,RoadConnectionFixture.T2A);tool.SetTool(DevTool.Select);return true;},
+                // d2. Tunnel mode from T3's end inside the ridge, straight out over the valley
+                ()=>{tool.SetTool(DevTool.Street);tool.SetRoadMode(RoadBuildMode.Tunnel);connectionBefore=tool.Streets.network.Clone();Over(new Vector2(-1060,-500),560);return true;},
+                ()=>{Hover(RoadAt(RoadConnectionFixture.T3B,RoadConnectionFixture.RidgeTunnelLevel));return true;},
+                ()=>{Click(Gui(RoadAt(RoadConnectionFixture.T3B,RoadConnectionFixture.RidgeTunnelLevel)));return true;},
+                ()=>{Click(Gui(Free(new Vector2(-960,-500))));return true;},
+                ()=>{var g=tool.Streets.network;var made=g.segments.Where(e=>connectionBefore.Segment(e.id)==null).ToList();
+                    Require(made.Any(e=>e.structure==RoadStructure.Elevated)&&made.Any(e=>e.structure==RoadStructure.Tunnel),"d2: the tunnel did not leave the ridge as a bridge: "+Built(connectionBefore)+" "+tool.StreetProblem);
+                    connectionResults.Add("d2 (tunnel out of the ridge over the valley): built "+Built(connectionBefore));
+                    tool.SetTool(DevTool.Select);tool.SetRoadUnderground(false);game.view.FocusPoint(new Vector3(-1140,100,-500),420,12,0);Away();return true;},
+                ()=>Capture("conn-d2-tunnel-leaves-ridge-as-a-bridge"),
+                // e. Airside: S1 → service tunnel under the taxiway → S2
+                ()=>{tool.SetTool(DevTool.Road);tool.SetSurface(PavementSurface.Asphalt);tool.SetRoadMode(RoadBuildMode.Automatic);tool.SetRoadElevation(0);
+                    airsideBefore=game.Airport.Taxiways.edges.Count;game.view.FocusPoint(origin+new Vector3(70,0,0),560,65,0);return true;},
+                ()=>{Click(Gui(RoadAt(W(new Vector2(-200,0)),origin.y)));return true;},
+                ()=>{tool.SetRoadMode(RoadBuildMode.Tunnel);Hover(Free(W(new Vector2(-80,0))));return true;},
+                ()=>{Click(Gui(Free(W(new Vector2(-80,0)))));return true;},
+                ()=>{Click(Gui(Free(W(new Vector2(80,0)))));return true;},
+                ()=>{Hover(RoadAt(W(new Vector2(200,0)),origin.y));return true;},
+                ()=>{Hover(RoadAt(W(new Vector2(200,0)),origin.y));return true;},
+                ()=>Snapped("the road",false)&&Capture("conn-e1-service-tunnel-comes-up-to-service-road"),
+                ()=>{Click(Gui(RoadAt(W(new Vector2(200,0)),origin.y)));return true;},
+                ()=>{var net=game.Airport.Taxiways;
+                    int s1=net.nodes.Where(n=>Vector2.Distance(new Vector2(n.position.x,n.position.z),new Vector2(-200,0))<.6f).Select(n=>n.id).DefaultIfEmpty(-1).First();
+                    int s2=net.nodes.Where(n=>Vector2.Distance(new Vector2(n.position.x,n.position.z),new Vector2(200,0))<.6f).Select(n=>n.id).DefaultIfEmpty(-1).First();
+                    Require(s1>=0&&s2>=0&&net.FindVehicleRoute(s1,s2)!=null,"e: the service roads are not joined. "+tool.RoadProblem);
+                    Require(!net.nodes.Any(n=>Vector2.Distance(new Vector2(n.position.x,n.position.z),Vector2.zero)<1f),"e: the tunnel made a junction with the taxiway.");
+                    connectionResults.Add("e (service tunnel S1 → under the taxiway → S2): joined; "+string.Join(", ",net.edges.Skip(airsideBefore).Select(e=>e.structure+" "+net.Path(e).Length.ToString("0")+" m")));
+                    tool.SetTool(DevTool.Select);tool.SetRoadUnderground(false);game.view.FocusPoint(origin+new Vector3(-60,0,0),300,30,30);Away();return true;},
+                ()=>Capture("conn-e2-service-tunnel-under-taxiway-joined"),
+                // b. Auto at 0: continue from B1's end at deck level, join B2's middle
+                ()=>{tool.SetTool(DevTool.Street);tool.SetRoadMode(RoadBuildMode.Automatic);tool.SetRoadElevation(0);connectionBefore=tool.Streets.network.Clone();
+                    Over(new Vector2(-1400,-1700),480);return true;},
+                ()=>{Click(Gui(RoadAt(RoadConnectionFixture.B1B,RoadConnectionFixture.BridgeLevel)));return true;},
+                ()=>{Hover(Free(new Vector2(-1400,-1700)));return true;},
+                ()=>{Require(Mathf.Abs(tool.StreetEndpoint.y-RoadConnectionFixture.BridgeLevel)<.3f,"b: continuing a bridge left its deck level: "+tool.StreetEndpoint.y);
+                    return Capture("conn-b1-continuing-a-bridge-at-deck-level");},
+                ()=>{Click(Gui(Free(new Vector2(-1400,-1700))));return true;},
+                ()=>{Click(Gui(RoadAt(new Vector2(-1300,-1700),RoadConnectionFixture.BridgeLevel)));return true;},
+                ()=>{Joined("b (B1's end → B2's middle at deck level)",RoadConnectionFixture.B1A,RoadConnectionFixture.B2A);tool.SetTool(DevTool.Select);return true;},
+            };
+        }
+        static void ReviewConnections(int stage)
+        {
+            connectionSteps??=ConnectionSteps();int step=stage-200;
+            if(step<connectionSteps.Length){if(connectionSteps[step]())Go(stage+1);return;}
+            var report=new ConnectionsResult {result="Passed: bridge and tunnel connection flows a-e by actual mouse clicks.",utc=DateTime.UtcNow.ToString("O"),flows=connectionResults.ToArray()};
+            File.WriteAllText("Logs/road-connections-play-review.json",JsonUtility.ToJson(report,true));File.AppendAllText("Logs/pavement-ownership-review.txt",report.result+"\n");
+            connectionSteps=null;SessionState.SetInt(Key+"Stage",100);RestoreInput();EditorApplication.ExitPlaymode();
+        }
+
+        // ------------------------------------------------------------------ water crossings (RoadConnectionFixture water variant)
+
+        /// <summary>Water crossings by actual mouse clicks on the shared tools: a one-click river bridge in Auto, a
+        /// several-click bridge over the ocean channel, a tunnel under the river, a refusal at a low bank's edge and a
+        /// service-road bridge over the airport canal. Captures conn-water-*.png; Logs/road-water-play-review.json.</summary>
+        public static void RunWaterCrossingsFromCommandLine(){Begin(true);SessionState.SetBool(Key+"StructuresOnly",false);SessionState.SetBool(Key+"WaterOnly",true);}
+        static Func<bool>[] waterSteps;
+        static void OverWater(Vector2 centre,float range,float tilt=65,float bearing=0)=>game.view.FocusPoint(new Vector3(centre.x,RoadConnectionFixture.WaterLand(centre),centre.y),range,tilt,bearing);
+        static Func<bool>[] WaterSteps()
+        {
+            var origin=Vector3.zero;Vector2 W(float x,float z)=>new Vector2(x+origin.x,z+origin.z);
+            var net=default(AirCity.Airfield.TaxiwayNetwork);int edgesBefore=0;
+            return new Func<bool>[]
+            {
+                ()=>{game.Initialize(RoadConnectionFixture.WaterState(),false);game.Paused=true;tool=game.BuildTools;RoadConnectionFixture.AddWaterAirside(game);
+                    origin=game.Airport.transform.position;net=game.Airport.Taxiways;connectionResults.Clear();return true;},
+                // w1b. Auto at 0, one click from bank to bank across the river's shallow margins
+                ()=>{tool.SetTool(DevTool.Street);tool.SetStreetStyle(PublicRoadStyle.Urban);tool.SetRoadMode(RoadBuildMode.Automatic);tool.SetRoadElevation(0);
+                    connectionBefore=tool.Streets.network.Clone();OverWater(new Vector2(-1480,-1300),420);return true;},
+                ()=>{Click(Gui(RoadAt(new Vector2(-1600,-1300),StreetLevel(new Vector2(-1600,-1300)))));return true;},
+                ()=>{Click(Gui(RoadAt(new Vector2(-1400,-1300),StreetLevel(new Vector2(-1400,-1300)))));return true;},
+                ()=>{Joined("w1b (river, Auto, one click bank to bank)",new Vector2(-1600,-1300),new Vector2(-1400,-1300));tool.SetTool(DevTool.Select);return true;},
+                // w2a. Bridge pressed first, the ocean channel in several clicks over open water
+                ()=>{tool.SetTool(DevTool.Street);tool.SetRoadMode(RoadBuildMode.Bridge);connectionBefore=tool.Streets.network.Clone();OverWater(new Vector2(-800,-1400),640);return true;},
+                ()=>{Click(Gui(RoadAt(new Vector2(-650,-1400),StreetLevel(new Vector2(-650,-1400)))));return true;},
+                ()=>{Click(Gui(Free(new Vector2(-760,-1400))));return true;},
+                ()=>{Click(Gui(Free(new Vector2(-940,-1400))));return true;},
+                ()=>{Click(Gui(RoadAt(new Vector2(-1075,-1400),StreetLevel(new Vector2(-1075,-1400)))));return true;},
+                ()=>{Joined("w2a (ocean channel, Bridge, four clicks)",new Vector2(-650,-1400),new Vector2(-1075,-1400));tool.SetTool(DevTool.Select);
+                    game.view.FocusPoint(new Vector3(-860,99,-1400),360,16,-20);Away();return true;},
+                ()=>Capture("conn-water-1-bridge-over-the-channel-from-bank-to-low-bank"),
+                // w4a. Tunnel under the river with ramps on both banks; capture the last hover in the underground view
+                ()=>{tool.SetTool(DevTool.Street);tool.SetRoadMode(RoadBuildMode.Automatic);tool.SetRoadElevation(0);connectionBefore=tool.Streets.network.Clone();
+                    OverWater(new Vector2(-1480,-1000),640);return true;},
+                ()=>{Click(Gui(RoadAt(new Vector2(-1750,-1000),StreetLevel(new Vector2(-1750,-1000)))));return true;},
+                ()=>{tool.SetRoadMode(RoadBuildMode.Tunnel);Hover(Free(new Vector2(-1590,-1000)));return true;},
+                ()=>{Click(Gui(Free(new Vector2(-1590,-1000))));return true;},
+                ()=>{Click(Gui(Free(new Vector2(-1410,-1000))));return true;},
+                ()=>{Hover(RoadAt(new Vector2(-1250,-1000),StreetLevel(new Vector2(-1250,-1000))));return true;},
+                ()=>{Hover(RoadAt(new Vector2(-1250,-1000),StreetLevel(new Vector2(-1250,-1000))));return true;},
+                ()=>Snapped("two-lane street")&&Capture("conn-water-2-tunnel-under-the-river-comes-up-to-the-street"),
+                ()=>{Click(Gui(RoadAt(new Vector2(-1250,-1000),StreetLevel(new Vector2(-1250,-1000)))));return true;},
+                ()=>{Joined("w4a (tunnel under the river)",new Vector2(-1750,-1000),new Vector2(-1250,-1000));tool.SetTool(DevTool.Select);tool.SetRoadUnderground(false);return true;},
+                // w5b. At the low bank's edge the deck cannot clear the water: the label says what to do
+                ()=>{tool.SetTool(DevTool.Street);tool.SetRoadMode(RoadBuildMode.Bridge);connectionBefore=tool.Streets.network.Clone();OverWater(new Vector2(-980,-700),420);return true;},
+                ()=>{Click(Gui(RoadAt(new Vector2(-1040,-700),StreetLevel(new Vector2(-1040,-700)))));return true;},
+                ()=>{Hover(Free(new Vector2(-900,-700)));return true;},
+                ()=>{Require(tool.StreetProblem!=null&&tool.StreetProblem.Contains("further back"),"w5b: expected a refusal saying to start further back: "+tool.StreetProblem);
+                    connectionResults.Add("w5b (low bank at the water's edge): refused: "+tool.StreetProblem);tool.SetTool(DevTool.Select);return true;},
+                // we2. Airside: S1 → Bridge → over the canal → S2
+                ()=>{tool.SetTool(DevTool.Road);tool.SetSurface(PavementSurface.Asphalt);tool.SetRoadMode(RoadBuildMode.Automatic);tool.SetRoadElevation(0);
+                    edgesBefore=net.edges.Count;game.view.FocusPoint(origin+new Vector3(40,0,-160),520,65,0);return true;},
+                ()=>{Click(Gui(RoadAt(W(-200,-160),origin.y)));return true;},
+                ()=>{tool.SetRoadMode(RoadBuildMode.Bridge);Hover(Free(W(0,-160)));return true;},
+                ()=>{Click(Gui(Free(W(0,-160))));return true;},
+                ()=>{Click(Gui(RoadAt(W(200,-160),origin.y)));return true;},
+                ()=>{int s1=net.nodes.Where(n=>Vector2.Distance(new Vector2(n.position.x,n.position.z),new Vector2(-200,-160))<.6f).Select(n=>n.id).DefaultIfEmpty(-1).First();
+                    int s2=net.nodes.Where(n=>Vector2.Distance(new Vector2(n.position.x,n.position.z),new Vector2(200,-160))<.6f).Select(n=>n.id).DefaultIfEmpty(-1).First();
+                    Require(s1>=0&&s2>=0&&net.FindVehicleRoute(s1,s2)!=null,"we2: the service roads are not joined over the canal. "+tool.RoadProblem);
+                    connectionResults.Add("we2 (service bridge over the canal): joined; "+string.Join(", ",net.edges.Skip(edgesBefore).Select(e=>e.structure+" "+net.Path(e).Length.ToString("0")+" m")));
+                    tool.SetTool(DevTool.Select);game.view.FocusPoint(origin+new Vector3(0,0,-160),230,20,-25);Away();return true;},
+                ()=>Capture("conn-water-3-service-road-bridge-over-the-airport-canal"),
+            };
+        }
+        static void ReviewWater(int stage)
+        {
+            waterSteps??=WaterSteps();int step=stage-300;
+            if(step<waterSteps.Length){if(waterSteps[step]())Go(stage+1);return;}
+            var report=new ConnectionsResult {result="Passed: water crossings w1, w2, w4, w5 and airside by actual mouse clicks.",utc=DateTime.UtcNow.ToString("O"),flows=connectionResults.ToArray()};
+            File.WriteAllText("Logs/road-water-play-review.json",JsonUtility.ToJson(report,true));File.AppendAllText("Logs/pavement-ownership-review.txt",report.result+"\n");
+            waterSteps=null;SessionState.SetInt(Key+"Stage",100);RestoreInput();EditorApplication.ExitPlaymode();
+        }
+
         [Serializable]sealed class StructuresResult {public string result,utc;public int funds,publicSections,airsideSections;public float truckElevation;}
         static void ShowTunnelTruck()
         {

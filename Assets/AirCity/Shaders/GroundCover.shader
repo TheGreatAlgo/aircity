@@ -130,6 +130,7 @@ Shader "AirCity/GroundCover"
                     albedo = lerp(albedo, half3(.31,.33,.22), lichen);
                 }
                 Light sun = GetMainLight(TransformWorldToShadowCoord(input.positionWS));
+                sun.shadowAttenuation = lerp(sun.shadowAttenuation, 1, GetMainLightShadowFade(input.positionWS)); // fade out at the end of the shadow range, as the terrain does
                 half3 ambient = SampleSH(normal);
                 half diffuse = saturate(dot(normal, sun.direction));
                 half3 light = ambient + sun.color * diffuse * sun.shadowAttenuation;

@@ -90,7 +90,7 @@ namespace AirCity.EditorTools.Game
                     .Select(s => new SavedScene { path = s.path, loaded = s.isLoaded, active = s.isActive }).ToArray() }));
                 SessionState.SetBool(Key + "Exit", exitEditor);
                 SessionState.SetBool(Key+"PerformanceOnly",performanceOnly);
-                SessionState.SetBool(Key+"StructuresOnly",false);
+                SessionState.SetBool(Key+"StructuresOnly",false);SessionState.SetBool(Key+"ConnectionsOnly",false);SessionState.SetBool(Key+"WaterOnly",false);
                 SessionState.SetBool(Key + "Background", Application.runInBackground);
                 SessionState.SetBool(Key+"AsyncShaders",ShaderUtil.allowAsyncCompilation);ShaderUtil.allowAsyncCompilation=false;
                 SessionState.SetBool(Key + "Paused", EditorApplication.isPaused);
@@ -124,7 +124,7 @@ namespace AirCity.EditorTools.Game
         static void Update()
         {
             int stage = SessionState.GetInt(Key + "Stage", 0);
-            if (stage >= 100)
+            if (stage >= 100 && stage < 200 || stage >= 400)
             {
                 if (!EditorApplication.isPlaying && !EditorApplication.isPlayingOrWillChangePlaymode) Finish(stage == 100);
                 return;
@@ -142,10 +142,12 @@ namespace AirCity.EditorTools.Game
                 if(stage==0)
                 {
                     if(!Initialize())return;
-                    Go(SessionState.GetBool(Key+"StructuresOnly",false)?60:SessionState.GetBool(Key+"PerformanceOnly",false)?-1:1,3f);
+                    Go(SessionState.GetBool(Key+"WaterOnly",false)?300:SessionState.GetBool(Key+"ConnectionsOnly",false)?200:SessionState.GetBool(Key+"StructuresOnly",false)?60:SessionState.GetBool(Key+"PerformanceOnly",false)?-1:1,3f);
                     return;
                 }
                 if(stage>=60&&stage<90){ReviewStructures(stage);return;}
+                if(stage>=200&&stage<300){ReviewConnections(stage);return;}
+                if(stage>=300&&stage<400){ReviewWater(stage);return;}
                 switch(stage)
                 {
                     case -1:BenchmarkPlacement();SessionState.SetInt(Key+"Stage",100);RestoreInput();EditorApplication.ExitPlaymode();break;

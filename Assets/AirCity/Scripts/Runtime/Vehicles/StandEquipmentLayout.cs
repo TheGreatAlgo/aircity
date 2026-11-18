@@ -309,6 +309,7 @@ namespace AirCity.Vehicles
         static List<Box> Fixed(Airport airport,BaggageDepot except=null,bool serviceYard=false)
         {
             var boxes = new List<Box>();
+            foreach (var hangar in airport.Hangars) boxes.Add(hangar.BuildingBox);
             foreach (var depot in airport.GetComponentsInChildren<BaggageDepot>()) if (depot!=except) boxes.Add(depot.BuildingBox);
             foreach (var terminal in airport.terminals)
                 foreach (var polygon in terminal.Footprints())

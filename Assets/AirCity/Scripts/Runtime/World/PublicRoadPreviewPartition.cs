@@ -35,6 +35,29 @@ namespace AirCity.World
                 {expanded.Add(edge.a);expanded.Add(edge.b);}
                 touched=expanded;
             }
+            // A bridge's piers are spaced along its whole run (RoadStructureBuilder.Runs): a change anywhere along
+            // it re-lays them all, so the run's other sections and bends are redrawn with it.
+            var arms=new Dictionary<int,List<PublicRoadSegment>>();
+            foreach(var edge in draft.segments)if(edge.structure==RoadStructure.Elevated)
+                foreach(int node in new[]{edge.a,edge.b})
+                {if(!arms.TryGetValue(node,out var list))arms.Add(node,list=new List<PublicRoadSegment>());list.Add(edge);}
+            if(arms.Count>0)
+            {
+                var degree=new Dictionary<int,int>();
+                foreach(var edge in draft.segments){degree[edge.a]=degree.TryGetValue(edge.a,out int a)?a+1:1;degree[edge.b]=degree.TryGetValue(edge.b,out int b)?b+1:1;}
+                var open=new Stack<int>();foreach(int node in touched)if(arms.ContainsKey(node))open.Push(node);
+                var walked=new HashSet<int>();
+                while(open.Count>0)
+                {
+                    int node=open.Pop();
+                    foreach(var edge in arms[node])
+                    {
+                        if(!walked.Add(edge.id))continue;
+                        int far=edge.a==node?edge.b:edge.a;touched.Add(far);
+                        if(degree[far]==2&&arms[far].Count==2)open.Push(far);
+                    }
+                }
+            }
             foreach(var edge in draft.segments)
                 if(touched.Contains(edge.a)||touched.Contains(edge.b))changedSegments.Add(edge.id);else unchangedSegments.Add(edge.id);
             foreach(var edge in draft.segments)if(changedSegments.Contains(edge.id))

@@ -20,6 +20,7 @@ namespace AirCity.Game
         public int clearedTrees;
         public float earthwork, elevation;
         public bool runwayBuilt, standBuilt, receptionBuilt;
+        public int receptionSiteVersion;
         public Vector2 runwayA, runwayB, stand, standAlong, reception;
         public float standHeading, receptionHeading;
         public List<CareerTaxiway> taxiways = new List<CareerTaxiway>();

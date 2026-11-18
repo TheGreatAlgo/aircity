@@ -22,20 +22,20 @@ namespace AirCity.Airfield.Building
             }
             return result;
         }
-        public static LandscapeMesh Structures(Airport airport,TaxiwayNetwork net,TaxiwayBuilder builder,List<BuiltSurfaceMap.Triangle> ownership)
+        public static LandscapeMesh Structures(Airport airport,TaxiwayNetwork net,TaxiwayBuilder builder,List<BuiltSurfaceMap.Triangle> ownership,List<Vector3> piers=null)
         {
             var mesh=new LandscapeMesh();float Ground(Vector2 p)=>airport.TerrainHeight!=null?airport.TerrainHeight(p):0f;
-            foreach(var item in builder.StructurePaths())
-                RoadStructureBuilder.Build(item.path,item.structure,item.half,Ground,mesh,ownership,(p,radius)=>
+            foreach(var item in builder.StructurePieces())
+                RoadStructureBuilder.Build(item.piece,Ground,mesh,ownership,(p,radius)=>
                 {
                     var at=Geo.XZ(p);
                     foreach(var edge in net.edges)
-                        if(edge!=item.edge && edge.structure!=RoadStructure.Tunnel && net.Path(edge).DistanceTo(at)<edge.width*.5f+radius &&
+                        if(edge!=item.edge && edge!=item.other && edge.structure!=RoadStructure.Tunnel && net.Path(edge).DistanceTo(at)<edge.width*.5f+radius &&
                             net.Path(edge).Height(net.Path(edge).ClosestParameter(at))<p.y-1f)return false;
                     foreach(var runway in airport.Runways)
                         if(CareerDistance(at,Geo.XZ(runway.start),Geo.XZ(runway.end))<runway.HalfWidthTotal+radius)return false;
                     return true;
-                },item.from,item.to,item.edge!=null?p=>builder.RoadHeight(item.edge,p):(System.Func<Vector2,float>)null);
+                },piers);
             return mesh;
         }
         static float CareerDistance(Vector2 p,Vector2 a,Vector2 b)=>Vector2.Distance(p,Geo.ClosestOnSegment(p,a,b,out _));

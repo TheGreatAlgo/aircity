@@ -115,6 +115,49 @@ namespace AirCity.Tests.World
             AssertBuffersMatch(world);
         }
 
+        [Test]
+        public void DistantShadowMeshesHoldEverySurvivingTreeOnceAndFollowClearingAndTerrain()
+        {
+            RequireInstancing();
+            var world = Grid(); forest.Rebuild(world, _ => 80f);
+            camera.transform.SetPositionAndRotation(new Vector3(-2400f, 300f, -2400f), Quaternion.LookRotation(new Vector3(1f, -1f, 1f)));
+            forest.DrawForCamera(camera);
+            Assert.AreEqual(world.trees.Count, forest.DistantShadowTrees, "Every species must have a crown to cast.");
+            var shadows = Shadows();
+            Assert.AreEqual(Field<IList>(forest, "cells").Count, shadows.Length, "One shadow-only mesh per species per 800 m cell in this fixture.");
+            Assert.AreEqual(world.trees.Count * 7L, shadows.Sum(r => (long)Mesh(r).vertexCount), "Seven vertices per tree.");
+            foreach (var renderer in shadows)
+            {
+                Assert.AreEqual(UnityEngine.Rendering.ShadowCastingMode.ShadowsOnly, renderer.shadowCastingMode);
+                Assert.AreEqual(Matrix4x4.identity, renderer.localToWorldMatrix, "The crowns are stored in world space.");
+                Assert.AreEqual("AirCity/TreeShadow", renderer.sharedMaterial.shader.name);
+                var bounds = renderer.bounds;
+                Assert.Less(bounds.size.x, 900f); Assert.Greater(bounds.min.y, 80f - 3f, "A crown does not reach below the ground.");
+                Assert.Less(bounds.max.y, 80f + 40f); Assert.Greater(bounds.size.y, 3f);
+                float away = Vector3.Distance(camera.transform.position, bounds.ClosestPoint(camera.transform.position));
+                if (away < 2400f) Assert.IsTrue(renderer.enabled, "Cells within the tree shadow range cast.");
+                if (away > 2800f) Assert.IsFalse(renderer.enabled, "Cells wholly beyond the tree shadow range are switched off.");
+            }
+            Assert.IsTrue(shadows.Any(r => r.enabled)); Assert.IsTrue(shadows.Any(r => !r.enabled));
+
+            var clearing = Rect.MinMaxRect(-110f, -110f, 110f, 110f);
+            int removed = 0;
+            foreach (var tree in world.trees) if (clearing.Contains(tree.position)) { tree.removed = true; removed++; }
+            Assert.Greater(removed, 0);
+            forest.RefreshRemoved(world, _ => 80f, clearing); forest.DrawForCamera(camera);
+            Assert.AreEqual(world.trees.Count - removed, forest.DistantShadowTrees);
+            Assert.AreEqual((world.trees.Count - removed) * 7L, Shadows().Sum(r => (long)Mesh(r).vertexCount));
+
+            forest.RefreshHeights(Rect.MinMaxRect(1000f, 1000f, 1300f, 1300f), _ => 140f); forest.DrawForCamera(camera);
+            Assert.Greater(Shadows().Max(r => r.bounds.max.y), 140f, "Raised ground must carry its trees' shadow crowns up with it.");
+
+            forest.Rebuild(new ValleyWorld(), _ => 0f); forest.DrawForCamera(camera);
+            Assert.AreEqual(0, forest.DistantShadowTrees); Assert.AreEqual(0, Shadows().Length);
+        }
+
+        MeshRenderer[] Shadows() => forest.GetComponentsInChildren<MeshRenderer>(true).Where(r => Mesh(r) != null).ToArray();
+        static Mesh Mesh(MeshRenderer renderer) => renderer.GetComponent<MeshFilter>().sharedMesh;
+
         void AssertBuffersMatch(ValleyWorld world)
         {
             var detail = Matrices(DetailBatches()).ToDictionary(p => p.Key, p => p.Value);

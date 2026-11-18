@@ -67,13 +67,14 @@ Shader "AirCity/RegionOcean"
                 float3 normal = normalize(float3(-slope.x,1,-slope.y));
                 float3 view = GetWorldSpaceNormalizeViewDir(input.positionWS);
                 Light sun = GetMainLight(TransformWorldToShadowCoord(input.positionWS));
+                sun.shadowAttenuation = lerp(sun.shadowAttenuation, 1, GetMainLightShadowFade(input.positionWS)); // fade out at the end of the shadow range, as the terrain does
                 float sparkle = pow(saturate(dot(reflect(-sun.direction, normal), view)), 110) * sun.shadowAttenuation;
                 float fresnel = pow(1 - saturate(dot(normal, view)), 4);
                 half3 colour = lerp(_DeepColour.rgb, _ShallowColour.rgb, shallow);
                 float caustic = pow(saturate(sin(p.x * .29 + sin(p.y * .19 + t * .5)) * sin(p.y * .31 - t * .4)), 5);
                 colour *= .985 + .04 * caustic * shallow * ripple;
                 colour = lerp(colour, half3(.34,.52,.62), fresnel * .52);
-                colour *= .6 + .4 * sun.shadowAttenuation;
+                colour *= .42 + .58 * sun.shadowAttenuation;
                 colour += sun.color * sparkle * .22 * ripple;
                 // A thin broken wave front progresses across the shallows, rather than a static white outline.
                 float surge = shoreDistance * .9 - t * .68 + sin(p.x * .13 + p.y * .17) * .75;

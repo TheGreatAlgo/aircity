@@ -67,6 +67,21 @@ Assets/AirCity/
 ArtSource/                 scripts that generate the art (Blender); see ArtSource/README.md
 ```
 
+## Visitor centre
+
+The **Visitor centre** tool builds a timber-and-glass pavilion with an 18-bay parking lot, accessible entrance,
+pedestrian crossing and a real driveway to the public-road network. Prepare the whole site as level ground
+and rotate its parking entrance toward a nearby road. See [visitor centre](Docs/systems/visitor-centre.md).
+
+## Hangars
+
+Small airfields can also build **Hangars** from the bottom toolbar: place a one-aircraft steel hangar and run
+a level taxiway across its front. A concrete connection appears automatically. Residents can taxi to a stand
+and back, and selected compatible aircraft can **Taxi to hangar**. Aircraft enter nose-in and are pushed out
+by hand before taxiing. Doors, leases, resident positions and ground trips save with the airport.
+Career construction costs $12,000 and an accessible occupied bay
+earns $600 per 30 game days; Sandbox builds free. See [hangars](Docs/systems/hangars.md).
+
 ## Aircraft
 
 Aircraft are generated from code (`ArtSource/Aircraft`), never hand-edited in Unity. Eight types, covering every ICAO

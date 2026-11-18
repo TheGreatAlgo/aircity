@@ -13,7 +13,7 @@ namespace AirCity.Dev
 {
     /// <summary>The sandbox's airfield tools (DevToolbar has a button for each).</summary>
     /// <summary>The sandbox's tools.</summary>
-    public enum DevTool { Select, Runway, Taxiway, Road, Apron, Terminal, Depot, Stand, DeIcing, Bridge, Lights, Delete, Baggage, Containers, DeicingStorage, DeicingParking, DeicingOutsideAccess, Street, ClearTrees, Level, Reception }
+    public enum DevTool { Select, Runway, Taxiway, Road, Apron, Terminal, Depot, Stand, DeIcing, Bridge, Lights, Delete, Baggage, Containers, DeicingStorage, DeicingParking, DeicingOutsideAccess, Street, ClearTrees, Level, Reception, Hangar }
 
     /// <summary>What the lights tool puts on the taxiway sections or runways it's clicked or dragged over: blue taxiway
     /// edge lights, a runway's basic lighting (night) or precision lighting (night, fog and low cloud), or nothing
@@ -98,7 +98,7 @@ namespace AirCity.Dev
 
         public static readonly float[] TimeScales = { 1f, 5f, 20f, 60f };
 
-        enum Kind { None, Runway, Edge, Depot, Apron, Stand, Terminal, BaggageHall, DeicingWorkArea, DeicingParking, DeicingOutsideAccess, PublicRoad }
+        enum Kind { None, Runway, Edge, Depot, Apron, Stand, Terminal, BaggageHall, DeicingWorkArea, DeicingParking, DeicingOutsideAccess, PublicRoad, Hangar }
 
         /// <summary>Something on the airfield to select or delete.</summary>
         struct Pick
@@ -111,6 +111,7 @@ namespace AirCity.Dev
             public int apron;
             public Stand stand;
             public Terminal terminal;
+            public SmallHangar hangar;
             public BaggageDepot baggageHall;
             public DeicingWorkArea deicingWorkArea;
             public DeicingParkingBay deicingParking;
@@ -118,7 +119,7 @@ namespace AirCity.Dev
 
             public static Pick None => new Pick { apron = -1 };
             public bool Same(in Pick o) => kind == o.kind && publicRoad == o.publicRoad && runway == o.runway && edge == o.edge && depot == o.depot &&
-                                           apron == o.apron && stand == o.stand && terminal == o.terminal && baggageHall==o.baggageHall &&
+                                           apron == o.apron && stand == o.stand && terminal == o.terminal && hangar == o.hangar && baggageHall==o.baggageHall &&
                                            deicingWorkArea == o.deicingWorkArea && deicingParking == o.deicingParking && deicingAccess == o.deicingAccess;
         }
 
@@ -265,6 +266,7 @@ namespace AirCity.Dev
         }
         public ApronArea SelectedApron => selection.kind == Kind.Apron ? airport.aprons[selection.apron] : null;
         public Terminal SelectedTerminal => selection.kind == Kind.Terminal ? selection.terminal : null;
+        public SmallHangar SelectedHangar => selection.kind == Kind.Hangar ? selection.hangar : null;
         /// <summary>Floors of the selected terminal, else of new ones.</summary>
         public int TerminalFloors => SelectedTerminal != null ? SelectedTerminal.floors : terminalFloors;
         /// <summary>Why the last bridge change didn't take, or what it did, or null.</summary>
@@ -1019,6 +1021,7 @@ namespace AirCity.Dev
                 case DevTool.Apron: ApronTool(mouse, keys, click, free, point); break;
                 case DevTool.Terminal: TerminalTool(mouse, keys, click, free, point); break;
                 case DevTool.Depot: DepotTool(mouse, click, free, point); break;
+                case DevTool.Hangar: HangarTool(click, free, point); break;
                 case DevTool.Stand:
                 case DevTool.DeIcing: StandTool(mouse, keys, click, free, point); break;
                 case DevTool.Bridge: BridgeTool(click, free, point); break;
@@ -1115,7 +1118,7 @@ namespace AirCity.Dev
             {
                 if (tool==DevTool.Baggage && !DevGui.PointerOverHud) GetComponent<DevBaggageControls>()?.Cancel();
                 if (!DevGui.PointerOverHud && (tool == DevTool.DeicingStorage || tool == DevTool.DeicingParking ||
-                    tool == DevTool.DeicingOutsideAccess || tool == DevTool.Depot)) SetTool(DevTool.Select);
+                    tool == DevTool.DeicingOutsideAccess || tool == DevTool.Depot || tool == DevTool.Hangar)) SetTool(DevTool.Select);
                 chainNode = -1;
                 DropRunway();
                 bridgeStart = headNear = null;
@@ -1287,6 +1290,8 @@ namespace AirCity.Dev
             runwayTerrain=null;
             runwayPrice=Mathf.CeilToInt(Mathf.Max(0f,dragging.Length-originalRunwayLength)*20f);
             runwayProblem=null;
+            runwayProblem=AirCity.Game.HangarConstruction.RunwayProblem(airport,dragging);
+            if(runwayProblem!=null)return false;
             if(game==null)return true;
             var offset=Geo.XZ(airport.transform.position);var a=Geo.XZ(dragging.start)+offset;var b=Geo.XZ(dragging.end)+offset;
             float reach=dragging.HalfWidthTotal+dragging.WorkMargin+AirCity.World.GroundCoverScatter.MaximumFootprintRadius+6f;
@@ -1300,13 +1305,13 @@ namespace AirCity.Dev
         void FinishRunway()
         {
             if (dragging == null) return;
+            if (!QuoteRunway()) return;
             Rect? terrainChange=null;
             if (game != null)
             {
-                if(!QuoteRunway())return;
                 int construction=Mathf.CeilToInt(Mathf.Max(0f,dragging.Length-originalRunwayLength)*20f);
                 if(!runwayTerrain.TryCommit(game.State,construction,out runwayPrice,out runwayProblem)){runwayQuoted=false;return;}
-                runwayTerrain.PlaceProfile(airport,dragging,extending==null);
+                runwayTerrain.PlaceProfile(airport,dragging,extending==null && !game.State.layout.receptionBuilt);
                 dragging.gameObject.hideFlags = HideFlags.None;
                 if(runwayTerrain.ChangedSamples>0)terrainChange=runwayTerrain.Bounds;
             }
@@ -1375,6 +1380,9 @@ namespace AirCity.Dev
             if(roadProblem!=null){airsideTerrain=null;airsideQuoteKey=default;}
             if(game!=null && chainNode>=0 && roadProblem==null) QuoteAirside(road,click);
             if (!click || roadProblem != null) return;
+            // Clicking onto a service road takes its level (AdoptRoadLevel), at the start of a chain and on joining one.
+            bool joinedRoad=road&&(lineSnap.node>=0&&net.Node(lineSnap.node)!=null&&net.EdgesAt(lineSnap.node).Any(e=>e.IsRoad)||lineSnap.edge!=null&&lineSnap.edge.IsRoad);
+            bool structure=lineSnap.edge!=null?lineSnap.edge.structure!=RoadStructure.Ground:lineSnap.node>=0&&net.Node(lineSnap.node)!=null&&net.EdgesAt(lineSnap.node).Any(e=>e.structure!=RoadStructure.Ground);
             if(game!=null && chainNode>=0)
             {
                 if(airsideTerrain==null || !airsideTerrain.TryCommit(game.State,out roadProblem)){airsideQuoteKey=default;return;}
@@ -1385,10 +1393,11 @@ namespace AirCity.Dev
                 game.valley.QueueLevelSurface(airsideTerrain.Bounds,false);
                 game.SharedConstructionChanged();
                 airsideTerrain=null;airsideQuoteKey=default;
+                if(joinedRoad){var end=airport.transform.TransformPoint(net.Node(chainNode).position);AdoptRoadLevel(Geo.XZ(end),end.y,true,structure,false);}
                 return;
             }
             int node = Commit(net, lineSnap);
-            if(road&&chainNode<0)roadDatum=airport.transform.TransformPoint(net.Node(node).position).y-roadElevation;
+            if(road&&chainNode<0){var start=airport.transform.TransformPoint(net.Node(node).position);AdoptRoadLevel(Geo.XZ(start),start.y,joinedRoad,structure,true);}
             if (chainNode >= 0 && chainNode != node)
             {
                 net.Connect(chainNode,node,NewWidth,road && surface==PavementSurface.Grass?PavementSurface.Asphalt:surface,
@@ -2104,6 +2113,7 @@ namespace AirCity.Dev
             public TaxiwayEdge edge;
             /// <summary>A runway to put a node on, or null.</summary>
             public Runway runway;
+            public SmallHangar hangarFrontage;
             /// <summary>What it joins, in words, or null for a new end.</summary>
             public string what;
         }
@@ -2444,6 +2454,7 @@ namespace AirCity.Dev
             var snap = Onto(net, q, reach, null, road);
             if (snap.what == null && !road)
             {
+                if (TrySnapHangarTaxiway(net, q, reach, out var hangarSnap)) return hangarSnap;
                 // a stand's front line: the taxilane that connects it
                 float bestOff = reach * 1.5f;
                 foreach (var l in net.Layouts())
@@ -2482,45 +2493,60 @@ namespace AirCity.Dev
             float bestD = float.MaxValue;
             float target=game!=null?game.valley.DisplayHeight(q+Geo.XZ(airport.transform.position))-airport.transform.position.y+(road?roadElevation:0f):0f;
             bool layers=game!=null&&(tool==DevTool.Road||tool==DevTool.Taxiway);
+            // Service roads at another level join only where the cursor is on them (SnapAcrossLevels), the nearest
+            // level first, as on the Street tool; taxiways and runways only ever at the working level.
+            var origin=airport.transform.position;var qWorld=q+Geo.XZ(origin);bool across=layers&&road;
+            float level=across?RoadWorkingLevel(qWorld):0f,widest=0f;
+            foreach(var e in net.edges)widest=Mathf.Max(widest,e.width*.5f);
+            var chain=chainNode>=0?net.Node(chainNode):null;
+            string Name(string name,float height)=>chain==null||!across?name:name+LevelHint(height,chain.position.y+origin.y);
             foreach (var n in net.nodes)
             {
-                if(layers&&road&&!SnapRoadLayer(n.position.y+airport.transform.position.y,q+Geo.XZ(airport.transform.position)))continue;
+                bool layer=!across||SnapRoadLayer(n.position.y+origin.y,qWorld);
                 if(layers&&!road&&Mathf.Abs(n.position.y-target)>3f)continue;
                 float d = Vector2.Distance(Geo.XZ(n.position), q);
-                if (d >= bestD) continue;
+                if (d > Mathf.Max(reach, n.runway != null ? Mathf.Max(n.runway.HalfWidthTotal, widest) : widest) + (across ? AcrossParallax : 0f)) continue;
                 bool same = n.runway != null && !road;
-                float pavement = n.runway != null ? n.runway.HalfWidthTotal : 0f;
+                float pavement = n.runway != null ? n.runway.HalfWidthTotal : 0f,roadPavement=0f;
                 foreach (var e in net.EdgesAt(n.id))
                 {
                     same |= e.IsRoad == road;
                     pavement = Mathf.Max(pavement, e.width * 0.5f);
+                    if(e.IsRoad)roadPavement=Mathf.Max(roadPavement,e.width*.5f);
                 }
+                float rank;
                 // its own kind sticks from anywhere on its pavement or within reach; the other kind only on its pavement
-                if (d <= (same ? Mathf.Max(reach, pavement) : Mathf.Min(reach, pavement)))
-                {
-                    bestD = d;
-                    bestNode = n;
-                }
+                if(layer){if(d>(same?Mathf.Max(reach,pavement):Mathf.Min(reach,pavement)))continue;rank=d;}
+                else{if(n.runway!=null||roadPavement<=0f||!SnapAcrossLevels(n.position.y+origin.y,Geo.XZ(n.position)+Geo.XZ(origin),Mathf.Max(reach,roadPavement)))continue;rank=AcrossRank(n.position.y+origin.y,level,0f);}
+                if (rank >= bestD) continue;
+                bestD = rank;
+                bestNode = n;
             }
             if (bestNode != null)
                 return new LineSnap { p = Geo.XZ(bestNode.position), node = bestNode.id,
-                    what = what ?? (bestNode.runway != null ? $"runway {bestNode.runway.Designation}" : JoinName(net, bestNode.id, road)) };
+                    what = what ?? (bestNode.runway != null ? $"runway {bestNode.runway.Designation}" : Name(JoinName(net, bestNode.id, road),bestNode.position.y+origin.y)) };
             TaxiwayEdge bestEdge = null;
-            var on = q;
+            var on = q;float onHeight=0f;
             bestD = float.MaxValue;
             foreach (var e in net.edges)
             {
-                var path=net.Path(e);float t=path.ClosestParameter(q);if(layers&&road&&!SnapRoadLayer(path.Height(t)+airport.transform.position.y,q+Geo.XZ(airport.transform.position)))continue;
+                var path=net.Path(e);float t=path.ClosestParameter(q);float h=path.Height(t)+origin.y;bool layer=!across||SnapRoadLayer(h,qWorld);
                 if(layers&&!road&&Mathf.Abs(path.Height(t)-target)>3f)continue;var c=path.Horizontal(t);
-                float d = Vector2.Distance(c, q);
-                if (d >= bestD || d > (e.IsRoad == road ? Mathf.Max(reach, e.width * 0.5f) : e.width * 0.5f)) continue;
-                bestD = d;
+                float d = Vector2.Distance(c, q),rank;
+                if(layer){if(d > (e.IsRoad == road ? Mathf.Max(reach, e.width * 0.5f) : e.width * 0.5f))continue;rank=d;}
+                else
+                {
+                    if(!e.IsRoad||d>widest+AcrossParallax||!SnapAcrossSection(path,airport.transform,e.width*.5f,out t,out h))continue;
+                    c=path.Horizontal(t);rank=AcrossRank(h,level,0f);
+                }
+                if (rank >= bestD) continue;
+                bestD = rank;
                 bestEdge = e;
-                on = c;
+                on = c;onHeight=h;
             }
             if (bestEdge != null)
                 return new LineSnap { p = on, node = -1, edge = bestEdge,
-                    what = what ?? (bestEdge.IsRoad ? (road ? "the road" : "the road (crossing: the road gives way)")
+                    what = what ?? (bestEdge.IsRoad ? (road ? Name("the road",onHeight) : "the road (crossing: the road gives way)")
                         : road ? "the taxiway (crossing: the road gives way)" : "the taxiway") };
             foreach (var r in airport.Runways)
                 if ((!layers||Mathf.Abs(r.ElevationAt(q)-target)<3f)&&r.Contains(Geo.X0Z(q)))
@@ -2559,6 +2585,7 @@ namespace AirCity.Dev
             bool terrain=game!=null&&game.valley.Terrain!=null&&game.valley.Terrain.GetComponent<TerrainCollider>().Raycast(ray,out hit,20000);
             bool clipped=terrain&&game.valley.BuiltSurfaces!=null&&game.valley.BuiltSurfaces.Contains(Geo.XZ(hit.point));
             float maximum=terrain&&!undergroundEditing&&!clipped?hit.distance:float.PositiveInfinity;
+            roadRay=ray;roadRayGround=maximum;
             if(PickRoadLevel(ray,maximum,out point))return true;
             if(undergroundEditing)
             {
@@ -2568,9 +2595,10 @@ namespace AirCity.Dev
             if(terrain)
             {
                 point=hit.point;
-                if((tool==DevTool.Street||tool==DevTool.Road)&&Mathf.Abs(roadElevation)>.01f)
+                if((tool==DevTool.Street||tool==DevTool.Road)&&(Mathf.Abs(roadElevation)>.01f||game.State.world.IsWater(Geo.XZ(hit.point))))
                 {
-                    // Intersect the raised construction surface, keeping the elevated endpoint beneath the cursor.
+                    // Intersect the raised construction surface, keeping the elevated endpoint beneath the cursor
+                    // (over water the ray meets the bed, but the road goes over the surface).
                     for(int i=0;i<5;i++)
                     {
                         if(Mathf.Abs(ray.direction.y)<.001f)break;
@@ -2641,6 +2669,8 @@ namespace AirCity.Dev
                 if (area != null && area.Contains(p)) return new Pick { kind = Kind.DeicingWorkArea, deicingWorkArea = area, apron = -1 };
             var hall=GetComponent<DevBaggageControls>()?.HallAt(world);
             if (hall!=null) return new Pick { kind=Kind.BaggageHall,baggageHall=hall,apron=-1 };
+            foreach (var hangar in airport.Hangars)
+                if (Geo.Inside(hangar.Pad,p)) return new Pick { kind=Kind.Hangar,hangar=hangar,apron=-1 };
             if (airport.TryPickDepot(p, out var d, 2f)) return new Pick { kind = Kind.Depot, depot = d, apron = -1 };
             if (airport.TryPickRunway(local, out var r)) return new Pick { kind = Kind.Runway, runway = r, apron = -1 };
             foreach(var edge in airport.Taxiways.edges)
@@ -2668,6 +2698,7 @@ namespace AirCity.Dev
             Kind.Apron => p.apron >= 0 && p.apron < airport.aprons.Count,
             Kind.Stand => airport.Taxiways.stands.Contains(p.stand),
             Kind.Terminal => airport.terminals.Contains(p.terminal),
+            Kind.Hangar => p.hangar != null && p.hangar.isActiveAndEnabled,
             _ => true,
         };
 
@@ -2686,6 +2717,7 @@ namespace AirCity.Dev
                 case Kind.Apron: return airport.aprons[p.apron].surface + " apron";
                 case Kind.Stand: return p.stand.Name;
                 case Kind.Terminal: return $"Terminal {airport.terminals.IndexOf(p.terminal) + 1}";
+                case Kind.Hangar: return p.hangar.BayName;
                 default: return null;
             }
         }
@@ -2717,6 +2749,11 @@ namespace AirCity.Dev
                     break;
                 case Kind.Depot:
                     airport.RemoveDepot(p.depot);
+                    break;
+                case Kind.Hangar:
+                    if (!p.hangar.CanDemolish) { hangarProblem = "End all bay leases before demolishing this hangar."; game?.SetMessage(hangarProblem); return; }
+                    airport.RemoveHangar(p.hangar);
+                    game?.SharedConstructionChanged();
                     break;
                 case Kind.Apron:
                     airport.RemoveApron(p.apron);
@@ -2772,6 +2809,7 @@ namespace AirCity.Dev
             DrawDeicingAreaPreview(pointing);
             DrawDeicingObjectPreview(pointing);
             DrawDepotPreview(pointing, point);
+            DrawHangarPreview(pointing, point);
             var baggageBuild=GetComponent<DevBaggageControls>();
             if (tool==DevTool.Baggage && pointing && baggageBuild!=null)
             {
@@ -2881,10 +2919,12 @@ namespace AirCity.Dev
                     }
                 }
                 Marker(lineSnap.p, lineSnap.what != null, RoadProblem != null, point);
+                if (lineSnap.hangarFrontage != null) DrawHangarTaxiwayGuide(lineSnap.hangarFrontage);
             }
             if (tool == DevTool.Runway && pointing && runwayCursorShown)
                 Marker(runwayCursor, false, RunwayProblem != null, point);
             DrawStreetMarker(point);
+            DrawRoadLevelGuide();
             outlines.End();
         }
 
@@ -3126,6 +3166,9 @@ namespace AirCity.Dev
                     return true;
                 case Kind.Depot:
                     c = p.depot.Corners;
+                    break;
+                case Kind.Hangar:
+                    c = p.hangar.Pad;
                     break;
                 case Kind.BaggageHall:
                     var site=p.baggageHall.PaintArea;

@@ -89,6 +89,8 @@ namespace AirCity.Traffic
             public bool pushBack, handPush;
             /// <summary>Departures: the push-back that gets it here.</summary>
             public PushBackPath push;
+            /// <summary>A stored resident's source bay, including a push resumed outside its threshold.</summary>
+            public SmallHangar hangar;
             /// <summary>Departures from a taxi-out stand: the nose wheel's distance along the way when its tail is out
             /// of the stand.</summary>
             public float clearOfStand = -1f;
@@ -608,6 +610,14 @@ namespace AirCity.Traffic
                     route.holds.Sort((x, y) => x.at.CompareTo(y.at));
                 }
             }
+            return route;
+        }
+
+        /// <summary>A ground-only transfer to a parking destination, with the same graph, holds and turns as an arrival.</summary>
+        public TaxiRoute GroundTransfer(List<Start> starts, List<StandLayout> destinations, out string problem, out Start from)
+        {
+            var route = Arrival(null, false, starts, destinations, out problem, out from);
+            if (route != null) { route.runwayFree = -1f; route.deicingStops.Clear(); }
             return route;
         }
 

@@ -10,6 +10,8 @@ namespace AirCity.Traffic
     {
         Departure = 0,
         Arrival = 1,
+        /// <summary>A taxi transfer between a hangar and an aircraft parking stand.</summary>
+        GroundTransfer = 2,
     }
 
     public enum FlightPhase
@@ -99,7 +101,7 @@ namespace AirCity.Traffic
             this.aircraft = aircraft;
             type = aircraft.type;
             Route = route;
-            Phase = kind == FlightKind.Departure ? FlightPhase.Ready : FlightPhase.Approach;
+            Phase = kind == FlightKind.Arrival ? FlightPhase.Approach : FlightPhase.Ready;
         }
 
         public string Name => aircraft != null ? aircraft.name : "aircraft";
@@ -153,7 +155,7 @@ namespace AirCity.Traffic
                     FlightPhase.PushBack when tow != null && tow.HoldPush && tow.ReadyToPush =>
                         "ready to push back" + (Waiting != null ? ", " + Waiting : ""),
                     FlightPhase.PushBack => tow != null ? tow.Status : "pushing back",
-                    FlightPhase.HandPush => "being pushed back by hand",
+                    FlightPhase.HandPush => Route.leavingHangar != null && !type.Light ? "hangar pushback" : "being pushed back by hand",
                     FlightPhase.StartingEngines => "starting engines",
                     FlightPhase.Taxi when kind == FlightKind.Departure => $"taxiing to runway {rwy}{wait}",
                     FlightPhase.Taxi => $"taxiing to {Route.Destination}{wait}",
@@ -164,7 +166,7 @@ namespace AirCity.Traffic
                                             (LandingCleared ? ", cleared to land" : landingProblem != null ? $", not cleared yet: {landingProblem}" : ""),
                     FlightPhase.GoAround => $"going around{wait}",
                     FlightPhase.Landing => $"landing on {rwy}",
-                    FlightPhase.Parked => Route != null && Route.stand != null ? $"parked on {Route.stand.stand.Name}" : "parked",
+                    FlightPhase.Parked => Route != null && Route.hangar != null ? $"stored in {Route.hangar.name}" : Route != null && Route.stand != null ? $"parked on {Route.stand.stand.Name}" : "parked",
                     _ => "gone",
                 };
             }
@@ -249,7 +251,8 @@ namespace AirCity.Traffic
             {
                 if (start.handPush)
                 {
-                    handPath = PushBackPath.Plan(traffic.Airport.Taxiways, type, Position, Facing, start.pushOtherWay, out string why);
+                    string why = null;
+                    handPath = Route.leavingHangar != null ? start.push : PushBackPath.Plan(traffic.Airport.Taxiways, type, Position, Facing, start.pushOtherWay, out why);
                     if (handPath == null)
                     {
                         Waiting = why;
@@ -365,10 +368,11 @@ namespace AirCity.Traffic
 
         void StepHandPush(float dt)
         {
-            handAlong = Mathf.Min(handAlong + 0.7f * dt, handPath.Length);
+            float speed = Route.leavingHangar != null && !type.Light ? 1.4f : .7f;
+            handAlong = Mathf.Min(handAlong + speed * dt, handPath.Length);
             handPath.Sample(handAlong, out var p, out var heading, out var wheel, out _);
             Place(p, heading, 0f);
-            Drive(handAlong < handPath.Length ? -0.7f : 0f, -Vector2.SignedAngle(heading, wheel));
+            Drive(handAlong < handPath.Length ? -speed : 0f, -Vector2.SignedAngle(heading, wheel));
             if (handAlong >= handPath.Length)
             {
                 timer = EngineStart;
@@ -424,6 +428,7 @@ namespace AirCity.Traffic
             }
 
             float limit = path.SpeedLimit(Along);
+            if (Route.hangar!=null && path.Length-Along<30f) limit=Mathf.Min(limit,1.2f);
             if (marshaller != null) limit = Mathf.Min(limit,marshaller.SpeedLimit);
             limit = Mathf.Min(limit, Mathf.Sqrt(2f * TaxiBraking * Mathf.Max(0f, stopAt - Along)));
             float free = traffic.FreeAhead(this, Along, Speed, out var who);
@@ -715,9 +720,25 @@ namespace AirCity.Traffic
                     slope=Vector2.Dot(Route.runway.ElevationGradient,facing)*(1f-Mathf.SmoothStep(0f,1f,Mathf.Clamp01(height/30f)));
                 else if(height<=.001f)slope=Vector2.Dot(airport.PavementGradientAt(origin),facing);
             }
+            HangarSupport(Route?.hangar);
+            HangarSupport(Route?.leavingHangar);
             var direction=new Vector3(facing.x,slope,facing.y).normalized;
             var rotation = Quaternion.LookRotation(t.TransformDirection(direction), Vector3.up) * Quaternion.Euler(-pitch, 0f, 0f);
             aircraft.transform.SetPositionAndRotation(t.TransformPoint(Geo.X0Z(origin, support+height)), rotation);
+
+            void HangarSupport(SmallHangar hangar)
+            {
+                if (hangar == null) return;
+                var delta=origin-hangar.BuildingRoot.Door;
+                float forward=Vector2.Dot(delta,hangar.Axis);
+                var spec = hangar.Spec;
+                if (forward < 0f && hangar.Contains(origin,-.1f))
+                    support = Mathf.Max(support, SmallHangar.FloorHeight + .015f - type.bounds.min.y);
+                else if (forward >= 0f && forward <= spec.MaxSetback + .1f &&
+                    Mathf.Abs(Vector2.Dot(delta, Geo.Right(hangar.Axis))) <= spec.ApproachWidth * .5f &&
+                    HangarConnection.Approach(hangar, out var throat) && Geo.Inside(throat, origin))
+                    support = Mathf.Max(support, HangarConnection.SurfaceHeight(hangar, origin, throat) + .015f - type.bounds.min.y);
+            }
         }
 
         void Drive(float speed, float steeringDegrees)

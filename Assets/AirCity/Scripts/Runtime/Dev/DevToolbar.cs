@@ -86,8 +86,9 @@ namespace AirCity.Dev
             (DevTool.Street, "street", "Street", "Click points to lay a public road of the chosen type (2 to 6 lanes, one-way); crossings become junctions with traffic lights; right-click ends it", null, 1),
             (DevTool.Apron, "apron", "Apron", "Click corners to lay an apron of any shape, or drag out a rectangle", null, 1),
             (DevTool.Lights, "lights", "Lights", "Light taxiways and runways: at night aircraft use only what's lit", null, 2),
-            (DevTool.Reception, "terminal", "Reception", "Place passenger reception beside the airport road entrance", null, 3),
+            (DevTool.Reception, "terminal", "Visitor centre", "Place the visitor centre, parking lot and public-road driveway", null, 3),
             (DevTool.Terminal, "terminal", "Terminal", "Click corners for a terminal building (or drag out a rectangle); select one and Shift+scroll to curve a wall", null, 3),
+            (DevTool.Hangar, "hangar", "Hangar", "Build a light-aircraft, executive or airline hangar with taxiway access", null, 3),
             (DevTool.Stand, "stand", "Stand", "Click beside a taxiway to add an aircraft stand (it snaps to the stands beside it)", null, 3),
             (DevTool.Bridge, "bridge", "Bridge", "Place jet bridges and bridge heads by hand, starting from a terminal wall", null, 3),
             (null, "gates", "Gates", "Design gate layouts, aircraft stops, bridge families and saved presets", null, 3),
@@ -161,6 +162,7 @@ namespace AirCity.Dev
             if (gateDesigner.IsOpen) gateDesigner.Draw(airfield, traffic);
             else if (DeicingManagementOpen) DrawDeicingManagement();
             else RightColumn();
+            if (!gateDesigner.IsOpen) UpdateHangarKeyboardFocus();
             GUI.enabled = wasEnabled;
             DevGui.Tooltip();
         }
@@ -874,7 +876,7 @@ namespace AirCity.Dev
             if (airfield.Tool != DevTool.Select) return airfield.Tool;
             if (AircraftShown) return sandbox.Selected;
             return (object)airfield.SelectedStand ?? (object)airfield.SelectedRunway ?? (object)airfield.SelectedEdge ??
-                   (object)airfield.SelectedDepot ?? (object)airfield.SelectedBaggageHall ?? (object)airfield.SelectedDeicingWorkArea ??
+                   (object)airfield.SelectedDepot ?? (object)airfield.SelectedHangar ?? (object)airfield.SelectedBaggageHall ?? (object)airfield.SelectedDeicingWorkArea ??
                    (object)airfield.SelectedDeicingParkingBay ?? (object)airfield.SelectedDeicingOutsideAccess ?? (object)airfield.SelectedTerminal ?? airfield.SelectedApron;
         }
 
@@ -1038,6 +1040,9 @@ namespace AirCity.Dev
                         Fleet(airfield.FleetDepot);
                     }
                     return;
+                case DevTool.Hangar:
+                    HangarBuildInspector();
+                    return;
                 case DevTool.Baggage:
                     BaggageBuildInspector();
                     return;
@@ -1107,6 +1112,7 @@ namespace AirCity.Dev
             else if (airfield.SelectedDeicingParkingBay != null) DeicingParkingInspector(airfield.SelectedDeicingParkingBay);
             else if (airfield.SelectedDeicingOutsideAccess != null) DeicingOutsideAccessInspector(airfield.SelectedDeicingOutsideAccess);
             else if (airfield.SelectedBaggageHall!=null) BaggageHallInspector(airfield.SelectedBaggageHall);
+            else if (airfield.SelectedHangar!=null) HangarInspector(airfield.SelectedHangar);
             else if (airfield.SelectedDepot != null)
             {
                 var depot = airfield.SelectedDepot;
@@ -1349,6 +1355,7 @@ namespace AirCity.Dev
                 else
                     Buttons(B("Push back", () => sandbox.PushBack(Shifted),
                         "A tug comes and pushes it back off its stand onto the taxiway (Shift: to face the other way)", hint: "Enter"));
+                AircraftHangar(a);
                 Buttons(B("Park", sandbox.Park, "Put it on the nearest free stand that takes it"));
                 if (ShowMore) Buttons(B("Taxi", () => sandbox.Taxiing = !sandbox.Taxiing, "Taxi it round in a slow weave", sandbox.Taxiing, "T"));
             }

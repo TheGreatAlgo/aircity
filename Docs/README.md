@@ -14,6 +14,11 @@ gotchas, and `README.md` / `ArtSource/README.md` are the human-facing guides.
 | Doc | Read it when you touch |
 |---|---|
 | [systems/new-game.md](systems/new-game.md) | player-placed airport, manual clearing/terrain, progressive tools, natural terrain relief, scanned ground, instanced rocks/undergrowth, first charter and save/resume |
+| [buildings-roadmap.md](buildings-roadmap.md) | playable buildings and their access requirements, plus proposed building families from small airfield to international hub |
+| [systems/hangars.md](systems/hangars.md) | rentable hangars: taxiway connections, aircraft entry/exit, leases, doors, Career rent and persistence |
+| [assets/SmallHangar.md](assets/SmallHangar.md) | generated steel hangar geometry, sliding doors, LODs and visual review |
+| [systems/visitor-centre.md](systems/visitor-centre.md) | visitor centre placement, parking, public-road driveway, site protection and persistence |
+| [assets/VisitorCentre.md](assets/VisitorCentre.md) | generated pavilion, glazing, parking furnishings, LODs and visual review |
 | [systems/built-surfaces.md](systems/built-surfaces.md) | pavement ownership, persistent terrain foundations, vegetation clearance and terrain shader clipping |
 | [systems/public-roads.md](systems/public-roads.md) | separate 3D road graph, terminal entrances, lane turns, signals, road geometry, bridge/ramp kit and career drawing |
 | [assets/ForestTrees.md](assets/ForestTrees.md) | spruce/pine assets, foliage source, instancing, distance models and regeneration |

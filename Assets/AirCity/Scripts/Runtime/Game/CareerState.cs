@@ -21,7 +21,7 @@ namespace AirCity.Game
     [Serializable]
     public class CareerState
     {
-        public const int SaveVersion = 3, StartingFunds = 125000, CharterFee = 1800, CharterCost = 250;
+        public const int SaveVersion = 3, StartingFunds = 10_000_000, CharterFee = 1800, CharterCost = 250;
         public GameMode mode;
         public AirportSaveData airport;
         public int saveVersion = SaveVersion;

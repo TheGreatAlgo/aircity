@@ -493,6 +493,7 @@ namespace AirCity.Vehicles
         static List<Box> SolidBoxes(Airport airport)
         {
             var boxes = new List<Box>();
+            foreach (var hangar in airport.Hangars) boxes.Add(hangar.BuildingBox);
             var assets = Resources.Load<DeicingAssets>("DeicingAssets");
             if (assets != null && assets.tankType != null)
                 foreach (var area in airport.Deicing.WorkAreas)

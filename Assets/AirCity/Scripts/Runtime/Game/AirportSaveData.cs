@@ -28,11 +28,12 @@ namespace AirCity.Game
         // Save identities: append component kinds, never reorder existing entries.
         static readonly Type[] Kinds = { typeof(Airport), typeof(Runway), typeof(TaxiwayNetwork),
             typeof(MaintenanceDepot), typeof(BaggageDepot), typeof(BaggageStation), typeof(ContainerStation),
-            typeof(BridgeRig), typeof(AirCity.Characters.MarshallerPresentation), typeof(DeicingRig) };
+            typeof(BridgeRig), typeof(AirCity.Characters.MarshallerPresentation), typeof(DeicingRig), typeof(SmallHangar) };
         static readonly Regex Reference = SavedObjectReference.Pattern;
 
         public static AirportSaveData Capture(Airport airport, GameAssetCatalog catalog)
         {
+            foreach (var hangar in airport.Hangars) hangar.CaptureResidentState();
             var data = new AirportSaveData();
             var objects = new Dictionary<Transform, int>();
             var identities = new Dictionary<long, string>();

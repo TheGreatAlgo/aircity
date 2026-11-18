@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using AirCity.Aircraft;
 using AirCity.Airfield;
 using AirCity.Airfield.Building;
@@ -56,9 +57,9 @@ namespace AirCity.Game
             valley.Build(state.world, State.RoadNetwork(), false); BuildAirport();
             UpgradeNaturalLandscape();
             if (State.HasAccess && (State.airport == null || State.airport.nodes.Count == 0)) access = valley.BuildAccess(State.Site, State.RoadNetwork(), false);
-            if (State.IsOpen) reception = BuildReception();
-            RefreshGroundCover();
+            if (State.handsOn ? State.layout?.receptionBuilt == true : State.IsOpen) reception = BuildReception();
             BindSharedTools();
+            RefreshGroundCover();
             if (State.Site != null) view.Frame(State.Site); else view.Region();
             if (State.charterActive)
             {
@@ -74,6 +75,8 @@ namespace AirCity.Game
                 finally { replaying = false; State.roadTrafficSeconds = roadClock; }
             }
             valley.SetRoadClock(State.roadTrafficSeconds);
+            // Resume resident ground trips only after historical charter/weather reconstruction.
+            if (Airport!=null) foreach (var hangar in Airport.Hangars) hangar.ResumeResidentTrip();
             Message = null;
         }
 
@@ -250,7 +253,8 @@ namespace AirCity.Game
             }
         }
 
-        GameObject BuildReception() => State.handsOn ? valley.BuildReception(State.layout.reception, State.layout.elevation, State.layout.receptionHeading) : valley.BuildReception(State.Site);
+        GameObject BuildReception() => State.handsOn ? valley.BuildReception(State.layout.reception,State.layout.elevation,State.layout.receptionHeading,
+            State.layout.receptionSiteVersion>=VisitorCentreConstruction.SiteVersion) : valley.BuildReception(State.Site);
 
         void RefreshGroundCover()
         {
@@ -271,7 +275,7 @@ namespace AirCity.Game
             var exclusions=new List<GroundCoverExclusion>();
             if(State.Site!=null)
             {
-                if(State.handsOn && State.layout.receptionBuilt)
+                if(State.handsOn && State.layout.receptionBuilt && State.layout.receptionSiteVersion<VisitorCentreConstruction.SiteVersion)
                     exclusions.Add(new GroundCoverExclusion(State.layout.reception,State.layout.reception,18f));
                 else if(!State.handsOn && State.IsOpen)
                 {
@@ -294,14 +298,21 @@ namespace AirCity.Game
             {
                 valley.RefreshLand(terrainBounds ?? State.BuildableBounds);
                 if (Airport != null && Airport.Runways.Count == 0 && Airport.terminals.Count == 0 && Airport.aprons.Count == 0 &&
-                    Airport.Taxiways.edges.Count == 0 && Airport.Taxiways.stands.Count == 0 && Airport.Depots.Count == 0)
+                    Airport.Taxiways.edges.Count == 0 && Airport.Taxiways.stands.Count == 0 && Airport.Depots.Count == 0 &&
+                    !Airport.Hangars.Any() && !State.layout.receptionBuilt)
                 {
                     var p = Airport.transform.position; p.y = GetComponent<CareerBuildTool>().TargetHeight; Airport.transform.position = p;
                     State.layout.elevation = p.y;
                 }
             }
             else if (tool == CareerTool.Runway || tool == CareerTool.Taxiway || tool == CareerTool.Stand) BuildAirport();
-            else if (tool == CareerTool.Reception && reception == null) reception = BuildReception();
+            else if (tool == CareerTool.Reception)
+            {
+                if(reception!=null)Remove(reception);
+                valley.RefreshRoads(State.RoadNetwork(),false);
+                reception=BuildReception();
+                if(Streets!=null)Streets.network=State.RoadNetwork();
+            }
             if (tool != CareerTool.ClearTrees && tool != CareerTool.Level) RefreshGroundCover();
             Message = null;
         }
@@ -311,6 +322,11 @@ namespace AirCity.Game
         {
             if (tool == CareerTool.ClearTrees) valley.QueueClearingSurface(strokeBounds);
             else if (tool == CareerTool.Level) valley.QueueLevelSurface(strokeBounds);
+            if (Airport != null && Airport.Hangars.Any())
+            {
+                Airport.LayoutChanged();
+                RefreshGroundCover();
+            }
             QueueAutosave();
         }
 
@@ -349,6 +365,7 @@ namespace AirCity.Game
             {
                 if (!State.charterActive || Airport == null) break;
                 Airport.Simulate(StepSeconds);
+                if (!replaying) HangarAccounts.Advance(Airport, State, StepSeconds);
                 State.charterElapsed += StepSeconds; State.operatingSeconds += StepSeconds;
                 State.roadTrafficSeconds += StepSeconds;
                 valley.SetRoadClock(State.roadTrafficSeconds);
@@ -419,6 +436,7 @@ namespace AirCity.Game
                 State.roadTrafficSeconds += seconds;
                 valley.SetRoadClock(State.roadTrafficSeconds);
                 if (Airport != null) Airport.Simulate(seconds);
+                HangarAccounts.Advance(Airport, State, seconds);
                 return;
             }
             accumulated += Time.unscaledDeltaTime * Speed;

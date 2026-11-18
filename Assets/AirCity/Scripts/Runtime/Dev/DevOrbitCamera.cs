@@ -26,6 +26,7 @@ namespace AirCity.Dev
         public bool zoomToCursor = true;
 
         float targetDistance = -1f, applied = -1f;
+        Camera cam;
 
         void LateUpdate()
         {
@@ -79,6 +80,7 @@ namespace AirCity.Dev
 
             var rot = Quaternion.Euler(pitch, yaw, 0f);
             transform.SetPositionAndRotation(pivot - rot * Vector3.forward * distance, rot);
+            AirCity.Rendering.ShadowRange.Follow(cam ??= GetComponent<Camera>(), pivot);
         }
 
         /// <summary>Move the pivot along the ground, relative to the view direction.</summary>

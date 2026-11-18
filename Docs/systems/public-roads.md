@@ -14,6 +14,12 @@ Sandbox uses the same geometry and clearance rules with free construction. The t
 to `ValleyView.RefreshRoads` in the main game, rather than creating a separate airport-local road network.
 Both modes save `CareerState.publicRoads` and use the same first outside-connection objective check.
 
+The [visitor centre](visitor-centre.md) builds a two-way driveway to its parking entrance, identified by
+`airport-visitor-centre`. The existing `airport-reception` progression node is retained. This facility mouth
+stays open into the car park instead of receiving a rounded dead-end cap. The Street tool identifies the
+mouth as a snap target and aligns a rebuilt driveway with the parking aisle. Join a connected driveway
+on its pavement outside the car park.
+
 Street previews retain the real start/end heights and show the complete proposed bend with its actual
 boundary. The compact map label gives the total construction price; an overlay keeps buried portions
 readable before grading. Validation permits vegetation. An accepted road clears its exact ground geometry, including shoulders
@@ -123,7 +129,7 @@ grading, ground texture and ground cover follow the curve. `PublicRoadLayout.Sha
 `CareerConstruction.Road` and `PublicRoadLayout.Validate`) refuses a route that meets the valley road under 15° or
 doubles back sharper than that.
 Roads flatten toward a junction's saved elevation. Only Ground links contribute
-to derived roadbed terrain heights. Decks, parapets and piers belong to Elevated links; piers skip lower roads.
+to derived roadbed terrain heights. Decks, parapets and piers belong to Elevated links (see "Shared 3D construction").
 The builder shares low-level `MeshData`/`PaintBuilder` utilities and surface shaders with the airfield, but has
 its own topology and junction construction. Generated meshes are rebuilt from the saved graph.
 
@@ -241,8 +247,10 @@ replaces committed road visuals and GPU terrain ownership, then restores them on
 colliders and permanent ownership retain the committed state throughout preview. Boundary outlines follow
 the actual surface rather than a straight rectangular guide. Valid placement labels show the total cost only.
 
-Ground dead ends have rounded corners, returning sidewalks/shoulders and a set-back median. The finish stays
-within the original pavement length and width; outside-connection and elevated endpoints keep square ends.
+Dead ends have rounded corners and a set-back median, on the ground, on a bridge and in a tunnel alike. On the
+ground the sidewalk or shoulder returns round the end; on a bridge the barrier and rail go round it, in a
+tunnel the wall (see below). The finish stays within the original pavement length and width;
+outside-connection endpoints keep square ends.
 Asphalt carries `AirfieldKind.Road` and uses deterministic broad discoloration plus fine tonal variation.
 
 Lane arrows use continuous signed-distance triangular heads and curved turn stems contained within their
@@ -302,11 +310,72 @@ that same result once. Changed terrain/layout/funds refuse before mutation or ch
 same path/settings and retain an exact `TaxiwayNetwork.GraphSnapshot` in `AirsideTerrainPlan`. These are the
 command foundation; saved undo history and road-style upgrades are not implemented yet.
 
-`RoadStructureBuilder` supplies both systems' closed bridge slabs, parapets, piers, footings, tunnel lining,
-retaining walls and portal frames. Concrete has a dedicated rough URP material. Piers avoid lower roads and
-aircraft pavement. Only ground pavement, bridge abutment/footing openings and open tunnel approaches enter
-terrain ownership. High decks preserve their ground; covered bores preserve their roof. Low trees remain under
-bridges and only canopies entering the deck are removed. Terrain edits refresh nearby structural supports.
+`RoadStructureBuilder` supplies both systems' bridge decks, parapets, piers, abutments, tunnel lining,
+retaining walls and portal frames. Concrete has a dedicated rough URP material. Only ground pavement, low
+deck ends and open tunnel approaches enter terrain ownership. High decks preserve their ground; covered bores
+preserve their roof. Low trees remain under bridges and only canopies entering the deck are removed. Terrain
+edits refresh nearby structural supports.
+
+A structure is built in pieces (`StructurePiece`): one per section between its nodes' cuts and one per bend.
+Each piece is a list of cross-sections taken from the pavement's own stations (the carriageway's two edges at
+pavement height), so the deck follows the road exactly, a bend is one unbroken strip, and neighbouring pieces
+share their boundary cross-section. A piece gets an end face only where the structure really stops: never at a
+bend or a straight-through node of the same structure. Where a ground road takes over, the end gets an abutment
+wall. `PublicRoadGeometry` and `TaxiwayBuilder.StructurePieces` make the pieces; neither lays a gravel shoulder
+or soil sidewalk on a structure. The strip between carriageway and parapet (or tunnel wall) is concrete: level
+with the road on shoulder types, behind its kerb at sidewalk height on kerbed types. Service roads have no
+verge, so their structures add a 0.6 m strip (`TaxiwayBuilder.StructureVerge`) and the parapet stands outside
+the carriageway.
+
+The deck's edge is built in relief, not as one flat plane: the edge beam's face, a ledge, a 0.65 m concrete
+barrier leaning in slightly, and a steel rail on posts every 2.5 m (rail top 1.1 m above the verge). The
+`RoadStructure` shader reads the mesh's vertex colour alpha to tell surfaces apart (`LandscapeMesh.colour`
+and `.uv`; meshes that set neither carry no extra streams and stay plain concrete): 1 is plain concrete,
+about one half is a deck's side or a tunnel wall, 0 is painted steel in the vertex colour (read as linear). Concrete is
+procedural: cloudy tone, grain, rain streaks on upright faces. Deck sides are cast in 5 m panels with a joint
+between them and a slightly different grey each; `uv.x` carries metres along the run, so joints and posts
+carry on unbroken through bends and from one section to the next. Other upright concrete (columns,
+abutments, tunnel walls) shows a lift line every 1.2 m of height. A bend between a ground road and a bridge
+or tunnel lies on the ground, with gravel or sidewalk like the ground road.
+
+Piers are spaced along a run: the whole bridge through its bends and straight-through nodes
+(`RoadStructureBuilder.Runs`, `PierStations`). Spans aim at 30 m and never exceed 38 m by spacing alone, and
+an end that stands in the air gets a pier just inside it. The spacing therefore does not depend on how many
+sections the bridge was drawn in. A pier that would stand on a lower road, a taxiway or a runway moves along
+the bridge (up to 16 m) instead of being dropped. A pier is a row of round columns under a crosshead: one
+column up to a 13 m deck, two up to 24 m, three beyond; columns thicken with height. Columns run down into the
+lowest ground under them (the bed, under water) and cut no opening in the terrain. Where the soffit is within
+1.6 m of the ground the deck rests on its embankment and gets no pier. Because a run's piers depend on its
+whole length, `PublicRoadPreviewPartition` redraws every section and bend of a bridge when any part of it
+changes. `RoadStructureGeometryTests` covers continuity, verges and piers; `RoadStructureReview.FromCommandLine`
+captures bridges of each width from fixed cameras (`Captures/RoadStructures`).
+
+A tunnel is under ground only where its whole width has its cover (5.5 m clearance plus 1.5 m); elsewhere it
+is an open approach. An approach has a 0.4 m retaining wall each side whose top follows the ground it holds
+back, sampled every 1.25 m, with a coping 0.35 m above it. The wall grows out of the ground where the cut
+begins, and its outer face reaches 0.5 m into the ground, also where a hillside falls away below the road. The
+terrain is opened exactly from one wall's outer face to the other's, so no ground shows inside the cut and none
+is missing outside it. Where the tunnel goes under ground a headwall stands from the roof up to the ground
+above the mouth, its coping following that ground from wall to wall, with a lintel over the opening. Under
+ground the lining has a roof and a lamp over each side of the road every 12 m (vertex colour alpha about 0.9:
+the shader shows the lamp's colour unlit).
+
+Bridges and tunnels are built against the ground as the valley draws it (`PublicRoadGeometry.DrawnGround`:
+the saved terrain with every ground road's roadbed graded in, interpolated as the terrain is), never the saved
+terrain alone: beside a ground road's cutting or embankment the two differ by metres, and a wall built to the
+saved terrain stands clear of the ground. `PublicRoadChunks` rebuilds a structure when the drawn ground along
+it changes, whether by a brush or by a ground road built or removed nearby.
+
+A dead end on a structure is closed. The pavement's rounded end (`BuildEnd`) hands its outline to the
+structure (`StructurePiece.endStart` / `endEnd`, with `trimStart` / `trimEnd` for the run's length under it):
+a deck carries its edge beam, barrier, rail and soffit round it, an open approach its retaining wall, a bore
+its lining and roof. On a structure the pavement falls to its edge all round the end, so the rail stays
+level. A service road's end is square, so its parapet or wall rounds only the two corners
+(`RoadStructureBuilder.SquareEnd`). `TunnelApproachTests` covers walls, portal, terrain openings and dead ends;
+`TunnelEndReview.FromCommandLine` captures them on a hillside (`Captures/TunnelEnds/<label>`), including a
+tunnel drawn through `RoadConstructionPlan` as the player draws one.
+
+Not built yet: a junction between bridges has no slab under it (the arms' decks end at its mouths).
 
 `PublicRoadChunks` retains separate section/junction renderers and meshes by graph ID. Changes rebuild their
 dependent neighbours; distant identities survive. A metadata composition supplies full grading and ownership

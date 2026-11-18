@@ -3,7 +3,9 @@
     "rootNamespace": "AirCity",
     "references": [
         "Unity.InputSystem",
-        "Unity.Burst"
+        "Unity.Burst",
+        "Unity.RenderPipelines.Core.Runtime",
+        "Unity.RenderPipelines.Universal.Runtime"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

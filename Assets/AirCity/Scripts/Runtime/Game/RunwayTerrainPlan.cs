@@ -24,6 +24,8 @@ namespace AirCity.Game
         readonly List<int> observed = new List<int>();
         readonly List<float> observedHeights = new List<float>();
         ValleyWorld source;
+        CareerState career;
+        Vector2[] visitorFootprint;
         bool applied;
 
         static Vector2 XZ(Vector3 p) => new Vector2(p.x, p.z);
@@ -32,6 +34,8 @@ namespace AirCity.Game
         {
             plan = null; problem = "Choose a runway inside the region.";
             if (state?.world?.heights == null || airport == null || draft == null || draft.Length < 1f) return false;
+            problem = HangarConstruction.RunwayProblem(airport, draft);
+            if (problem != null) return false;
             var world = state.world; var origin = XZ(airport.transform.position);
             var a = XZ(draft.start) + origin; var b = XZ(draft.end) + origin;
             if (!Finite(a) || !Finite(b)) return false;
@@ -44,6 +48,9 @@ namespace AirCity.Game
             float over = draft.WorkMargin;
             float support = world.Spacing + 2f, feather = 30f;
             var footprint = CareerConstruction.Strip(a, b, half + 6f, over).ToArray();
+            var visitorPolygon=VisitorCentreConstruction.Strip(a-axis*over,b+axis*over,half+6f);
+            problem=VisitorCentreConstruction.OverlapProblem(state,visitorPolygon);
+            if(problem!=null)return false;
             if (footprint.Any(p => !state.BuildableBounds.Contains(p))) return false;
             problem = "Prepare dry land above the water before building here.";
             if (footprint.Any(world.IsWater) || world.HasOcean && Mathf.Min(h0, h1) <= world.SeaLevel + .5f) return false;
@@ -64,7 +71,7 @@ namespace AirCity.Game
                 if(along>=-over-radius && along<=length+over+radius && across<half+radius)
                 {problem="Clear the rocks and vegetation in the runway footprint first.";return false;}
             }
-            var candidate = new RunwayTerrainPlan { source = world,
+            var candidate = new RunwayTerrainPlan { source = world, career=state, visitorFootprint=visitorPolygon,
                 Start = new Vector3(draft.start.x,h0-airport.transform.position.y,draft.start.z),
                 End = new Vector3(draft.end.x,h1-airport.transform.position.y,draft.end.z) };
             float outer = half+support+feather, end = over+support+feather;
@@ -105,9 +112,11 @@ namespace AirCity.Game
             var otherRunways=airport.Runways.Where(r=>r!=draft && r!=extending).ToArray();
             var net=airport.Taxiways;
             var pavementSpans=net.edges.Where(e=>e.structure==RoadStructure.Ground).Select(e=>(a:net.Node(e.a),b:net.Node(e.b),half:e.width*.5f+world.Spacing)).ToArray();
-            var terminalOutlines=airport.terminals.Select(t=>t.Outline()).ToArray();
+            var terminalOutlines=airport.terminals.Select(t=>(IList<Vector2>)t.Outline())
+                .Concat(airport.Hangars.Select(h=>(IList<Vector2>)h.Pad)).ToArray();
             bool Existing(Vector2 p)
             {
+                if(VisitorCentreConstruction.OverlapProblem(state,SampleFootprint(p,world.Spacing))!=null)return true;
                 var local = p-origin;
                 foreach (var r in otherRunways)
                     if (r.Contains(new Vector3(local.x,0f,local.y),world.Spacing)) return true;
@@ -149,6 +158,7 @@ namespace AirCity.Game
         public bool Apply(ValleyWorld world)
         {
             if(applied || world!=source)return false;
+            if(VisitorProblem(career)!=null)return false;
             for(int i=0;i<observed.Count;i++)if(world.heights[observed[i]]!=observedHeights[i])return false;
             for(int i=0;i<indices.Count;i++)
             {world.heights[indices[i]]=after[i];}
@@ -160,6 +170,8 @@ namespace AirCity.Game
         {
             totalPrice=0;problem="The runway quote no longer matches this region.";
             if(state==null || state.world!=source || constructionPrice<0)return false;
+            problem=VisitorProblem(state);
+            if(problem!=null)return false;
             long total=(long)constructionPrice+GradingPrice;
             if(total>int.MaxValue){problem="This runway costs too much to build.";return false;}
             totalPrice=(int)total;
@@ -175,6 +187,7 @@ namespace AirCity.Game
             float delta=0f;
             if(anchorEmptyAirport && !airport.Runways.Any(r=>r!=runway) && airport.Taxiways.edges.Count==0 && airport.Taxiways.nodes.Count==0 &&
                 airport.Taxiways.stands.Count==0 && airport.aprons.Count==0 && airport.terminals.Count==0 && airport.Depots.Count==0 &&
+                !airport.Hangars.Any() &&
                 airport.deicingFacilities.Count==0 && airport.deicingWorkAreas.Count==0 && airport.deicingParkingBays.Count==0 &&
                 airport.deicingOutsideAccess.Count==0 && airport.GetComponentsInChildren<AirCity.Vehicles.BaggageDepot>(true).Length==0 &&
                 airport.GetComponentsInChildren<AirCity.Aircraft.Aircraft>(true).Length==0)
@@ -186,6 +199,21 @@ namespace AirCity.Game
             runway.naturalEdges=true;airport.LayoutChanged();
         }
         static int Grid(float v)=>Mathf.Clamp(Mathf.FloorToInt((v+ValleyWorld.Size*.5f)/(ValleyWorld.Size/(ValleyWorld.Resolution-1))),0,ValleyWorld.Resolution-1);
+        string VisitorProblem(CareerState state)
+        {
+            var problem=VisitorCentreConstruction.OverlapProblem(state,visitorFootprint);
+            if(problem!=null)return problem;
+            for(int i=0;i<indices.Count;i++)
+            {
+                var p=new Vector2((indices[i]%ValleyWorld.Resolution)*source.Spacing-ValleyWorld.Size*.5f,
+                    (indices[i]/ValleyWorld.Resolution)*source.Spacing-ValleyWorld.Size*.5f);
+                problem=VisitorCentreConstruction.OverlapProblem(state,SampleFootprint(p,source.Spacing));
+                if(problem!=null)return problem;
+            }
+            return null;
+        }
+        static Vector2[] SampleFootprint(Vector2 p,float radius)=>new[]{p+new Vector2(-radius,-radius),p+new Vector2(radius,-radius),
+            p+new Vector2(radius,radius),p+new Vector2(-radius,radius)};
         static bool Finite(Vector2 p)=>ValleyWorld.Finite(p.x)&&ValleyWorld.Finite(p.y);
         static float SegmentDistance(Vector2 a,Vector2 b,Vector2 c,Vector2 d)=>Geo.SegmentsMeet(a,b,c,d)?0f:
             Mathf.Min(CareerConstruction.Distance(a,c,d),CareerConstruction.Distance(b,c,d),CareerConstruction.Distance(c,a,b),CareerConstruction.Distance(d,a,b));

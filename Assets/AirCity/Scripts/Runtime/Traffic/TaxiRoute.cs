@@ -75,6 +75,10 @@ namespace AirCity.Traffic
         public PushBackPath pushBack;
         /// <summary>Arrivals: the stand it parks on.</summary>
         public StandLayout stand;
+        /// <summary>Ground transfers: the reserved hangar bay, instead of a parking stand.</summary>
+        public SmallHangar hangar;
+        /// <summary>The hangar the aircraft is leaving; retained while it clears the doorway.</summary>
+        public SmallHangar leavingHangar;
         /// <summary>Arrivals: the nose wheel's distance along the way at which it has vacated the runway.</summary>
         public float runwayFree = -1f;
         /// <summary>Arrivals: where it waits off the runway when the way on isn't free (null when there's no room to
@@ -92,7 +96,7 @@ namespace AirCity.Traffic
         public float cost;
 
         /// <summary>"27" or "Stand 4".</summary>
-        public string Destination => stand != null ? stand.stand.Name
+        public string Destination => hangar != null ? hangar.name : stand != null ? stand.stand.Name
             : runway != null ? (fromStart ? runway.StartDesignator : runway.EndDesignator).Trim() : "";
 
         /// <summary>The runway designator for the way it's used ("27").</summary>

@@ -369,6 +369,102 @@ namespace AirCity.Airfield
             AirfieldPart.DestroyAny(d.gameObject);
         }
 
+        /// <summary>Why a hangar cannot occupy this site. The roof projection is included in the footprint.</summary>
+        public string HangarProblem(Vector2 door, float heading, SmallHangar except = null, HangarSize size = HangarSize.Small)
+        {
+            if (float.IsNaN(door.x) || float.IsInfinity(door.x) || float.IsNaN(door.y) || float.IsInfinity(door.y) ||
+                float.IsNaN(heading) || float.IsInfinity(heading)) return "Choose a valid hangar position.";
+            var spec = HangarSpec.For(size);
+            var outline=spec.Footprint(door,heading);
+            foreach (var other in HangarBuildings)
+            {
+                if (except != null && other.BuildingRoot == except.BuildingRoot) continue;
+                if (Geo.Overlap(outline, other.BuildingPad)) return "Overlaps another hangar.";
+                if (HangarConnection.Approach(other, out var approach) && Geo.Overlap(outline, approach))
+                    return "Keep the building clear of existing hangar approaches.";
+            }
+            foreach (var terminal in terminals)
+                if (terminal!=null && terminal.Footprints().Any(p=>Geo.Overlap(outline,p))) return "Overlaps a terminal.";
+            foreach (var runway in Runways)
+            {
+                var a=Geo.XZ(runway.start)-runway.Axis2D*runway.WorkMargin;
+                var b=Geo.XZ(runway.end)+runway.Axis2D*runway.WorkMargin;
+                var right=Geo.Right(runway.Axis2D)*runway.HalfWidthTotal;
+                if (Geo.Overlap(outline,new[] {a+right,b+right,b-right,a-right})) return "Keep hangars clear of the runway.";
+            }
+            var net=GetComponentInChildren<TaxiwayNetwork>(true);
+            if (net!=null)
+            {
+                foreach (var edge in net.edges)
+                    foreach (var span in net.Path(edge).Spans())
+                    {
+                        var a=Geo.XZ(span.a); var b=Geo.XZ(span.b); if ((b-a).sqrMagnitude<.0001f) continue;
+                        var right=Geo.Right((b-a).normalized)*edge.width*.5f;
+                        if (Geo.Overlap(outline,new[] {a+right,b+right,b-right,a-right})) return edge.IsRoad ? "Keep hangars clear of service roads." : "Keep hangars clear of taxiways.";
+                    }
+                foreach (var layout in net.Layouts())
+                    if (Geo.Overlap(outline,layout.Pad)) return "Keep hangars clear of aircraft stands.";
+            }
+            foreach (var depot in Depots)
+                if (Geo.Overlap(outline,depot.Corners)) return "Overlaps a maintenance depot.";
+            var facing=SmallHangar.Facing(heading);
+            var box=AirportMaintenance.Box.Of(door-facing*spec.Depth/2,facing,
+                new Bounds(Vector3.zero,new Vector3(spec.Width+SmallHangar.RoofOverhang*2,spec.Ridge,spec.Depth+SmallHangar.RoofOverhang*2)),0f);
+            foreach (var depot in GetComponentsInChildren<BaggageDepot>())
+                if (box.Overlaps(depot.BuildingBox)) return "Overlaps a baggage depot.";
+            foreach (var area in deicingWorkAreas)
+                if (area!=null && Geo.Overlap(outline,area.Outline)) return "Keep hangars clear of deicing supply areas.";
+            foreach (var bay in deicingParkingBays)
+                if (bay!=null && Geo.Overlap(outline,bay.Outline)) return "Keep hangars clear of truck parking.";
+            return null;
+        }
+
+        /// <summary>Authored bays, excluding pending demolition and construction previews.</summary>
+        public IEnumerable<SmallHangar> Hangars => GetComponentsInChildren<SmallHangar>(true)
+            .Where(h => h.gameObject.activeSelf && h.BuildingRoot.gameObject.activeSelf && (h.gameObject.hideFlags & HideFlags.DontSave) == 0);
+        public IEnumerable<SmallHangar> HangarBuildings => Hangars.Where(h => h == h.BuildingRoot);
+
+        /// <summary>Optional live-session terrain, water and vegetation check for a hangar's pull-out area.
+        /// Presentation-independent core tests and authored scenes may omit the world callback.</summary>
+        [NonSerialized] public Func<IList<Vector2>, string> HangarApproachProblem;
+
+        public SmallHangar AddHangar(Vector2 door, float heading, HangarSize size = HangarSize.Small)
+        {
+            if (HangarProblem(door,heading,size:size)!=null) return null;
+            int number=1;
+            string prefix = size == HangarSize.Small ? "Hangar" : HangarSpec.For(size).Name;
+            var names=new HashSet<string>(Hangars.Select(h=>h.BuildingRoot.name));
+            while(names.Contains(prefix+" "+number))number++;
+            var go=new GameObject(prefix + " " + number); go.SetActive(false);
+            go.transform.SetParent(transform,false); go.transform.localPosition=Geo.X0Z(door);
+            go.transform.localRotation=Quaternion.Euler(0f,heading,0f);
+            var hangar=go.AddComponent<SmallHangar>();
+            hangar.SetSize(size);
+            var spec = hangar.Spec;
+            for (int index = 0; index < spec.Bays; index++)
+            {
+                if (index == spec.Bays / 2) continue;
+                var bay = new GameObject($"Bay {index + 1}");
+                bay.transform.SetParent(go.transform, false);
+                bay.transform.localPosition = Vector3.right * spec.BayOffset(index);
+                bay.AddComponent<SmallHangar>();
+            }
+            go.SetActive(true); LayoutChanged(); return hangar;
+        }
+
+        /// <summary>Remove the whole building once all of its bays are vacant.</summary>
+        public void RemoveHangar(SmallHangar hangar)
+        {
+            if (hangar==null || hangar.Airport!=this || !hangar.CanDemolish) return;
+            var root = hangar.BuildingRoot.gameObject;
+            root.SetActive(false); AirfieldPart.DestroyAny(root); LayoutChanged();
+        }
+
+        public bool TryPickHangar(Vector2 point, out SmallHangar hangar, float margin=0f)
+        {
+            hangar=Hangars.LastOrDefault(h=>h.Contains(point,margin)); return hangar!=null;
+        }
+
         /// <summary>The smallest apron worth building (square metres).</summary>
         public const float MinApronArea = 100f;
 
@@ -432,6 +528,8 @@ namespace AirCity.Airfield
             bool Overlaps(IList<Vector2> other) => footprints.Any(part => Geo.Overlap(part, other));
             foreach (var other in terminals)
                 if (other != except && other != null && other.Footprints().Any(Overlaps)) return "overlaps another terminal";
+            foreach (var hangar in Hangars)
+                if (Overlaps(hangar.Pad)) return "overlaps a hangar";
             foreach (var r in Runways)
             {
                 var a = Geo.XZ(r.start);

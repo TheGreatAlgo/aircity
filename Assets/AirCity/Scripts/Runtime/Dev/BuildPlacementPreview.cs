@@ -94,6 +94,12 @@ namespace AirCity.Dev
             building.Set(builder.mesh.Apply(building.Target, "Terminal draft", false, 2), airport.building);
         }
 
+        public void Hangar(Airport airport, HangarSize size)
+        {
+            var builder = new HangarBuilder(true, size: size); builder.Build();
+            building.Set(builder.mesh.Apply(building.Target,"Hangar draft",false,2),HangarBuilder.MaterialFor(airport, size));
+        }
+
         public void Runway(Airport airport, Vector2 from, Vector2 to, float width, PavementSurface pavement)
         {
             EnsureData();

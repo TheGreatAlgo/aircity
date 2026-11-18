@@ -198,6 +198,18 @@ def depot():
     return i
 
 
+def hangar():
+    """A wide pitched-roof aircraft hangar with open sliding doors."""
+    i = Icon()
+    i.polygon([(6, 48), (64, 18), (122, 48), (122, 116), (6, 116)])
+    i.rect(24, 53, 104, 116, on=False)
+    i.line([(64, 66), (64, 109)], 6)
+    i.line([(36, 86), (92, 86)], 6)
+    i.line([(52, 104), (76, 104)], 4)
+    i.rect(2, 116, 126, 122)
+    return i
+
+
 def plane(i, cx, top, s):
     """A generic twin-jet from above, nose up, `s` = its length in units."""
     def P(x, y):
@@ -359,7 +371,7 @@ def level_ground():
 
 ICONS = {
     "select": select, "runway": runway, "taxiway": taxiway, "road": road, "street": street, "apron": apron, "terminal": terminal,
-    "depot": depot, "lights": lights, "stand": stand, "deice": deice, "bridge": bridge, "gates": gates, "delete": delete,
+    "depot": depot, "hangar": hangar, "lights": lights, "stand": stand, "deice": deice, "bridge": bridge, "gates": gates, "delete": delete,
     "baggage": baggage, "deicing-storage": deicing_storage,
     "clear-trees": clear_trees, "level-ground": level_ground,
 }

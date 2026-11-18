@@ -203,7 +203,7 @@ namespace AirCity.Traffic
             var t = airport.transform;
             var pos = Geo.XZ(t.InverseTransformPoint(a.transform.position));
             var fwd = Geo.XZ(t.InverseTransformDirection(a.transform.forward)).normalized;
-            var starts = DepartureStarts(type, pos, fwd, out problem);
+            var starts = DepartureStarts(type, pos, fwd, out problem, SmallHangar.OfResident(a));
             if (starts.Count == 0) return null;
             var route = planner.Departure(starts, choices, out problem, out from, airport.Deicing.CompletedFor(a));
             if (route != null && from != null)
@@ -211,6 +211,8 @@ namespace AirCity.Traffic
                 route.standTo = from.clearOfStand;
                 route.pushBack = from.push;
                 route.leaving = StandAt(pos);
+                route.leavingHangar = from.hangar != null ? from.hangar : HangarAt(pos);
+                if (route.leavingHangar!=null && !HangarConnection.ValidateMovement(route.leavingHangar,type,route.path,out problem)) return null;
             }
             return route;
         }
@@ -223,14 +225,54 @@ namespace AirCity.Traffic
             return null;
         }
 
+        SmallHangar HangarAt(Vector2 position)
+        {
+            foreach (var hangar in airport.Hangars) if (hangar.Contains(position)) return hangar;
+            return null;
+        }
+
         /// <summary>Where a departure can join the taxiways: pushed back either way off a push-back stand, swinging
         /// either way out of a taxi-out stand, or straight on from where it stands on a taxiway.</summary>
-        List<TaxiPlanner.Start> DepartureStarts(AircraftType type, Vector2 pos, Vector2 fwd, out string problem)
+        List<TaxiPlanner.Start> DepartureStarts(AircraftType type, Vector2 pos, Vector2 fwd, out string problem,SmallHangar residentHome=null)
         {
             problem = null;
             var list = new List<TaxiPlanner.Start>();
             var net = airport.Taxiways;
             float wb = Mathf.Max(type.Wheelbase, 0.3f);
+            // A save may resume halfway through the hand push, outside the shell and not yet aligned
+            // with the taxiway. Continue the matching suffix instead of snapping back into the bay.
+            if (residentHome!=null && residentHome.DoorsOpen && HangarConnection.TryGet(residentHome,type,out var homeLayout,out _))
+            {
+                var a=net.At(homeLayout.edge.a); var edgeT=(net.At(homeLayout.edge.b)-a).normalized;
+                foreach (bool otherWay in new[] {false,true})
+                {
+                    var push=PushBackPath.ResumeHangarPush(net,type,residentHome,pos,fwd,otherWay,out _);
+                    if (push==null || list.Exists(s=>Vector2.Dot(s.heading,push.endFacing)>.99f)) continue;
+                    list.Add(new TaxiPlanner.Start { edge=homeLayout.edge,dir=Vector2.Dot(push.endFacing,edgeT)>0f?1:-1,
+                        u=Vector2.Dot(push.NoseEnd-a,edgeT),nose=push.NoseEnd,heading=push.endFacing,gear=push.End,
+                        cost=otherWay?30f:0f,pushBack=true,handPush=true,pushOtherWay=otherWay,push=push,hangar=residentHome });
+                }
+                if (list.Count>0) return list;
+            }
+            var hangar = HangarAt(pos);
+            if (hangar != null)
+            {
+                if (!hangar.DoorsOpen) { problem = "Open the hangar doors before moving the aircraft."; return list; }
+                if (!HangarConnection.TryGet(hangar,type,out var bay,out problem)) return list;
+                var a = net.At(bay.edge.a);
+                var edgeT = (net.At(bay.edge.b)-a).normalized;
+                foreach (bool otherWay in new[] { false,true })
+                {
+                    var push = PushBackPath.Plan(net,type,pos,fwd,otherWay,out string why);
+                    if (push == null) { problem ??= why; continue; }
+                    if (list.Exists(s=>Vector2.Dot(s.heading,push.endFacing)>.99f)) continue;
+                    list.Add(new TaxiPlanner.Start { edge=bay.edge,dir=Vector2.Dot(push.endFacing,edgeT)>0f?1:-1,
+                        u=Vector2.Dot(push.NoseEnd-a,edgeT),nose=push.NoseEnd,heading=push.endFacing,gear=push.End,
+                        cost=otherWay?30f:0f,pushBack=true,handPush=true,pushOtherWay=otherWay,push=push,hangar=hangar });
+                }
+                if (list.Count>0) problem=null;
+                return list;
+            }
             var stand = StandAt(pos);
             if (stand != null)
             {
@@ -336,6 +378,119 @@ namespace AirCity.Traffic
                     (d.largeTugs > 0 && d.largeTugType != null && d.largeTugType.CanTow(type)))
                     return true;
             return false;
+        }
+
+        // ------------------------------------------------------------------ ground transfers
+
+        /// <summary>Taxi a compatible resident aircraft over the taxiway graph and into its reserved hangar.</summary>
+        public Flight TaxiToHangar(Aircraft.Aircraft a, SmallHangar hangar, out string problem)
+        {
+            if (!GroundAvailable(a,out problem)) return null;
+            var route=PlanGroundTransfer(a,hangar,null,null,out var start,out problem);
+            if (route==null) return null;
+            var flight=new Flight(this,FlightKind.GroundTransfer,a,route) { start=start };
+            if (!hangar.AttachResident(a,out problem)) return null;
+            flights.Add(flight);
+            hangar.CaptureResidentState();
+            return flight;
+        }
+
+        /// <summary>A hangar-bound ground route without moving an aircraft or reserving a bay.</summary>
+        public TaxiRoute PreviewTaxiToHangar(Aircraft.Aircraft a,SmallHangar hangar,out string problem)
+        {
+            if (!GroundAvailable(a,out problem)) return null;
+            return PlanGroundTransfer(a,hangar,null,null,out _,out problem);
+        }
+
+        /// <summary>Bring a stored resident out by hand, then taxi it to a free compatible aircraft stand.</summary>
+        public Flight TaxiToStand(Aircraft.Aircraft a,out string problem)
+        {
+            if (!GroundAvailable(a,out problem)) return null;
+            var route=PlanGroundTransfer(a,null,null,null,out var start,out problem);
+            if (route==null) return null;
+            var flight=new Flight(this,FlightKind.GroundTransfer,a,route) { start=start };
+            flights.Add(flight);
+            SmallHangar.OfResident(a)?.CaptureResidentState();
+            return flight;
+        }
+
+        bool GroundAvailable(Aircraft.Aircraft a,out string problem)
+        {
+            problem=a==null || a.type==null ? "Choose an aircraft." : FlightOf(a)!=null ? "The aircraft is already moving."
+                : airport.Maintenance.TowOf(a)!=null ? "The aircraft is being pushed back." : null;
+            if (problem==null && a.GetComponentInParent<Airport>()!=airport) problem="Choose an aircraft at this airport.";
+            if (problem==null && airport.transform.InverseTransformPoint(a.transform.position).y>3f)
+                problem="The aircraft must be parked on the ground.";
+            return problem==null;
+        }
+
+        string HangarDestinationProblem(Aircraft.Aircraft a,SmallHangar hangar)
+        {
+            if (hangar==null || hangar.Airport!=airport) return "Choose a hangar at this airport.";
+            var owner=SmallHangar.OfResident(a);
+            if (owner!=null && owner!=hangar) return "This aircraft already has another hangar lease.";
+            if (hangar.Occupied && hangar.ResidentAircraft!=a) return "This hangar is reserved for another aircraft.";
+            if (!hangar.DoorsOpen) return "Open the hangar doors before moving the aircraft.";
+            return SmallHangar.AircraftProblem(a.type, hangar.Size);
+        }
+
+        TaxiRoute PlanGroundTransfer(Aircraft.Aircraft a,SmallHangar hangar,StandLayout destination,Flight self,
+            out TaxiPlanner.Start start,out string problem,TaxiPlanner.Start on=null)
+        {
+            start=null; problem=null;
+            var pos=Geo.XZ(airport.transform.InverseTransformPoint(a.transform.position));
+            var facing=Geo.XZ(airport.transform.InverseTransformDirection(a.transform.forward)).normalized;
+            var goals=new List<StandLayout>();
+            if (hangar!=null)
+            {
+                problem=HangarDestinationProblem(a,hangar);
+                if (problem!=null) return null;
+                if (!HangarConnection.TryGet(hangar,a.type,out var layout,out problem)) return null;
+                foreach (var other in flights)
+                    if (other!=self && !other.Finished && other.Route?.hangar==hangar)
+                    { problem="Another aircraft is heading for this hangar."; return null; }
+                if (hangar.Contains(pos) && on==null)
+                {
+                    var park=hangar.ParkPosition(a.type);
+                    if (Vector2.Distance(pos,park)<.15f) { problem="The aircraft is already stored in this hangar."; return null; }
+                    var face=hangar.ParkFacing;
+                    float forward=Vector2.Dot(park-pos,face);
+                    if (forward<=0f || Mathf.Abs(Geo.Cross(face,park-pos))>.2f || Vector2.Angle(facing,face)>5f)
+                    { problem="The aircraft must face straight into the hangar to finish parking."; return null; }
+                    float wb=Mathf.Max(a.type.Wheelbase,.3f);
+                    var nose=pos+facing*wb;
+                    var builder=new TaxiPath.Builder(nose,facing);
+                    builder.Limit(1.2f,.5f); builder.LineTo(park+face*wb);
+                    var direct=new TaxiRoute { hangar=hangar,path=builder.Build(pos,wb,TaxiPlanner.Lateral) };
+                    if (!HangarConnection.ValidateMovement(hangar,a.type,direct.path,out problem)) return null;
+                    start=new TaxiPlanner.Start { nose=nose,gear=pos,heading=facing };
+                    return direct;
+                }
+                goals.Add(layout);
+            }
+            else
+            {
+                goals=FreeStands(a.type,self);
+                if (destination!=null) goals.RemoveAll(l=>l.stand!=destination.stand);
+                else goals.RemoveAll(l=>l.Contains(pos));
+                if (goals.Count==0) { problem="No free compatible aircraft stand is available."; return null; }
+            }
+            var starts=on!=null ? new List<TaxiPlanner.Start>{on} : DepartureStarts(a.type,pos,facing,out problem,SmallHangar.OfResident(a));
+            if (starts.Count==0) return null;
+            var planner=new TaxiPlanner(airport,a.type,this,self);
+            var route=planner.GroundTransfer(starts,goals,out problem,out start);
+            if (route==null) return null;
+            route.pushBack=start.push;
+            route.leaving=StandAt(pos);
+            route.standTo=start.clearOfStand;
+            route.leavingHangar=on==null ? (start.hangar!=null ? start.hangar : HangarAt(pos)) : self?.Route.leavingHangar;
+            if (hangar!=null)
+            {
+                route.hangar=hangar; route.stand=null; route.standFrom=float.MaxValue;
+                if (!HangarConnection.ValidateMovement(hangar,a.type,route.path,out problem)) return null;
+            }
+            if (route.leavingHangar!=null && !HangarConnection.ValidateMovement(route.leavingHangar,a.type,route.path,out problem)) return null;
+            return route;
         }
 
         // ------------------------------------------------------------------ arrivals
@@ -496,7 +651,12 @@ namespace AirCity.Traffic
         }
 
         /// <summary>An arrival has parked: it gives back what it holds.</summary>
-        internal void Finish(Flight f) => ReleaseAll(f);
+        internal void Finish(Flight f)
+        {
+            ReleaseAll(f);
+            if (f.Route?.hangar != null) f.Route.hangar.StoreAircraft(f.aircraft);
+            SmallHangar.OfResident(f.aircraft)?.CaptureResidentState();
+        }
 
         /// <summary>A departure (or an arrival that couldn't come back) has flown out of sight: it's taken away.</summary>
         internal void Gone(Flight f)
@@ -504,6 +664,7 @@ namespace AirCity.Traffic
             ReleaseAll(f);
             f.Phase = FlightPhase.Gone;
             if (f.aircraft == null) return;
+            SmallHangar.OfResident(f.aircraft)?.OnResidentGone(f.aircraft);
             f.aircraft.Highlight = AircraftHighlight.None;
             if (Application.isPlaying) Object.Destroy(f.aircraft.gameObject);
             else f.aircraft.gameObject.SetActive(false);
@@ -1224,13 +1385,19 @@ namespace AirCity.Traffic
         internal bool RouteValid(Flight f)
         {
             var net = airport.Taxiways;
+            if (f.kind==FlightKind.GroundTransfer && f.Route.stand!=null && !net.stands.Contains(f.Route.stand.stand)) return false;
+            var groundOk=f.kind==FlightKind.GroundTransfer ? net.TaxiOk(f.type) : null;
+            if (f.Route.hangar!=null && (HangarDestinationProblem(f.aircraft,f.Route.hangar)!=null ||
+                !HangarConnection.TryGet(f.Route.hangar,f.type,out _,out _))) return false;
+            if (f.Route.leavingHangar!=null && f.Route.leavingHangar.Contains(Geo.XZ(airport.transform.InverseTransformPoint(f.aircraft.transform.position))) &&
+                (!f.Route.leavingHangar.DoorsOpen || !HangarConnection.TryGet(f.Route.leavingHangar,f.type,out _,out _))) return false;
             foreach (var stop in f.Route.deicingStops)
                 if (!f.DeicingCompleted && stop.at >= f.Along - 1f && !airport.Deicing.StopMatches(f.Route, stop, f.type)) return false;
             float reached = f.AwaitingPush ? float.MinValue : f.Along + 1f;
             foreach (var t in f.Route.traversals)
             {
                 if (t.DEnd <= f.Along) continue;
-                if (!net.edges.Contains(t.edge)) return false;
+                if (!net.edges.Contains(t.edge) || (groundOk!=null && !groundOk(t.edge))) return false;
                 if (t.dStart > reached && TaxiwayNetwork.Closed(t.edge)) return false;
             }
             return true;
@@ -1246,7 +1413,10 @@ namespace AirCity.Traffic
         /// <summary>A departure that hasn't left yet: its way planned again from where it stands (its way closed).</summary>
         internal bool ReplanDeparture(Flight f, out string problem)
         {
-            var route = PlanDeparture(f.aircraft, f, out var start, out problem);
+            TaxiPlanner.Start start;
+            var route = f.kind==FlightKind.GroundTransfer
+                ? PlanGroundTransfer(f.aircraft,f.Route.hangar,f.Route.stand,f,out start,out problem)
+                : PlanDeparture(f.aircraft,f,out start,out problem);
             if (route == null) return false;
             ReleaseAll(f);
             f.Route = route;
@@ -1291,7 +1461,9 @@ namespace AirCity.Traffic
             };
             var planner = new TaxiPlanner(airport, f.type, this, f);
             TaxiRoute route;
-            if (f.kind == FlightKind.Departure)
+            if (f.kind==FlightKind.GroundTransfer)
+                route=PlanGroundTransfer(f.aircraft,f.Route.hangar,f.Route.stand,f,out _,out problem,start);
+            else if (f.kind == FlightKind.Departure)
                 route = planner.Departure(new List<TaxiPlanner.Start> { start }, Choices(f.type, true, out _), out problem, out _);
             else
             {

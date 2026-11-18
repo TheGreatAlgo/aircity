@@ -4,6 +4,7 @@
 //
 // Mesh layout (built by TerminalBuilder): color = albedo, uv0 = (glass 0..1, smoothness, along the wall in metres,
 // height in metres).
+// HangarBuilder uses uv0.w for the indoor light mask and uv1 for the finish coordinates and zone.
 Shader "AirCity/Building"
 {
     Properties
@@ -12,6 +13,7 @@ Shader "AirCity/Building"
         _NightGlow ("Lit interior at night", Color) = (1.0, 0.82, 0.55, 1)
         _NightStrength ("Night glow strength", Float) = 1.4
         _BayWidth ("Window bay width (m)", Float) = 6
+        [NoScaleOffset] _HangarSurface ("Hangar surface masks", 2D) = "gray" {}
     }
     SubShader
     {
@@ -25,6 +27,8 @@ Shader "AirCity/Building"
             float _NightStrength, _BayWidth;
         CBUFFER_END
         float _AirCityLightGlow;
+        TEXTURE2D(_HangarSurface);
+        SAMPLER(sampler_HangarSurface);
 
         struct Attributes
         {
@@ -43,7 +47,7 @@ Shader "AirCity/Building"
             half4 color : COLOR;
             float4 uv0 : TEXCOORD2;
             half fogFactor : TEXCOORD3;
-            float2 facade : TEXCOORD4;
+            float4 facade : TEXCOORD4;
         };
 
         Varyings vert(Attributes v)
@@ -54,7 +58,7 @@ Shader "AirCity/Building"
             o.normalWS = TransformObjectToWorldNormal(v.normalOS);
             o.color = v.color;
             o.uv0 = v.uv0;
-            o.facade = v.uv1.xy;
+            o.facade = v.uv1;
             o.fogFactor = ComputeFogFactor(o.positionCS.z);
             return o;
         }
@@ -79,6 +83,7 @@ Shader "AirCity/Building"
             #pragma multi_compile _ _CLUSTER_LIGHT_LOOP
             #pragma multi_compile_fragment _ _SHADOWS_SOFT _SHADOWS_SOFT_LOW _SHADOWS_SOFT_MEDIUM _SHADOWS_SOFT_HIGH
             #pragma multi_compile_fragment _ _SCREEN_SPACE_OCCLUSION
+            #pragma shader_feature_local_fragment _ _HANGAR_SURFACE
             #pragma multi_compile_fog
 
             half4 frag(Varyings i) : SV_Target
@@ -87,12 +92,32 @@ Shader "AirCity/Building"
                 half3 n = normalize(i.normalWS);
                 half3 albedo = lerp(i.color.rgb, i.color.rgb * _GlassTint.rgb, glass);
                 half smooth = lerp(i.uv0.y, 0.92, glass);
+                half3 hangarGlow = 0.0;
+            #if defined(_HANGAR_SURFACE)
+                // One mipmapped sample for cladding, standing-seam roof, concrete or the lift door.
+                half zone = round(i.facade.z);
+                if (zone > 0.5 && zone < 4.5)
+                {
+                    half4 surface = SAMPLE_TEXTURE2D(_HangarSurface, sampler_HangarSurface, i.facade.xy);
+                    half mask = zone == 1.0 ? surface.r : zone == 2.0 ? surface.g : zone == 3.0 ? surface.b : surface.a;
+                    albedo *= lerp(0.53, 1.41, mask);
+                    smooth = saturate(smooth + (mask - 0.5) * 0.36);
+                    if (zone == 1.0)
+                    {
+                        half splash = saturate(1.0 - i.facade.w * 0.19);
+                        albedo *= lerp(1.0, 0.81 + surface.r * 0.15, splash);
+                    }
+                }
+                half night = smoothstep(0.45, 0.64, _AirCityLightGlow);
+                half emission = zone < 4.5 ? 0.0 : zone < 5.5 ? 1.7 : 0.105;
+                hangarGlow = night * (emission + i.uv0.w * albedo * 0.25) * half3(1.0, 0.96, 0.9);
+            #endif
                 half4 c = AirfieldShade(i.positionWS, i.positionCS, n, albedo, smooth, 1.0, 1.0, i.fogFactor);
                 // the lit hall behind the glass at night: each bay a little different, a few dark
                 float2 bay = float2(floor(i.uv0.z / max(i.facade.y, 0.5)), i.facade.x);
                 half h = Hash(bay);
                 half lit = h > 0.12 ? lerp(0.55, 1.0, h) : 0.08;
-                c.rgb += glass * _NightGlow.rgb * lit * _NightStrength * saturate(_AirCityLightGlow);
+                c.rgb += hangarGlow + glass * _NightGlow.rgb * lit * _NightStrength * saturate(_AirCityLightGlow);
                 return c;
             }
             ENDHLSL

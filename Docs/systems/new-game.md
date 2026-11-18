@@ -120,9 +120,11 @@ saves retain their earlier owned parcel and progression.
   must stay clear of aircraft pavement. The preview shows the actual proposed bend and elevation, with a compact total-price label. Cursor validation queries
   clearance and terrain inputs; it reuses an unchanged quote. Accepted geometry supplies the exact
   vegetation footprint instead of checking the whole forest while moving the cursor. Free endpoints use one-metre cursor steps; snapped engineered profiles retain full precision.
-- **Reception:** place the building beside the airport end of the public road. The actual building follows
-  the cursor before purchase; the final pavement builders also preview parking, runways and taxiways.
-  Reception shares the HUD's **Turn − / angle / +** controls and **Snap 15° / Free angle** toggle.
+- **Visitor centre:** place the pavilion and its 18-bay parking lot beside a connected public road. Prepare
+  the complete outlined site at the airport height. The driveway leaves the lot's right side and connects to
+  the public-road graph; the quote includes that connection. Building, parking and driveway follow the cursor
+  before purchase. See [visitor centre](visitor-centre.md) for site dimensions, saved layouts and road access.
+  The tool shares the HUD's **Turn − / angle / +** controls and **Snap 15° / Free angle** toggle.
   **Z / Shift+Z** turns ±45° (**R** remains an alias); **Shift+wheel** turns in 15° snapped or 5° free
   increments, **Alt+Shift+wheel** in 1° increments. Rotation consumes the wheel so the camera stays still.
 - **Esc** cancels the active tool/draft. **WASD**, middle drag, right-drag and scroll control the camera.
@@ -130,7 +132,7 @@ saves retain their earlier owned parcel and progression.
 
 The first task sequence introduces these tools. Once the airport is open, schedule a local charter.
 The existing aircraft simulation performs arrival, taxi, boarding and departure, with a $250 operating cost
-and $1,800 service fee paid only after completion. The initial balance is $125,000. The next goal encourages
+and $1,800 service fee paid only after completion. The initial balance is $10,000,000. The next goal encourages
 a 1,000 m runway, and more charters remain available. Construction is disabled during an active flight.
 
 ## Saved layout and world

@@ -26,7 +26,7 @@ namespace AirCity.Dev
             set { placementSnap = value; if (value && SupportsPlacementRotation) SetPlacementHeading(Mathf.Round(PlacementHeading / 15f) * 15f); }
         }
         public bool SupportsPlacementRotation => tool == DevTool.DeicingStorage || tool == DevTool.DeicingParking ||
-            tool == DevTool.Depot || tool == DevTool.Stand || tool == DevTool.DeIcing || tool == DevTool.Apron ||
+            tool == DevTool.Depot || tool == DevTool.Hangar || tool == DevTool.Stand || tool == DevTool.DeIcing || tool == DevTool.Apron ||
             tool == DevTool.Terminal || tool == DevTool.Runway ||
             tool == DevTool.Baggage && GetComponent<DevBaggageControls>()?.Placement == BaggagePlacement.Depot;
         public float PlacementHeading => tool switch
@@ -169,6 +169,12 @@ namespace AirCity.Dev
                     if (ghost == null) { shown = false; break; }
                     if (modelPreview.GeometryChanged(StandPreviewKey(ghost))) modelPreview.Stand(airport, ghost, types);
                     valid = ghostProblem == null; break;
+                case DevTool.Hangar:
+                    if (modelPreview.GeometryChanged("hangar " + SelectedHangarSize)) modelPreview.Hangar(airport, SelectedHangarSize);
+                    var hangarPose = HangarPlacement(point);
+                    modelPreview.Pose(hangarPose.door, hangarPose.heading);
+                    valid = hangarProblem == null;
+                    break;
                 case DevTool.Apron:
                 case DevTool.Terminal:
                     var corners = apronDrag && apronRect != null ? new List<Vector2>(apronRect) : new List<Vector2>(apronCorners);
@@ -209,6 +215,7 @@ namespace AirCity.Dev
             Vector2 At(float x, float z) => position + right * x + axis * z;
             corners = new[] { At(bounds.min.x, bounds.min.z), At(bounds.max.x, bounds.min.z), At(bounds.max.x, bounds.max.z), At(bounds.min.x, bounds.max.z) };
             foreach (var depot in airport.Depots) if (depot != null && Geo.Overlap(corners, depot.Corners)) return "overlaps a maintenance depot";
+            foreach (var hangar in airport.Hangars) if (Geo.Overlap(corners, hangar.Pad)) return "overlaps an aircraft hangar";
             foreach (var terminal in airport.terminals) if (Geo.Overlap(corners, terminal.Outline())) return "overlaps a terminal";
             foreach (var area in airport.Deicing.WorkAreas) if (area != null && Geo.Overlap(corners, area.Outline)) return "overlaps a deicing supply area";
             foreach (var bay in airport.Deicing.ParkingBays) if (bay != null && Geo.Overlap(corners, bay.Outline)) return "overlaps a truck parking bay";

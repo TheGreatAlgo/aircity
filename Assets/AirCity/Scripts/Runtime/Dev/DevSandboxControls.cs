@@ -56,6 +56,9 @@ namespace AirCity.Dev
         {
             if (selected == null || Airport == null || Flying(selected)) return;
             Taxiing = false;
+            var resident=SmallHangar.OfResident(selected);
+            if (resident!=null && resident.ResidentInBay)
+            { resident.TaxiToStand(out var why); Message=why; return; }
             Airport.Maintenance.PushBack(selected, out string problem, otherWay);
             Message = problem != null ? "Can't push back: " + problem : null;
         }
@@ -64,6 +67,8 @@ namespace AirCity.Dev
         public void Park()
         {
             if (selected == null || Airport == null || SelectedTow != null || Flying(selected)) return;
+            var resident=SmallHangar.OfResident(selected);
+            if (resident!=null) { resident.TaxiToStand(out var why); Message=why; return; }
             var a = Airport;
             var t = a.transform;
             var here = Geo.XZ(t.InverseTransformPoint(selected.transform.position));
@@ -119,6 +124,8 @@ namespace AirCity.Dev
         public bool DeleteSelected()
         {
             if (selected == null) return false;
+            if (SmallHangar.OfResident(selected)!=null)
+            { Message="Return this aircraft to its hangar and end the lease to release it."; return false; }
             Remove(selected);
             return true;
         }
@@ -196,18 +203,18 @@ namespace AirCity.Dev
 
             foreach (var l in FindObjectsByType<AircraftLights>(FindObjectsInactive.Exclude))
             {
-                if (Flying(l.GetComponent<Aircraft.Aircraft>())) continue;
+                if (Flying(l.GetComponent<Aircraft.Aircraft>()) || SmallHangar.OfResident(l.GetComponentInParent<Aircraft.Aircraft>())!=null) continue;
                 l.beacon = Beacons || Engines;
                 l.strobes = Strobes;
                 l.landing = l.taxi = Landing;
                 l.logo = Logos;
             }
             foreach (var p in FindObjectsByType<PropellerSpinner>(FindObjectsInactive.Exclude))
-                if (!Flying(p.GetComponentInParent<Aircraft.Aircraft>())) p.rpm = Engines ? (p.name.StartsWith("Fan") ? 1100f : 900f) : 0f;
+                if (!Flying(p.GetComponentInParent<Aircraft.Aircraft>()) && SmallHangar.OfResident(p.GetComponentInParent<Aircraft.Aircraft>())==null) p.rpm = Engines ? (p.name.StartsWith("Fan") ? 1100f : 900f) : 0f;
             foreach (var a in FindObjectsByType<AircraftAfterburner>(FindObjectsInactive.Exclude))
                 if (!Flying(a.GetComponent<Aircraft.Aircraft>())) a.reheat = Reheat ? 1f : 0f;
             // (a tug moves an aircraft it's pushing back)
-            if (selected != null && SelectedTow == null && !Flying(selected))
+            if (selected != null && SelectedTow == null && !Flying(selected) && SmallHangar.OfResident(selected)==null)
             {
                 var motion = selected.GetComponent<AircraftGroundMotion>();
                 if (motion != null)

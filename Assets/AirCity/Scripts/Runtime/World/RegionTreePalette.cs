@@ -215,7 +215,8 @@ namespace AirCity.World
             foreach(var limb in description.limbs) b.Tube(limb,sides);
             foreach(var crown in description.crowns) b.Crown(crown,level==0?9:6,level==0?4:3);
             foreach(var frond in description.fronds) b.Frond(frond,level==0?3:2);
-            return b.Mesh(description.name+" LOD"+level);
+            // The medium model stays readable: ForestRenderer measures its crown for the distant shadow shape.
+            return b.Mesh(description.name+" LOD"+level,level==1);
         }
 
         Texture2D Bake(List<Description> descriptions)
@@ -338,10 +339,10 @@ namespace AirCity.World
                 int first=vertices.Count;Vertex(a,Vector3.up,Color.white,new Vector2(min.x,min.y));Vertex(b,Vector3.up,Color.white,new Vector2(min.x,max.y));
                 Vertex(c,Vector3.up,Color.white,new Vector2(max.x,max.y));Vertex(d,Vector3.up,Color.white,new Vector2(max.x,min.y));Quad(1,first,first+1,first+2,first+3);
             }
-            public Mesh Mesh(string name)
+            public Mesh Mesh(string name,bool readable=false)
             {
                 var mesh=new Mesh {name=name,subMeshCount=2};mesh.SetVertices(vertices);mesh.SetNormals(normals);mesh.SetColors(colors);mesh.SetUVs(0,uv);
-                mesh.SetTriangles(triangles[0],0);mesh.SetTriangles(triangles[1],1);mesh.RecalculateBounds();mesh.UploadMeshData(true);return mesh;
+                mesh.SetTriangles(triangles[0],0);mesh.SetTriangles(triangles[1],1);mesh.RecalculateBounds();mesh.UploadMeshData(!readable);return mesh;
             }
         }
 

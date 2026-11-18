@@ -8,6 +8,7 @@ namespace AirCity.Aircraft
     {
         GeneralAviation = 0,
         Airliner = 1,
+        BusinessJet = 2,
     }
 
     /// <summary>Places ground equipment and vehicles attach to or service.</summary>

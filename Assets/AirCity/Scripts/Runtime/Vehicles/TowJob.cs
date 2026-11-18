@@ -162,8 +162,17 @@ namespace AirCity.Vehicles
             problem = null;
             heading = heading.normalized;
             StandLayout l = null;
+            SmallHangar hangar=null;
+            if (net.Airport!=null)
+                foreach (var bay in net.Airport.Hangars)
+                    if (bay.Contains(position)) { hangar=bay; break; }
+            if (hangar!=null)
+            {
+                if (!hangar.DoorsOpen) { problem="Open the hangar doors before moving the aircraft."; return null; }
+                if (!HangarConnection.TryGet(hangar,type,out l,out problem)) return null;
+            }
             foreach (var x in net.Layouts())
-                if (!x.stand.DeIcing && x.Contains(position))
+                if (l==null && !x.stand.DeIcing && x.Contains(position))
                 {
                     l = x;
                     break;
@@ -226,11 +235,55 @@ namespace AirCity.Vehicles
                 return null;
             }
             options.Sort((a, b) => a.score.CompareTo(b.score));
-            var pick = options[otherWay && options.Count > 1 ? 1 : 0];
+            var valid=new List<PushBackPath>();
+            foreach (var option in options)
+            {
+                var path=new PushBackPath(l.stand,l,type,position,heading,option.face,option.r);
+                path.Build(corner,wheelbase);
+                // A stored aircraft must be backed entirely through the opening before its wings turn.
+                if (hangar!=null && !HangarConnection.ValidateMovement(hangar,type,path,out problem)) continue;
+                var edgeA=net.At(l.edge.a); var edgeB=net.At(l.edge.b); var delta=edgeB-edgeA;
+                float u=Vector2.Dot(path.NoseEnd-edgeA,delta)/Mathf.Max(delta.sqrMagnitude,.001f);
+                if (hangar!=null && (u<0f || u>1f)) { problem="The hangar needs more taxiway length beside its doors."; continue; }
+                valid.Add(path);
+            }
+            if (valid.Count==0) { problem ??= "There is no clear way to back the aircraft through the hangar doors."; return null; }
+            problem=null;
+            return valid[otherWay && valid.Count>1 ? 1 : 0];
+        }
 
-            var p = new PushBackPath(l.stand, l, type, position, heading, pick.face, pick.r);
-            p.Build(corner, wheelbase);
-            return p;
+        /// <summary>Resume the suffix of a resident's hand push from its saved physical pose. Reconstructing
+        /// the canonical bay path avoids inventing a new turn while the wings are still in the doorway.</summary>
+        public static PushBackPath ResumeHangarPush(TaxiwayNetwork net,AircraftType type,SmallHangar hangar,
+            Vector2 position,Vector2 heading,bool otherWay,out string problem)
+        {
+            problem="The aircraft is not near its hangar push path.";
+            float reach=hangar.Spec.Depth+hangar.Spec.MaxSetback+type.Length+10f;
+            if ((position-hangar.Door).sqrMagnitude>reach*reach) return null;
+            var full=Plan(net,type,hangar.ParkPosition(type),hangar.ParkFacing,otherWay,out problem);
+            if (full==null) return null;
+            float best=float.MaxValue,at=0f;
+            for (float d=0f;d<full.Length;d+=.1f)
+            {
+                full.Sample(d,out var gear,out var facing,out _,out _);
+                float score=(gear-position).sqrMagnitude;
+                if (Vector2.Angle(facing,heading)>5f || score>=best) continue;
+                best=score; at=d;
+            }
+            if (best>.15f*.15f || at>full.Length-.1f) { problem="The aircraft is not on its saved hangar push path."; return null; }
+            if (at<.1f && best<.0001f) { problem=null; return full; }
+            var suffix=new PushBackPath(full.stand,full.layout,type,position,heading,full.endFacing,full.radius);
+            suffix.gear.Add(position); suffix.facing.Add(heading.normalized);
+            suffix.nose.Add(position+heading.normalized*Mathf.Max(type.Wheelbase,.5f)); suffix.along.Add(0f);
+            for (int i=0;i<full.along.Count;i++)
+            {
+                if (full.along[i]<=at+.01f) continue;
+                suffix.gear.Add(full.gear[i]); suffix.facing.Add(full.facing[i]); suffix.nose.Add(full.nose[i]);
+                int last=suffix.along.Count-1;
+                suffix.along.Add(suffix.along[last]+Vector2.Distance(suffix.nose[last],suffix.nose[last+1]));
+            }
+            if (suffix.gear.Count<2) { problem="The aircraft has already cleared the hangar."; return null; }
+            problem=null; return suffix;
         }
 
         /// <summary>

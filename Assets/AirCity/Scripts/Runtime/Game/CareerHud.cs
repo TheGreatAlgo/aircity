@@ -34,7 +34,7 @@ namespace AirCity.Game
         static float HeaderHeight => U(Screen.width < U(680) ? 72 : 40);
         public static float ContentTop => HeaderHeight + U(12);
         static readonly string[] Icons = { "select", "clear-trees", "level-ground", "runway", "taxiway", "stand", "road", "terminal" };
-        static readonly string[] Labels = { "Select", "Clear land", "Level ground", "Runway", "Taxiway", "Parking", "Public road", "Reception" };
+        static readonly string[] Labels = { "Select", "Clear land", "Level ground", "Runway", "Taxiway", "Parking", "Public road", "Visitor centre" };
         static readonly int[] Groups = { 0, 1, 1, 2, 2, 2, 3, 3 };
         static float U(float units) => DevGui.U(units);
 
@@ -369,7 +369,7 @@ namespace AirCity.Game
         }
         static string TaskTitle(CareerStep step) => step switch {
             CareerStep.ClearTrees => "Clear some space", CareerStep.GradeLand => "Prepare your ground", CareerStep.Runway => "Build a runway",
-            CareerStep.Parking => "Connect aircraft parking", CareerStep.AccessRoad => "Connect to the valley", CareerStep.Reception => "Build passenger reception",
+            CareerStep.Parking => "Connect aircraft parking", CareerStep.AccessRoad => "Connect to the valley", CareerStep.Reception => "Build a visitor centre",
             CareerStep.FirstCharter => "Welcome your first flight", CareerStep.Expansion => "Grow your airfield", _ => "Open for business" };
         static string TaskHint(CareerStep step) => step switch {
             CareerStep.ClearTrees => "Choose where to begin. Select trees or brush away a patch of woodland.",
@@ -377,7 +377,7 @@ namespace AirCity.Game
             CareerStep.Runway => "Drag a grass runway of at least 700 m. Its position and direction are yours.",
             CareerStep.Parking => "Connect a taxiway near a runway end, then place parking beside the taxiway.",
             CareerStep.AccessRoad => "Clear a route and draw your public road from the airport to the valley road.",
-            CareerStep.Reception => "Place a small reception beside the airport end of your road.",
+            CareerStep.Reception => "Prepare a level site beside your public road for the visitor centre, parking lot and driveway.",
             CareerStep.FirstCharter => "Your airport is ready. Host a local charter and earn its service fee.",
             CareerStep.Expansion => "Keep earning from charters. Clear and level new land, then drag a threshold to extend.",
             _ => "Serve local charters and keep shaping your airport with the tools below." };

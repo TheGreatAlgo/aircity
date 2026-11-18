@@ -60,7 +60,7 @@ namespace AirCity.Game
             CareerTool.Taxiway => "Click a route from the runway. Enter finishes; right-click removes a corner.",
             CareerTool.Stand => "Click beside a taxiway to place parking. The side you click sets its direction.",
             CareerTool.Road => "Click your airport entrance, add corners, then finish on the valley road.",
-            CareerTool.Reception => "Place reception beside the airport end of your public road. R rotates.",
+            CareerTool.Reception => "Place the visitor centre and parking beside a public road. The driveway leaves the right side of the lot. R rotates.",
             _ => "Choose a tool below. WASD moves, right drag orbits, scroll zooms."
         };
 
@@ -182,9 +182,10 @@ namespace AirCity.Game
                     if (stand != null) { outline.AddRange(StandLayout.Of(stand).Pad); outline.Add(outline[0]); }
                     Status = why ?? $"Place light-aircraft parking · ${Price:N0}"; break;
                 case CareerTool.Reception:
-                    Valid = CareerConstruction.Reception(state, point, BuildingHeading, false, out why); Price = CareerConstruction.ReceptionPrice;
+                    visitorPlan=null; Price=CareerConstruction.ReceptionPrice;
+                    Valid = CareerConstruction.Reception(state, point, BuildingHeading, false, out why,game.Airport,p=>{visitorPlan=p;Price=p.Price;},game);
                     outline.AddRange(CareerConstruction.ReceptionCorners(point, BuildingHeading)); outline.Add(outline[0]);
-                    Status = why ?? $"Passenger reception · ${Price:N0}. R rotates."; break;
+                    Status = why ?? $"Visitor centre + 18 parking bays + connected driveway · ${Price:N0}. R rotates."; break;
             }
             Show(outline);
             RefreshModelPreviews(point);
@@ -254,7 +255,7 @@ namespace AirCity.Game
         }
         void PlaceReception(Vector2 point)
         {
-            if (CareerConstruction.Reception(game.State, point, BuildingHeading, true, out string why)) { game.PlayerChanged(CareerTool.Reception); game.QueueAutosave(); Choose(CareerTool.Select); }
+            if (CareerConstruction.Reception(game.State, point, BuildingHeading, true, out string why,game.Airport,game:game)) { game.PlayerChanged(CareerTool.Reception); game.QueueAutosave(); Choose(CareerTool.Select); }
             else game.SetMessage(why);
         }
         static void Circle(List<Vector2> points, Vector2 centre, float radius)

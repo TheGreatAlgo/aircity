@@ -78,6 +78,7 @@ Shader "AirCity/TreeCanopy"
                     normal=normalize(normal+leafNormal*.32);
                 }
                 Light sun=GetMainLight(TransformWorldToShadowCoord(input.positionWS));
+                sun.shadowAttenuation=lerp(sun.shadowAttenuation,1,GetMainLightShadowFade(input.positionWS)); // fade out at the end of the shadow range, as the terrain does
                 half3 light=SampleSH(normal)+sun.color*saturate(dot(normal,sun.direction))*sun.shadowAttenuation;
                 if (_Canopy>.5) light+=sun.color*.12*saturate(dot(-normal,sun.direction))*sun.shadowAttenuation;
                 float3 origin=TransformObjectToWorld(float3(0,0,0));

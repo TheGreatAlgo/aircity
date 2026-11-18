@@ -45,6 +45,8 @@ namespace AirCity.World
         }
         public readonly List<Link> links = new List<Link>();
         public readonly List<BuiltSurfaceMap.Triangle> groundTriangles = new List<BuiltSurfaceMap.Triangle>();
+        /// <summary>The top of every bridge column (where it meets its crosshead).</summary>
+        internal readonly List<Vector3> piers = new List<Vector3>();
         public readonly PublicRoadNetwork graph;
         /// <summary>Kerbs (raised concrete edges, sidewalks' fronts, island edges) and grass on raised medians.</summary>
         readonly Mesh[] meshes=new Mesh[6];
@@ -147,7 +149,7 @@ namespace AirCity.World
             var empty=new HashSet<int>();var result=new PublicRoadGeometry(graph,rural,airport,height,empty,empty,null,false) {pieces=parts};
             foreach(var part in parts)
             {
-                result.links.AddRange(part.links);result.groundTriangles.AddRange(part.groundTriangles);
+                result.links.AddRange(part.links);result.groundTriangles.AddRange(part.groundTriangles);result.piers.AddRange(part.piers);
                 foreach(var item in part.groundCeilings)
                     if(!result.groundCeilings.TryGetValue(item.Key,out float old)||item.Value<old)result.groundCeilings[item.Key]=item.Value;
                 foreach(var item in part.groundFloors)
@@ -290,10 +292,12 @@ namespace AirCity.World
             bool roundA=RoundEnd(edge.a,edge),roundB=RoundEnd(edge.b,edge);
             float radius=Mathf.Min(3f,half*.55f,(s1-s0)*.2f);
             if(roundA)s0+=radius;if(roundB)s1-=radius;
-            if(roundA)BuildEnd(edge,edge.a,-Alignment3D.XZ(path.Tangent(0)).normalized,half,verge,radius);
-            if(roundB)BuildEnd(edge,edge.b,Alignment3D.XZ(path.Tangent(1)).normalized,half,verge,radius);
+            var endA=roundA?BuildEnd(edge,edge.a,-Alignment3D.XZ(path.Tangent(0)).normalized,half,verge,radius):null;
+            var endB=roundB?BuildEnd(edge,edge.b,Alignment3D.XZ(path.Tangent(1)).normalized,half,verge,radius):null;
             int steps = Mathf.Max(1, Mathf.CeilToInt((s1 - s0) / 5f));
             float[] xs = { -half, 0f, half };
+            // a bridge or tunnel carries the road on concrete: its own cross-sections, no gravel or sidewalk laid on soil
+            var piece = edge.structure != RoadStructure.Ground && s1 > s0 ? Piece(edge, verge) : null;
             for (int step = 0; step < steps; step++)
             {
                 float sa = Mathf.Lerp(s0, s1, step / (float)steps), sb = Mathf.Lerp(s0, s1, (step + 1f) / steps);
@@ -303,6 +307,11 @@ namespace AirCity.World
                     return World(p, Elevation(edge, p) + .18f + crossfall + extra);
                 }
                 for (int col = 0; col < 2; col++) Quad(surface, At(sa, xs[col]), At(sb, xs[col]), At(sb, xs[col + 1]), At(sa, xs[col + 1]));
+                if (piece != null)
+                {
+                    if (step == 0) piece.Add(At(sa, -half), At(sa, half));
+                    piece.Add(At(sb, -half), At(sb, half));
+                }
                 for(int side=-1;side<=1;side+=2)
                 {
                     float inner = half * side, outer = (half + verge) * side;
@@ -312,9 +321,9 @@ namespace AirCity.World
                         float back = inner + KerbWidth * side;
                         Quad(kerbs, At(sa, inner, KerbHeight), At(sb, inner, KerbHeight), At(sb, inner), At(sa, inner));
                         Quad(kerbs, At(sa, inner, KerbHeight), At(sb, inner, KerbHeight), At(sb, back, KerbHeight), At(sa, back, KerbHeight));
-                        Quad(shoulder, At(sa, back, KerbHeight), At(sb, back, KerbHeight), At(sb, outer, KerbHeight), At(sa, outer, KerbHeight));
+                        if (piece == null) Quad(shoulder, At(sa, back, KerbHeight), At(sb, back, KerbHeight), At(sb, outer, KerbHeight), At(sa, outer, KerbHeight));
                     }
-                    else Quad(shoulder, At(sa, inner, -.035f), At(sb, inner, -.035f), At(sb, outer, -.09f), At(sa, outer, -.09f));
+                    else if (piece == null) Quad(shoulder, At(sa, inner, -.035f), At(sb, inner, -.035f), At(sb, outer, -.09f), At(sa, outer, -.09f));
                 }
             }
             paint.frame = RunwayFrame.Along(a, axis);
@@ -336,25 +345,84 @@ namespace AirCity.World
                         Elevation(edge,Alignment3D.XZ(path.AtDistance(sa)))+.18f,Elevation(edge,Alignment3D.XZ(path.AtDistance(sb)))+.18f,top);
                 });
             DrapePaint(first, p => Elevation(edge, p) + Crown(edge) * Mathf.Clamp01(1f - path.DistanceTo(p) / half));
-            RoadStructureBuilder.Build(path,edge.structure,half+verge,groundHeight,concrete,groundTriangles,
-                (p,radius)=>
-                {
-                    foreach(var lower in graph.segments)
-                        if(lower.id!=edge.id && lower.structure!=RoadStructure.Tunnel && graph.Path(lower).DistanceTo(PublicRoadNetwork.XZ(p))<lower.Width*.5f+radius &&
-                            graph.Path(lower).Height(graph.Path(lower).ClosestParameter(PublicRoadNetwork.XZ(p)))<p.y-1f)return false;
-                    return true;
-                },s0,s1);
+            if (piece == null) return;
+            bool onA = Onward(edge.a, edge) != null, onB = Onward(edge.b, edge) != null;
+            piece.capStart = !onA && !roundA; piece.abutStart = !onA && MeetsGround(edge.a, edge);
+            piece.capEnd = !onB && !roundB; piece.abutEnd = !onB && MeetsGround(edge.b, edge);
+            // a dead end: the parapets or walls go round the pavement's rounded end
+            piece.endStart = endA; piece.endEnd = endB;
+            piece.trimStart = roundA ? radius : 0f; piece.trimEnd = roundB ? radius : 0f;
+            piece.run = RunOf(edge); piece.length = PieceLength(edge);
+            RoadStructureBuilder.Build(piece, DrawnGround, concrete, groundTriangles, (p, radius) => MaySupport(edge, p, radius), piers);
         }
 
-        bool RoundEnd(int node,PublicRoadSegment edge)=>edge.structure==RoadStructure.Ground &&
-            !graph.Node(node).outsideConnection && junctions[node].arms.Count==1;
+        // ------------------------------------------------------------------ bridges and tunnels
 
-        void BuildEnd(PublicRoadSegment edge,int node,Vector2 outward,float half,float verge,float radius)
+        StructurePiece Piece(PublicRoadSegment edge, float verge)
+        {
+            bool kerbed = edge.Type.edge == RoadEdge.Kerb;
+            return new StructurePiece { structure = edge.structure, verge = Mathf.Max(verge, RoadStructureBuilder.ParapetWidth), surface = .18f,
+                stripFrom = kerbed ? KerbWidth : 0f, stripRise = kerbed ? KerbHeight : 0f };
+        }
+
+        /// <summary>The section a bridge or tunnel carries on with past a node: round a bend, or straight on.</summary>
+        PublicRoadSegment Onward(int node, PublicRoadSegment edge)
+        {
+            var j = junctions[node];
+            if (j.arms.Count != 2 || j.IsJunction) return null;
+            var other = j.arms[0].edge.id == edge.id ? j.arms[1].edge : j.arms[0].edge;
+            return other.id != edge.id && other.structure == edge.structure ? other : null;
+        }
+
+        bool MeetsGround(int node, PublicRoadSegment edge) => junctions[node].arms.Any(a => a.edge.id != edge.id && a.edge.structure == RoadStructure.Ground);
+
+        /// <summary>A section's length between its nodes' cuts, as its run counts it.</summary>
+        float PieceLength(PublicRoadSegment edge) => Mathf.Max(0f, graph.Path(edge).Length - ArmAt(edge.a, edge.id).cut - ArmAt(edge.b, edge.id).cut);
+
+        static float ArcLength(Junction j)
+        {
+            float total = 0f;
+            if (j.arc != null) for (int k = 1; k < j.arc.Count; k++) total += Vector2.Distance(j.arc[k - 1], j.arc[k]);
+            return total;
+        }
+
+        readonly Dictionary<int, RunSpan> edgeRuns = new Dictionary<int, RunSpan>(), bendRuns = new Dictionary<int, RunSpan>();
+        /// <summary>Where a section lies along its bridge (RoadStructureBuilder.Runs): the same answer from any chunk.</summary>
+        RunSpan RunOf(PublicRoadSegment edge)
+        {
+            if (edgeRuns.TryGetValue(edge.id, out var run)) return run;
+            RoadStructureBuilder.Runs(edge.id, id => { var e = graph.Segment(id); return (e.a, e.b); },
+                (node, id) => Onward(node, graph.Segment(id))?.id ?? -1, id => PieceLength(graph.Segment(id)),
+                (node, id) => { var j = junctions[node]; return j.IsCurve ? (ArcLength(j), j.arms[0].edge.id != id) : (0f, false); },
+                (node, id) => !MeetsGround(node, graph.Segment(id)), edgeRuns, bendRuns);
+            return edgeRuns[edge.id];
+        }
+
+        /// <summary>Whether a bridge column may stand here: not on a road passing below.</summary>
+        bool MaySupport(PublicRoadSegment edge, Vector3 p, float radius)
+        {
+            var at = PublicRoadNetwork.XZ(p);
+            foreach (var lower in graph.segments)
+            {
+                if (lower.id == edge.id || lower.structure == RoadStructure.Tunnel) continue;
+                var path = graph.Path(lower);
+                if (path.DistanceTo(at) < Width(lower) * .5f + ShoulderWidth(lower) + radius && path.Height(path.ClosestParameter(at)) < p.y - 1f) return false;
+            }
+            return true;
+        }
+
+        /// <summary>A dead end is finished with rounded corners, on the ground, on a bridge and in a tunnel alike.</summary>
+        bool RoundEnd(int node,PublicRoadSegment edge)=>
+            !graph.Node(node).outsideConnection && graph.Node(node).terminalEntrance!=VisitorCentreLayout.EntranceId && junctions[node].arms.Count==1;
+
+        /// <summary>The pavement of a dead end and, on the ground, its kerb and verge. Returns the end's outline (on
+        /// the pavement, with the direction out of the road at each point) for a bridge's or tunnel's edge to follow.</summary>
+        List<(Vector3 point,Vector3 normal)> BuildEnd(PublicRoadSegment edge,int node,Vector2 outward,float half,float verge,float radius)
         {
             var end=PublicRoadNetwork.XZ(graph.Node(node).position);var right=Right(outward);
             var inner=SurfaceBuilder.RoadEndOutline(end,outward,half,radius);
             // Offset the same sampled outline; matching subdivisions keep the curved shoulder watertight.
-            var outer=new List<Vector2>();
+            var outer=new List<Vector2>();var normals=new List<Vector2>();
             foreach(var p in inner)
             {
                 Vector2 normal;
@@ -362,13 +430,15 @@ namespace AirCity.World
                 if(Mathf.Abs(x)>half-radius+.001f)
                 {var arcCentre=end-outward*radius+right*Mathf.Sign(x)*(half-radius);normal=(p-arcCentre).normalized;}
                 else normal=outward;
-                outer.Add(p+normal*verge);
+                outer.Add(p+normal*verge);normals.Add(normal);
             }
-            float Height(Vector2 p)=>Elevation(edge,p)+.18f+Crown(edge)*Mathf.Clamp01(1f-Mathf.Abs(Vector2.Dot(p-end,right))/half);
+            bool raised=edge.Type.edge==RoadEdge.Kerb,built=edge.structure!=RoadStructure.Ground;
+            float Crowned(Vector2 p)=>Elevation(edge,p)+.18f+Crown(edge)*Mathf.Clamp01(1f-Mathf.Abs(Vector2.Dot(p-end,right))/half);
+            // on a bridge or in a tunnel the pavement falls to its edge all the way round: the parapet or wall stays level
+            float Height(Vector2 p)=>built?Elevation(edge,p)+.18f:Crowned(p);
             var centre=end-outward*(radius*.5f);
             for(int i=0;i<inner.Count;i++)
-                Quad(surface,World(centre,Height(centre)),World(inner[i],Height(inner[i])),World(inner[(i+1)%inner.Count],Height(inner[(i+1)%inner.Count])),World(centre,Height(centre)));
-            bool raised=edge.Type.edge==RoadEdge.Kerb;
+                Quad(surface,World(centre,Crowned(centre)),World(inner[i],Height(inner[i])),World(inner[(i+1)%inner.Count],Height(inner[(i+1)%inner.Count])),World(centre,Crowned(centre)));
             for(int i=0;i+1<inner.Count;i++)
             {
                 var a=inner[i];var b=inner[i+1];var aa=outer[i];var bb=outer[i+1];
@@ -376,9 +446,11 @@ namespace AirCity.World
                 if(raised)
                 {
                     Quad(kerbs,World(a,ya),World(b,yb),World(b,yb+KerbHeight),World(a,ya+KerbHeight));
-                    Quad(shoulder,World(a,ya+KerbHeight),World(b,yb+KerbHeight),World(bb,yb+KerbHeight),World(aa,ya+KerbHeight));
+                    // a bridge or tunnel paves its own sidewalk behind the kerb, out to its parapet or wall
+                    if(built)Quad(kerbs,World(a,ya+KerbHeight),World(b,yb+KerbHeight),World(b+normals[i+1]*KerbWidth,yb+KerbHeight),World(a+normals[i]*KerbWidth,ya+KerbHeight));
+                    else Quad(shoulder,World(a,ya+KerbHeight),World(b,yb+KerbHeight),World(bb,yb+KerbHeight),World(aa,ya+KerbHeight));
                 }
-                else Quad(shoulder,World(a,ya-.035f),World(b,yb-.035f),World(bb,yb-.09f),World(aa,ya-.09f));
+                else if(!built)Quad(shoulder,World(a,ya-.035f),World(b,yb-.035f),World(bb,yb-.09f),World(aa,ya-.09f));
             }
             if(!raised)
             {
@@ -386,6 +458,9 @@ namespace AirCity.World
                 var line=SurfaceBuilder.RoadEndOutline(end-outward*.25f,outward,half-.25f,Mathf.Max(.1f,radius-.25f));
                 paint.Strip(line,LineHalf,PaintBuilder.White);DrapePaint(first,p=>Height(p)-.18f);
             }
+            var ring=new List<(Vector3,Vector3)>(inner.Count);
+            for(int i=0;i<inner.Count;i++)ring.Add((World(inner[i],Height(inner[i])),World(normals[i],0f)));
+            return ring;
         }
 
         void BuildJunction(Junction junction)
@@ -411,11 +486,15 @@ namespace AirCity.World
                 // a kerbed corner: the sidewalk level behind the kerb (KerbAlong draws the kerb on the line itself);
                 // a shoulder corner: gravel falling away from the pavement edge
                 float rise = raised ? .19f + KerbHeight : .145f, fall = raised ? .19f + KerbHeight : .09f, start = raised ? KerbWidth : 0f;
+                // between two bridges or tunnels the corner is concrete like their verges, never gravel
+                bool built = arm.edge.structure != RoadStructure.Ground && next.edge.structure != RoadStructure.Ground;
+                if (built && !raised) rise = fall = .19f;
                 for (int k = 0; k + 1 < kerb.Count; k++)
                 {
                     float w0 = Mathf.Lerp(v0, v1, k / (kerb.Count - 1f)), w1 = Mathf.Lerp(v0, v1, (k + 1f) / (kerb.Count - 1f));
-                    Quad(shoulder, World(kerb[k] + outward[k] * start, y + rise), World(kerb[k + 1] + outward[k + 1] * start, y + rise),
-                        World(kerb[k + 1] + outward[k + 1] * w1, y + fall), World(kerb[k] + outward[k] * w0, y + fall));
+                    Vector3 c0 = World(kerb[k] + outward[k] * start, y + rise), c1 = World(kerb[k + 1] + outward[k + 1] * start, y + rise),
+                        c2 = World(kerb[k + 1] + outward[k + 1] * w1, y + fall), c3 = World(kerb[k] + outward[k] * w0, y + fall);
+                    if (built) concrete.Face(c0, c1, c2, c3, Vector3.up); else Quad(shoulder, c0, c1, c2, c3);
                 }
             }
             int first = paint.mesh.Count;
@@ -485,6 +564,8 @@ namespace AirCity.World
                 links.Add(new Link(World(arc[k], Mathf.Lerp(h0, h1, along[k] / total)), World(arc[k + 1], Mathf.Lerp(h0, h1, along[k + 1] / total)),
                     half + verge, edge.structure));
             float[] xs = { -half, 0f, half };
+            // where a ground road meets a bridge or tunnel the bend lies on the ground, like the abutment it leads to
+            bool built = a0.edge.structure != RoadStructure.Ground && a1.edge.structure != RoadStructure.Ground;
             for (int k = 0; k + 1 < m; k++)
             {
                 for (int col = 0; col < 2; col++) Quad(surface, At(k, xs[col]), At(k + 1, xs[col]), At(k + 1, xs[col + 1]), At(k, xs[col + 1]));
@@ -494,10 +575,11 @@ namespace AirCity.World
                         float back = (half + KerbWidth) * side;
                         Quad(kerbs, At(k, half * side, KerbHeight), At(k + 1, half * side, KerbHeight), At(k + 1, half * side), At(k, half * side));
                         Quad(kerbs, At(k, half * side, KerbHeight), At(k + 1, half * side, KerbHeight), At(k + 1, back, KerbHeight), At(k, back, KerbHeight));
+                        if (built) continue;
                         Quad(shoulder, At(k, back, KerbHeight), At(k + 1, back, KerbHeight), At(k + 1, (half + verge) * side, KerbHeight),
                             At(k, (half + verge) * side, KerbHeight));
                     }
-                    else Quad(shoulder, At(k, half * side, -.035f), At(k + 1, half * side, -.035f), At(k + 1, (half + verge) * side, -.09f), At(k, (half + verge) * side, -.09f));
+                    else if (!built) Quad(shoulder, At(k, half * side, -.035f), At(k + 1, half * side, -.035f), At(k + 1, (half + verge) * side, -.09f), At(k, (half + verge) * side, -.09f));
             }
             paint.frame = RunwayFrame.None;
             int first = paint.mesh.Count;
@@ -531,10 +613,13 @@ namespace AirCity.World
                 float x = Mathf.Abs(Vector2.Dot(p - arc[best], right[best]));
                 return Mathf.Lerp(h0, h1, along[best] / total) + crown * Mathf.Clamp01(1f - x / half);
             });
-            if(edge.structure!=RoadStructure.Ground)
-                for(int k=0;k+1<arc.Count;k++)
-                    RoadStructureBuilder.Build(new Alignment3D(World(arc[k],Mathf.Lerp(h0,h1,along[k]/total)),World(arc[k+1],Mathf.Lerp(h0,h1,along[k+1]/total))),
-                        edge.structure,half+verge,groundHeight,concrete,groundTriangles);
+            if (!built) return;
+            // one unbroken piece round the bend, on the pavement's own cross-sections: it meets both sections' ends exactly
+            var piece = Piece(edge, verge);
+            for (int k = 0; k < m; k++) piece.Add(At(k, -half), At(k, half));
+            RunOf(edge); piece.run = bendRuns.TryGetValue(junction.node.id, out var run) ? run : default; piece.length = ArcLength(junction);
+            piece.capStart = piece.capEnd = a0.edge.structure != a1.edge.structure;
+            RoadStructureBuilder.Build(piece, DrawnGround, concrete, groundTriangles, (p, radius) => MaySupport(a0.edge, p, radius) && MaySupport(a1.edge, p, radius), piers);
         }
 
         // ------------------------------------------------------------------ markings and furniture by road type
@@ -841,7 +926,10 @@ namespace AirCity.World
             }
         }
 
-        public void SampleGround(Vector2 p, out float height, out float distance, out float halfWidth)
+        public void SampleGround(Vector2 p, out float height, out float distance, out float halfWidth) =>
+            SampleGround(links, p, out height, out distance, out halfWidth);
+
+        void SampleGround(List<Link> links, Vector2 p, out float height, out float distance, out float halfWidth)
         {
             height = 0f; distance = float.MaxValue; halfWidth = 3.25f;
             foreach (var link in links)
@@ -945,6 +1033,76 @@ namespace AirCity.World
             Remember(surface.positions, first);
         }
 
+        /// <summary>A terrain sample `distance` from a ground road (at height `road` there) graded to its roadbed.</summary>
+        static float Roadbed(float original, float road, float distance, float halfWidth, float spacing)
+        {
+            float roadbed = road + .125f;
+            float run = Mathf.Max(0f, distance - Mathf.Max(halfWidth + 4f, spacing * 1.35f));
+            float easedRun = run * Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(run / 12f));
+            // Ground roads are supported by soil all the way to their shoulders. Hill cuts and 1:2 fill slopes
+            // meet the original terrain naturally; elevated links never participate in this derived roadbed.
+            return original > roadbed ? Mathf.Min(original, roadbed + easedRun * .7f) : Mathf.Max(original, roadbed - easedRun * .5f);
+        }
+
+        List<Link> groundRoads;
+        readonly Dictionary<(int, int), float> gradingAt = new Dictionary<(int, int), float>();
+
+        /// <summary>The ground as the valley draws it: the given terrain with every ground road's roadbed graded into
+        /// it (as GradedHeight does at the terrain's samples) and interpolated between those samples as the terrain
+        /// is. Bridges and tunnels are built against this, not the saved terrain: beside a ground road's cutting or
+        /// embankment a retaining wall or abutment must meet the ground the player sees.</summary>
+        public float DrawnGround(Vector2 p)
+        {
+            if (groundRoads == null)
+            {
+                // every ground road of the network, whichever sections this geometry builds
+                groundRoads = new List<Link>();
+                foreach (var edge in graph.segments)
+                {
+                    if (edge.structure != RoadStructure.Ground) continue;
+                    var path = graph.Path(edge); float length = path.Length;
+                    float start = ArmAt(edge.a, edge.id).cut, end = length - ArmAt(edge.b, edge.id).cut;
+                    if (length <= .01f || end <= start) continue;
+                    int count = path.shape.curved || path.shape.smooth ? Mathf.Max(1, Mathf.CeilToInt((end - start) / 8f)) : 1;
+                    for (int i = 0; i < count; i++)
+                    {
+                        var a = Alignment3D.XZ(path.AtDistance(Mathf.Lerp(start, end, i / (float)count)));
+                        var b = Alignment3D.XZ(path.AtDistance(Mathf.Lerp(start, end, (i + 1f) / count)));
+                        groundRoads.Add(new Link(World(a, Elevation(edge, a)), World(b, Elevation(edge, b)), Width(edge) * .5f + ShoulderWidth(edge), edge.structure));
+                    }
+                }
+                foreach (var j in junctions.Values)
+                {
+                    if (!j.IsCurve || j.arc == null || j.arc.Count < 2 || j.arms[0].edge.structure != RoadStructure.Ground) continue;
+                    var edge = j.arms[0].edge; int m = j.arc.Count; float total = Mathf.Max(ArcLength(j), 1e-4f), gone = 0f;
+                    float h0 = Elevation(edge, j.arc[0]), h1 = Elevation(j.arms[1].edge, j.arc[m - 1]);
+                    for (int k = 0; k + 1 < m; k++)
+                    {
+                        float next = gone + Vector2.Distance(j.arc[k], j.arc[k + 1]);
+                        groundRoads.Add(new Link(World(j.arc[k], Mathf.Lerp(h0, h1, gone / total)), World(j.arc[k + 1], Mathf.Lerp(h0, h1, next / total)),
+                            j.arms[0].halfWidth + ShoulderWidth(edge), edge.structure));
+                        gone = next;
+                    }
+                }
+            }
+            if (groundRoads.Count == 0) return groundHeight(p);
+            float spacing = ValleyWorld.Size / (ValleyWorld.Resolution - 1f);
+            float x = (p.x + ValleyWorld.Size * .5f) / spacing, z = (p.y + ValleyWorld.Size * .5f) / spacing;
+            int ix = Mathf.FloorToInt(x), iz = Mathf.FloorToInt(z);
+            // how much grading moves one terrain sample
+            float Change(int cx, int cz)
+            {
+                if (gradingAt.TryGetValue((cx, cz), out float known)) return known;
+                var corner = new Vector2(cx * spacing - ValleyWorld.Size * .5f, cz * spacing - ValleyWorld.Size * .5f);
+                float original = groundHeight(corner);
+                SampleGround(groundRoads, corner, out float road, out float distance, out float halfWidth);
+                float change = distance < EarthworkReach ? Roadbed(original, road, distance, halfWidth, spacing) - original : 0f;
+                gradingAt[(cx, cz)] = change;
+                return change;
+            }
+            return groundHeight(p) + Mathf.Lerp(Mathf.Lerp(Change(ix, iz), Change(ix + 1, iz), x - ix), Mathf.Lerp(Change(ix, iz + 1), Change(ix + 1, iz + 1), x - ix), z - iz);
+        }
+
         float GradedHeight(ValleyWorld world, int x, int z)
         {
             int index = z * ValleyWorld.Resolution + x;
@@ -955,12 +1113,7 @@ namespace AirCity.World
                 if (!box.Contains(p)) continue;
                 SampleGround(p, out float h, out float d, out float halfWidth);
                 if (d >= EarthworkReach) continue;
-                float roadbed = h + .125f;
-                float run = Mathf.Max(0f, d - Mathf.Max(halfWidth + 4f, world.Spacing * 1.35f));
-                float easedRun = run * Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(run / 12f));
-                // Ground roads are supported by soil all the way to their shoulders. Hill cuts and 1:2 fill slopes
-                // meet the original terrain naturally; elevated links never participate in this derived roadbed.
-                graded = original > roadbed ? Mathf.Min(original, roadbed + easedRun * .7f) : Mathf.Max(original, roadbed - easedRun * .5f);
+                graded = Roadbed(original, h, d, halfWidth, world.Spacing);
                 break;
             }
             if (groundCeilings.TryGetValue(index, out float ceiling))

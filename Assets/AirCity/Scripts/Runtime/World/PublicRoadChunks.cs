@@ -34,12 +34,15 @@ namespace AirCity.World
                 if(pair.Key.junction?!nodes.Contains(pair.Key.id):!edges.Contains(pair.Key.id))Remove(pair.Key);
             var terrainEdges = new HashSet<int>();
             var terrainNodes = new HashSet<int>();
-            if (terrainChange.HasValue) foreach (var edge in graph.segments)
-                if (edge.structure != RoadStructure.Ground && graph.Path(edge).Bounds(edge.Type.FullWidth).Overlaps(terrainChange.Value))
-                {
-                    if(parts.TryGetValue((false,edge.id),out var previousPart)&&previousPart.terrainSignature==TerrainSignature(graph.Path(edge),edge.Type.FullWidth*.5f,height))continue;
-                    terrainEdges.Add(edge.id); terrainNodes.Add(edge.a); terrainNodes.Add(edge.b);
-                }
+            // A bridge or tunnel is built against the ground as drawn (PublicRoadGeometry.DrawnGround): it is rebuilt
+            // when a brush, or a ground road's roadbed nearby, changes the ground along it.
+            Func<Vector2,float> drawn=height;
+            if(graph.segments.Any(e=>e.structure!=RoadStructure.Ground))
+            {var probe=PublicRoadGeometry.Compose(graph,rural,airport,height,Array.Empty<PublicRoadGeometry>());drawn=probe.DrawnGround;}
+            foreach (var edge in graph.segments)
+                if (edge.structure != RoadStructure.Ground && parts.TryGetValue((false,edge.id),out var previousPart)
+                    && previousPart.terrainSignature!=TerrainSignature(graph.Path(edge),edge.Type.FullWidth*.5f,drawn))
+                { terrainEdges.Add(edge.id); terrainNodes.Add(edge.a); terrainNodes.Add(edge.b); }
             RebuiltParts=0;
             if(changed!=null&&changed.changedSegments.Count==0&&changed.changedJunctions.Count==0&&terrainEdges.Count==0)return;
             foreach(var edge in graph.segments)
@@ -47,7 +50,7 @@ namespace AirCity.World
                 var key=(false,edge.id);
                 if(changed!=null&&!changed.changedSegments.Contains(edge.id)&&!terrainEdges.Contains(edge.id)&&parts.ContainsKey(key))continue;
                 Remove(key);var geometry=new PublicRoadGeometry(graph,rural,airport,height,new HashSet<int>{edge.id},empty);
-                var part=new Part(edge.id,false,geometry){terrainSignature=TerrainSignature(graph.Path(edge),edge.Type.FullWidth*.5f,height)};parts.Add(key,part);render?.Invoke(part);RebuiltParts++;
+                var part=new Part(edge.id,false,geometry){terrainSignature=edge.structure!=RoadStructure.Ground?TerrainSignature(graph.Path(edge),edge.Type.FullWidth*.5f,drawn):0};parts.Add(key,part);render?.Invoke(part);RebuiltParts++;
             }
             var roadParts=graph.segments.Select(e=>parts[(false,e.id)].geometry).ToArray();
             var context=PublicRoadGeometry.Compose(graph,rural,airport,height,roadParts);

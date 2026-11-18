@@ -35,7 +35,9 @@ namespace AirCity.Dev
         {
             if(roadDatum.HasValue&&(roadBuildSettings.mode==RoadBuildMode.Bridge||roadBuildSettings.mode==RoadBuildMode.Tunnel||roadBuildSettings.mode==RoadBuildMode.Automatic&&Mathf.Abs(roadElevation)>.01f))return roadDatum.Value+roadElevation;
             if(game==null)return roadElevation;float height=game.valley.DisplayHeight(p);
-            if(roadBuildSettings.mode!=RoadBuildMode.Tunnel&&game.State.world.IsWater(p))height=Mathf.Max(height,game.State.world.WaterSurfaceAt(p));
+            // following the ground over water means a low bridge (LowDeck over the surface), enough to come down onto a
+            // low bank without dipping under the water clearance
+            if(roadBuildSettings.mode!=RoadBuildMode.Tunnel&&game.State.world.IsWater(p))height=Mathf.Max(height,game.State.world.WaterSurfaceAt(p)+LowDeck);
             return height+roadElevation;
         }
         public void SetRoadUnderground(bool shown)
@@ -72,16 +74,138 @@ namespace AirCity.Dev
                 }
             return found;
         }
-        bool SnapRoadLayer(float height,Vector2 point)
+        bool RoadDrawing=>tool==DevTool.Street?streetChainPoint.HasValue:chainNode>=0;
+        /// <summary>The level the cursor works at (world): before a chain in Automatic at 0, whatever it is on;
+        /// otherwise where the next free point would go.</summary>
+        float RoadWorkingLevel(Vector2 point)=>!RoadDrawing&&roadBuildSettings.mode==RoadBuildMode.Automatic&&Mathf.Abs(roadElevation)<.1f?lastGround.y:RoadTargetHeight(point);
+        bool SnapRoadLayer(float height,Vector2 point)=>Mathf.Abs(height-RoadWorkingLevel(point))<3f;
+        /// <summary>The last cursor ray (world) and how far along it the visible ground is (+∞ in the underground view
+        /// or where pavement clips the terrain): set by Ground.</summary>
+        Ray roadRay;
+        float roadRayGround=float.PositiveInfinity;
+        /// <summary>Where the cursor ray crosses a level (world x, z), unless that is behind the ground it meets first.</summary>
+        bool RoadRayAt(float height,out Vector2 at)
         {
-            bool drawing=tool==DevTool.Street?streetChainPoint.HasValue:chainNode>=0;
-            if(!drawing&&roadBuildSettings.mode==RoadBuildMode.Automatic&&Mathf.Abs(roadElevation)<.1f)return Mathf.Abs(height-lastGround.y)<3f;
-            return Mathf.Abs(height-RoadTargetHeight(point))<3f;
+            at=default;if(Mathf.Abs(roadRay.direction.y)<.0001f)return false;
+            float t=(height-roadRay.origin.y)/roadRay.direction.y;
+            if(t<0f||t>roadRayGround+.5f)return false;
+            at=Geo.XZ(roadRay.GetPoint(t));return true;
+        }
+        /// <summary>A road at another level is joined only where the player points at it: the cursor ray, at that road's
+        /// own level, passes within `within` of it (world x, z), and that point is not hidden behind the ground. In the
+        /// underground view the cut ground hides nothing, and the roads it cuts away are outlined (DrawRoadLevelGuide).
+        /// So drawing over or under a road crosses it unless the cursor is put on it, and a buried tunnel is never
+        /// joined from the surface view.</summary>
+        bool SnapAcrossLevels(float height,Vector2 world,float within)=>RoadRayAt(height,out var at)&&Vector2.Distance(at,world)<=within;
+        /// <summary>SnapAcrossLevels for a section (path in `space`, null for world): its parameter where the ray at its
+        /// level comes nearest, and that point's height (world).</summary>
+        bool SnapAcrossSection(Alignment3D path,Transform space,float within,out float t,out float height)
+        {
+            var offset=space!=null?space.position:Vector3.zero;t=0f;height=0f;
+            float y=path.Height(path.ClosestParameter(Geo.XZ(roadRay.origin)-Geo.XZ(offset)))+offset.y;
+            for(int i=0;i<3;i++)
+            {
+                if(!RoadRayAt(y,out var at))return false;
+                var local=at-Geo.XZ(offset);t=path.ClosestParameter(local);height=path.Height(t)+offset.y;
+                if(Mathf.Abs(height-y)<.25f)return path.DistanceTo(local)<=within;
+                y=height;
+            }
+            return false;
+        }
+        /// <summary>Ranks a road at another level after every one at the working level: the nearest level first.</summary>
+        static float AcrossRank(float height,float level,float distance)=>1e5f+Mathf.Abs(height-level)*100f+distance;
+        /// <summary>How a snapped road's level compares with the last point, for the strip and map label.</summary>
+        string LevelHint(float height,float from)
+        {
+            float rise=height-from;
+            return Mathf.Abs(rise)<=PublicRoadNetwork.JunctionHeightTolerance?"":$", {Mathf.Abs(rise):0.0} m {(rise>0?"up":"down")}: the road ramps to it";
+        }
+
+        /// <summary>In the underground view, the roads its cut hides near the cursor are outlined where they are (drawn
+        /// over the cutaway); pointing at an outline joins that road (SnapAcrossLevels), so a tunnel can be brought up
+        /// onto a surface road without leaving the underground view.</summary>
+        void DrawRoadLevelGuide()
+        {
+            if(game==null || tool!=DevTool.Street&&tool!=DevTool.Road || !lineSnapShown&&tool==DevTool.Road || !streetSnapShown&&tool==DevTool.Street)return;
+            var view=game.GetComponent<UndergroundRoadView>();if(view==null||!view.Visible)return;
+            var centre=Geo.XZ(lastGround);const float Radius=300f;int drawn=0;
+            var colour=new Color(.62f,.78f,.86f);
+            bool Near(Vector3 a,Vector3 b,Vector2 control)
+            {
+                var min=Vector2.Min(Vector2.Min(Geo.XZ(a),Geo.XZ(b)),control);var max=Vector2.Max(Vector2.Max(Geo.XZ(a),Geo.XZ(b)),control);
+                return centre.x>min.x-Radius&&centre.x<max.x+Radius&&centre.y>min.y-Radius&&centre.y<max.y+Radius;
+            }
+            void Outline(Alignment3D path,float half,Transform space)
+            {
+                int count=Mathf.Clamp(Mathf.CeilToInt(path.Length/10f),1,60);
+                for(int side=-1;side<=1;side+=2)
+                {
+                    loop.Clear();
+                    for(int i=0;i<=count;i++)
+                    {var p=path.Offset(path.Length*i/count,side*half);loop.Add(space!=null?space.TransformPoint(p):p);}
+                    outlines.Line(cam,loop,colour,1.5f,false,true);
+                }
+                drawn++;
+            }
+            if(tool==DevTool.Street)
+            {
+                var roads=Streets.network;
+                foreach(var e in roads.segments)
+                {
+                    if(drawn>=48)break;var a=roads.Node(e.a).position;var b=roads.Node(e.b).position;
+                    if(Mathf.Max(a.y,b.y)<=view.Height||!Near(a,b,e.alignment.curved?e.alignment.control:Geo.XZ(a)))continue;
+                    Outline(roads.Path(e),e.Type.FullWidth*.5f,null);
+                }
+                return;
+            }
+            var net=airport.Taxiways;var origin=airport.transform.position;
+            foreach(var e in net.edges)
+            {
+                if(drawn>=48)break;if(!e.IsRoad)continue;var a=net.Node(e.a).position+origin;var b=net.Node(e.b).position+origin;
+                if(Mathf.Max(a.y,b.y)<=view.Height||!Near(a,b,(e.alignment.curved?e.alignment.control:Geo.XZ(a-origin))+Geo.XZ(origin)))continue;
+                Outline(net.Path(e),e.width*.5f,airport.transform);
+            }
+        }
+
+        /// <summary>A free point over water, where the road follows the ground, is a low deck this far over the surface.</summary>
+        const float LowDeck=2.5f;
+        float? adoptedElevation;
+        float chosenElevation;
+        /// <summary>The ground a chain's level is measured from: the terrain, or the water surface for anything but a tunnel.</summary>
+        float RoadGround(Vector2 p)
+        {
+            if(game==null)return 0f;float height=game.valley.DisplayHeight(p);
+            if(roadBuildSettings.mode!=RoadBuildMode.Tunnel&&game.State.world.IsWater(p))height=Mathf.Max(height,game.State.world.WaterSurfaceAt(p));
+            return height;
+        }
+        /// <summary>
+        /// A chain's level follows the roads it is clicked onto. Its datum is the ground where it starts (or last joined
+        /// a road). Starting on, or joining, a bridge, a tunnel or a ramp more than AtGrade off the ground takes that
+        /// road's level as the elevation, so the next point continues level with it; joining a ground road returns to 0
+        /// (Automatic then follows the ground again) and closes the underground view. Starting on a ground road keeps the
+        /// elevation the player chose, so pressing Bridge first climbs away from it. Ground mode always follows the ground. Positions are world.
+        /// The chosen elevation comes back when the chain ends (RoadElevationKeys) unless the player changed it since.
+        /// </summary>
+        void AdoptRoadLevel(Vector2 at,float height,bool joined,bool structure,bool start)
+        {
+            if(game==null || !joined){if(start)roadDatum=height-roadElevation;return;}
+            float ground=RoadGround(at);roadDatum=ground;
+            if(roadBuildSettings.mode==RoadBuildMode.Ground)return;
+            bool raised=structure||Mathf.Abs(height-ground)>RoadConstructionPlan.AtGrade;
+            if(!raised&&start)return;
+            if(!adoptedElevation.HasValue)chosenElevation=roadElevation;
+            SetRoadElevation(raised?height-ground:0f);adoptedElevation=roadElevation;
+            // back on a surface road: the cutaway has nothing left to show
+            if(!raised&&roadUnderground)SetRoadUnderground(false);
         }
 
         void RoadElevationKeys(Keyboard keys)
         {
-            if(tool==DevTool.Road&&chainNode<0 || tool==DevTool.Street&&!streetChainPoint.HasValue)roadDatum=null;
+            if(tool==DevTool.Road&&chainNode<0 || tool==DevTool.Street&&!streetChainPoint.HasValue || tool!=DevTool.Road&&tool!=DevTool.Street)
+            {
+                roadDatum=null;
+                if(adoptedElevation.HasValue){if(roadElevation==adoptedElevation.Value)SetRoadElevation(chosenElevation);adoptedElevation=null;}
+            }
             if(tool!=DevTool.Street && tool!=DevTool.Road){UpdateUndergroundView();return;}
             int direction=keys.pageUpKey.isPressed?1:keys.pageDownKey.isPressed?-1:0;
             float now=Time.unscaledTime;
@@ -116,7 +240,7 @@ namespace AirCity.Dev
                 if(next!=roadHeightText){roadHeightText=next;if(float.TryParse(next,NumberStyles.Float,CultureInfo.InvariantCulture,out float value)&&!float.IsNaN(value)&&!float.IsInfinity(value))airfield.SetRoadElevation(value);}
                 bool up=RoadHeightButton(new Rect(r.xMax-bw,r.y,bw,r.height),"+");RepeatRoadHeight(down?-1:up?1:0);
             });
-            Note("Metres relative to road start · Page Up / Down · hold to move faster");
+            Note("Metres above the ground where the road starts · click a road to take its level · Page Up / Down");
             Buttons(B(airfield.RoadUnderground?"Surface view":"Underground view",()=>airfield.SetRoadUnderground(!airfield.RoadUnderground),"Reveal roads below the landscape",airfield.RoadUnderground));
             Prop("Curve",r=>
             {

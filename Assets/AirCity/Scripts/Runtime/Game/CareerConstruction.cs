@@ -139,7 +139,8 @@ namespace AirCity.Game
             if (l.runwayBuilt && Distance(p, l.runwayA, l.runwayB) < radius + 15f) return true;
             if (l.TaxiSegments().Any(e => Distance(p, e.a, e.b) < radius + 6f)) return true;
             if (l.standBuilt && TouchesFootprint(p, radius, StandLayout.Of(l.Parking(Vector2.zero)).Pad)) return true;
-            if (l.receptionBuilt && TouchesFootprint(p, radius, ReceptionCorners(l.reception, l.receptionHeading))) return true;
+            if (l.receptionBuilt && TouchesFootprint(p,radius,VisitorCentreLayout.Footprint(l.reception,l.receptionHeading,
+                l.receptionSiteVersion>=VisitorCentreConstruction.SiteVersion))) return true;
             var roads = state.RoadNetwork();
             foreach (var edge in roads.segments)
             {
@@ -160,6 +161,7 @@ namespace AirCity.Game
             foreach (var s in net.stands) if (TouchesFootprint(p, radius, StandLayout.Of(s).Pad)) return true;
             foreach (var a in airport.aprons) if (TouchesFootprint(p, radius, a.outline)) return true;
             foreach (var t in airport.terminals) if (TouchesFootprint(p, radius, t.Outline())) return true;
+            foreach (var h in airport.Hangars) if (TouchesFootprint(p, radius, h.Pad)) return true;
             foreach (var d in airport.Depots) if (Vector2.Distance(p, Geo.XZ(d.transform.localPosition)) < radius + 35f) return true;
             foreach (var d in airport.GetComponentsInChildren<AirCity.Vehicles.BaggageDepot>()) if (Vector2.Distance(p, d.PaintArea.centre) < radius + Mathf.Max(d.PaintArea.width, d.PaintArea.length)) return true;
             return false;
@@ -173,7 +175,7 @@ namespace AirCity.Game
         }
         public static float Distance(Vector2 p, Vector2 a, Vector2 b) => Vector2.Distance(p, Geo.ClosestOnSegment(p, a, b, out _));
 
-        static bool Ground(CareerState state, IEnumerable<Vector2> samples, float elevation, out string why)
+        internal static bool Ground(CareerState state, IEnumerable<Vector2> samples, float elevation, out string why)
         {
             var points = samples.ToArray();
             why = "Keep the footprint inside the region.";
@@ -323,28 +325,26 @@ namespace AirCity.Game
         }
         public static Vector2[] ReceptionCorners(Vector2 p, float heading)
         {
-            var rot = Quaternion.Euler(0f, heading, 0f);
-            return new[] { new Vector2(-13f, -8f), new Vector2(-13f, 8f), new Vector2(13f, 8f), new Vector2(13f, -8f) }
-                .Select(q => { var v = rot * new Vector3(q.x, 0f, q.y); return p + new Vector2(v.x, v.z); }).ToArray();
+            return VisitorCentreLayout.Footprint(p,heading,true);
         }
-        public static bool Reception(CareerState state, Vector2 point, float heading, bool commit, out string why)
+        public static bool Reception(CareerState state, Vector2 point, float heading, bool commit, out string why,
+            Airport airport=null,Action<VisitorCentreConstruction> preview=null,CareerGame game=null)
         {
             if (!Ready(state, CareerTool.Reception, out why)) return false;
-            if (state.layout.receptionBuilt) { why = "Passenger reception is already built."; return false; }
-            var entrance = state.accessRoadRoute[0];
-            if (Vector2.Distance(point, entrance) > 55f || Vector2.Distance(point, entrance) < 12f)
-            { why = "Place reception beside the airport end of your public road, 12–55 m away."; return false; }
-            var corners = ReceptionCorners(point, heading); var samples = new List<Vector2>(corners) { point };
-            if (!Ground(state, samples, state.layout.elevation, out why)) return false;
-            if (corners.Any(p => Distance(p, state.layout.runwayA, state.layout.runwayB) < 40f || state.layout.TaxiSegments().Any(e => Distance(p, e.a, e.b) < 25f)))
-            { why = "Keep the building clear of aircraft pavement."; return false; }
-            for (int i = 1; i < state.accessRoadRoute.Count; i++)
-                if (corners.Any(p => Distance(p, state.accessRoadRoute[i - 1], state.accessRoadRoute[i]) < 5f) ||
-                    Distance(point, state.accessRoadRoute[i - 1], state.accessRoadRoute[i]) < 9f)
-                { why = "Place the building beside the road."; return false; }
-            if (!commit) { why = state.mode != GameMode.Sandbox && state.funds < ReceptionPrice ? "Not enough funds for reception." : null; return why == null; }
-            if (!Pay(state, ReceptionPrice, out why)) return false;
-            state.layout.reception = point; state.layout.receptionHeading = heading; state.layout.receptionBuilt = true; return true;
+            if (state.layout.receptionBuilt && state.layout.receptionSiteVersion>=VisitorCentreConstruction.SiteVersion)
+            { why = "The visitor centre is already built."; return false; }
+            if (!state.HasAccess) {why="Connect the airport to a public road first.";return false;}
+            bool valid=VisitorCentreConstruction.TryCreate(state,point,heading,airport,out var plan,out why);
+            if(plan!=null)preview?.Invoke(plan);
+            if(!valid)return false;
+            // Flat site height and the graded connector profile were checked by the package quote.
+            if(game!=null && !game.CheckFootprint(plan.GroundSamples.Select(p=>p-Geo.XZ(airport.transform.position)),0f,out why,false))return false;
+            if(!commit)return true;
+            if(!Pay(state,plan.Price,out why))return false;
+            state.publicRoads=plan.Road.Draft;
+            state.layout.reception=point;state.layout.receptionHeading=heading;
+            state.layout.receptionBuilt=true;state.layout.receptionSiteVersion=VisitorCentreConstruction.SiteVersion;
+            return true;
         }
 
         public static bool Validate(CareerState state, out string why)
@@ -357,7 +357,8 @@ namespace AirCity.Game
             foreach (var t in l.taxiways) if (t == null || t.points == null || t.points.Count < 2 || t.points.Count > 32 || t.points.Any(p => !Point(p))) return false;
             if (l.standBuilt && (!l.runwayBuilt || l.taxiways.Count == 0 || !Point(l.stand) || !ValleyWorld.Finite(l.standHeading) || !ValleyWorld.Finite(l.standAlong.x) ||
                 !ValleyWorld.Finite(l.standAlong.y) || Mathf.Abs(l.standAlong.magnitude - 1f) > .01f || !l.TaxiSegments().Any(e => Distance(l.stand, e.a, e.b) < .5f))) return false;
-            if (l.receptionBuilt && (!state.HasAccess || !Point(l.reception) || !ValleyWorld.Finite(l.receptionHeading))) return false;
+            if (l.receptionSiteVersion<0 || l.receptionSiteVersion>VisitorCentreConstruction.SiteVersion ||
+                l.receptionBuilt && (!state.HasAccess || !Point(l.reception) || !ValleyWorld.Finite(l.receptionHeading))) return false;
             if (state.HasAccess && (!l.standBuilt || state.accessRoadRoute.Count > 32 || state.accessRoadRoute.Any(p => !ValleyWorld.Finite(p.x) || !ValleyWorld.Finite(p.y)))) return false;
             if ((state.charterActive || state.completedCharters > 0) && !state.IsOpen) return false;
             why = null; return true;

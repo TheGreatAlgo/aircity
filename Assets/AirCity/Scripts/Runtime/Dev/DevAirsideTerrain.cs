@@ -34,6 +34,7 @@ namespace AirCity.Dev
                 return p;
             }
             if(snap.runway!=null)return snap.runway.ClosestOnCentreline(Geo.X0Z(snap.p));
+            if(snap.hangarFrontage!=null)return Geo.X0Z(snap.p);
             float height=game!=null?game.valley.DisplayHeight(snap.p+Geo.XZ(airport.transform.position))-airport.transform.position.y:0f;
             if(tool==DevTool.Road)height=RoadTargetHeight(snap.p+Geo.XZ(airport.transform.position))-airport.transform.position.y;
             return Geo.X0Z(snap.p,height);

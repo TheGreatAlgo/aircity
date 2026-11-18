@@ -151,13 +151,85 @@ namespace AirCity.Airfield.Building
             return profile;
         }
 
-        public IEnumerable<(Alignment3D path,RoadStructure structure,float half,float from,float to,TaxiwayEdge edge)> StructurePaths()
+        /// <summary>A service road has no verge: on a bridge or in a tunnel it gets a narrow hard strip, then the
+        /// parapet or wall.</summary>
+        public const float StructureVerge=.6f;
+
+        /// <summary>The bridge and tunnel pieces of the service roads (RoadStructureBuilder): each section between its
+        /// nodes' cuts, and each bend or straight-through node between two sections of one structure. `edge` and
+        /// `other` are the sections a piece belongs to.</summary>
+        public List<(StructurePiece piece,TaxiwayEdge edge,TaxiwayEdge other)> StructurePieces()
         {
             Prepare();
-            foreach(var edge in net.edges)if(edge.IsRoad&&edge.structure!=RoadStructure.Ground)
-                yield return(net.Path(edge),edge.structure,edge.width*.5f,joints[edge.a].ArmOf(edge).cut,net.Path(edge).Length-joints[edge.b].ArmOf(edge).cut,edge);
-            foreach(var joint in joints.Values)if(joint.arc!=null&&joint.arms[0].edge.IsRoad&&joint.arms[0].edge.structure!=RoadStructure.Ground)
-                for(int i=1;i<joint.arc.Count;i++)yield return(new Alignment3D(Geo.X0Z(joint.arc[i-1],joint.node.position.y),Geo.X0Z(joint.arc[i],joint.node.position.y)),joint.arms[0].edge.structure,joint.arms[0].hw,0,-1,null);
+            var result=new List<(StructurePiece,TaxiwayEdge,TaxiwayEdge)>();
+            var byId=new Dictionary<int,TaxiwayEdge>();
+            foreach(var edge in net.edges)if(edge.IsRoad&&edge.structure!=RoadStructure.Ground)byId[edge.id]=edge;
+            if(byId.Count==0)return result;
+            static Vector2 Right(Vector2 d)=>new Vector2(d.y,-d.x);
+            float Length(TaxiwayEdge e)=>Mathf.Max(0f,net.Path(e).Length-joints[e.a].ArmOf(e).cut-joints[e.b].ArmOf(e).cut);
+            // the section the structure carries on with past a node: round a bend, or (nearly) straight on
+            TaxiwayEdge Onward(int node,TaxiwayEdge e)
+            {
+                var joint=joints[node];
+                if(joint.arms.Count!=2||!joint.arms[0].Real||!joint.arms[1].Real)return null;
+                var other=joint.arms[0].edge==e?joint.arms[1].edge:joint.arms[0].edge;
+                if(other==e||!other.IsRoad||other.structure!=e.structure)return null;
+                return joint.arc!=null||Vector2.Dot(joint.arms[0].dir,joint.arms[1].dir)<-.9f?other:null;
+            }
+            bool MeetsGround(int node,TaxiwayEdge e)=>joints[node].arms.Exists(a=>!a.Real||a.edge!=e&&a.edge.structure==RoadStructure.Ground);
+            // a joint's centreline from arms[0]'s mouth to arms[1]'s
+            List<Vector2> Line(Joint joint)
+            {
+                if(joint.arc!=null)return joint.arc;
+                var a=joint.p+joint.arms[0].dir*joint.arms[0].cut;var b=joint.p+joint.arms[1].dir*joint.arms[1].cut;
+                var line=new List<Vector2>{a};
+                if(Vector2.Distance(a,joint.p)>.05f&&Vector2.Distance(b,joint.p)>.05f)line.Add(joint.p);
+                if(Vector2.Distance(a,b)>.02f)line.Add(b);return line;
+            }
+            float LineLength(Joint joint)
+            {var line=Line(joint);float total=0;for(int k=1;k<line.Count;k++)total+=Vector2.Distance(line[k-1],line[k]);return total;}
+            var edgeRuns=new Dictionary<int,RunSpan>();var bendRuns=new Dictionary<int,RunSpan>();
+            foreach(var edge in byId.Values)
+            {
+                if(edgeRuns.ContainsKey(edge.id))continue;
+                RoadStructureBuilder.Runs(edge.id,id=>(byId[id].a,byId[id].b),(node,id)=>Onward(node,byId[id])?.id??-1,id=>Length(byId[id]),
+                    (node,id)=>(LineLength(joints[node]),joints[node].arms[0].edge.id!=id),(node,id)=>!MeetsGround(node,byId[id]),edgeRuns,bendRuns);
+            }
+            foreach(var edge in byId.Values)
+            {
+                var path=net.Path(edge);float cutA=joints[edge.a].ArmOf(edge).cut,cutB=joints[edge.b].ArmOf(edge).cut,from=cutA,to=path.Length-cutB,half=edge.width*.5f;
+                if(to-from<.01f)continue;
+                var piece=new StructurePiece {structure=edge.structure,verge=StructureVerge,surface=AirfieldHeights.Road,run=edgeRuns[edge.id],length=Length(edge)};
+                int count=Mathf.Max(1,Mathf.CeilToInt((to-from)/4f));
+                for(int i=0;i<=count;i++)
+                {
+                    float s=Mathf.Lerp(from,to,i/(float)count);
+                    Vector3 At(float x){var p=path.Offset(s,x,cutA,cutB);p.y=RoadHeight(edge,Geo.XZ(p))+AirfieldHeights.Road;return p;}
+                    piece.Add(At(-half),At(half));
+                }
+                bool onA=Onward(edge.a,edge)!=null,onB=Onward(edge.b,edge)!=null;
+                piece.capStart=!onA;piece.abutStart=!onA&&MeetsGround(edge.a,edge);piece.capEnd=!onB;piece.abutEnd=!onB&&MeetsGround(edge.b,edge);
+                // a dead end: the parapet or wall closes it, rounding the corners of the road's square end
+                int last=piece.left.Count-1;
+                if(joints[edge.a].arms.Count==1){piece.capStart=false;piece.endStart=RoadStructureBuilder.SquareEnd(piece.left[0],piece.right[0],-path.Tangent(0));}
+                if(joints[edge.b].arms.Count==1){piece.capEnd=false;piece.endEnd=RoadStructureBuilder.SquareEnd(piece.left[last],piece.right[last],path.Tangent(1));}
+                result.Add((piece,edge,edge));
+            }
+            foreach(var joint in joints.Values)
+            {
+                if(joint.arms.Count!=2||!joint.arms[0].Real||!byId.ContainsKey(joint.arms[0].edge.id)||Onward(joint.node.id,joint.arms[0].edge)==null)continue;
+                var line=Line(joint);int m=line.Count;if(m<2)continue;
+                var edge=joint.arms[0].edge;float half=joint.arms[0].hw,y=joint.node.position.y+AirfieldHeights.Road;
+                var piece=new StructurePiece {structure=edge.structure,verge=StructureVerge,surface=AirfieldHeights.Road,length=LineLength(joint)};
+                if(bendRuns.TryGetValue(joint.node.id,out var run))piece.run=run;
+                for(int k=0;k<m;k++)
+                {
+                    var d=k==0?-joint.arms[0].dir:k==m-1?joint.arms[1].dir:line[k+1]-line[k-1];var right=Right(d.normalized)*half;
+                    piece.Add(Geo.X0Z(line[k]-right,y),Geo.X0Z(line[k]+right,y));
+                }
+                result.Add((piece,edge,joint.arms[1].edge));
+            }
+            return result;
         }
 
         public float RoadHeight(TaxiwayEdge edge,Vector2 p)

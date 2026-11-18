@@ -102,7 +102,7 @@ namespace AirCity.Airfield
         bool dirty;
 
         [NonSerialized] internal Airport constructionAirport;
-        public Airport Airport => constructionAirport!=null ? constructionAirport : GetComponentInParent<Airport>();
+        public Airport Airport => constructionAirport!=null ? constructionAirport : GetComponentInParent<Airport>(true);
 
         // ------------------------------------------------------------------ graph
 
@@ -327,6 +327,8 @@ namespace AirCity.Airfield
             RoadClass road = RoadClass.None)
         {
             if (Vector2.Distance(a, b) < 1f) return null;
+            var hangarProblem = AirCity.Game.HangarConstruction.PathProblem(Airport, a, b, width * .5f, protectApproach: road != RoadClass.None);
+            if (hangarProblem != null) return hangarProblem;
             var pos = new Dictionary<int, Vector2>();
             var runwayNode = new HashSet<int>();
             var removed = new HashSet<TaxiwayEdge>();
@@ -692,6 +694,9 @@ namespace AirCity.Airfield
             }
             var airport = Airport;
             if (airport != null)
+            {
+                foreach (var hangar in airport.Hangars)
+                    if (layout.Overlaps(hangar.Pad)) return false;
                 foreach (var r in airport.Runways)
                 {
                     var a = Geo.XZ(r.start);
@@ -699,6 +704,7 @@ namespace AirCity.Airfield
                     var right = Geo.Right(r.Axis2D) * r.HalfWidthTotal;
                     if (layout.Overlaps(new[] { a + right, b + right, b - right, a - right })) return false;
                 }
+            }
             return true;
         }
 

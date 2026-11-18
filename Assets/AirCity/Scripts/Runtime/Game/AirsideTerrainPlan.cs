@@ -46,6 +46,7 @@ namespace AirCity.Game
         readonly List<int> treesToClear=new List<int>(),propsToClear=new List<int>();
         readonly List<int> indices=new List<int>();
         readonly List<float> before=new List<float>(), after=new List<float>();
+        readonly List<Vector2[]> visitorFootprints=new List<Vector2[]>();
         readonly struct Triangle
         {
             public readonly Vector3 a,b,c;
@@ -97,9 +98,58 @@ namespace AirCity.Game
             Runway endRunway,float width,PavementSurface surface,RoadClass road,out AirsideTerrainPlan plan,out string problem,
             IEnumerable<GroundCoverInstance> ground=null,RoadBuildSettings? settings=null)
         {
-            plan=null;problem="Choose a longer stretch of dry ground.";
+            if(Crossing(false,out plan,out problem))return true;
+            // A ground ramp's grading reaches the heightfield corners around its pavement (PrepareGround): where a shore
+            // met at an angle is that close beside a ramp, the bridge reaches further back over the bank.
+            if(problem!=NearWater||road==RoadClass.None||!settings.HasValue||settings.Value.mode!=RoadBuildMode.Automatic&&settings.Value.mode!=RoadBuildMode.Bridge)return false;
+            var (firstPlan,firstProblem)=(plan,problem);
+            if(Crossing(true,out plan,out problem))return true;
+            plan=firstPlan;problem=firstProblem;return false;
+            bool Crossing(bool reach,out AirsideTerrainPlan built,out string why)
+            {
+                if(Create(state,airport,from,end,endNode,endEdge,endRunway,width,surface,road,out built,out why,ground,settings,null,false,reach,out var low,out var proposal,out bool bored))return true;
+                if(built!=null||proposal==null)return false;
+                // As a street's (RoadConstructionPlan.TryCreate): a bridge too low at the water arches over it within the
+                // grade limit and is judged again, Automatic tries a shallow bore under the water as a bridge, and when
+                // nothing builds the first refusal stands. The new road leaves a junction or a corner as before.
+                var net=airport.Taxiways;string first=why;var straight=proposal;
+                bool Free(int node,Vector3 towards)
+                {
+                    var edges=net.EdgesAt(node).ToList();if(edges.Count!=1)return edges.Count==0;
+                    var away=net.Path(edges[0]);bool atA=edges[0].a==node;var tangent=Geo.XZ(away.Tangent(atA?0:1))*(atA?-1:1);
+                    return Vector2.Dot(tangent.normalized,(Geo.XZ(towards)-Geo.XZ(net.Node(node).position)).normalized)>=.985f;
+                }
+                bool startFree=Free(from,straight.end),endFree=endNode<0||Free(endNode,straight.start);
+                bool Lifted(RoadConstructionPlan.LowDeck deck,bool bridgeWater,out AirsideTerrainPlan lifted,out string refusal)
+                {
+                    lifted=null;refusal=null;
+                    return deck!=null&&RoadConstructionPlan.Lift(straight,deck,MaximumRoadGrade,startFree,endFree,out var shape)&&
+                        Create(state,airport,from,end,endNode,endEdge,endRunway,width,surface,road,out lifted,out refusal,ground,settings,shape,bridgeWater,reach,out _,out _,out _);
+                }
+                if(Lifted(low,false,out built,out why))return true;
+                if(built==null&&bored)
+                {
+                    if(Create(state,airport,from,end,endNode,endEdge,endRunway,width,surface,road,out built,out why,ground,settings,null,true,reach,out low,out _,out _))return true;
+                    if(built==null&&Lifted(low,true,out built,out why))return true;
+                }
+                if(built==null)why=first;
+                return false;
+            }
+        }
+        /// <summary>Refused when ground pavement (or its grading) would reach the water.</summary>
+        internal const string NearWater="Prepare dry land above the water before building here.";
+        /// <summary>One judgement of a proposal (TryCreate). `lifted`: the profile, if not the straight one; `bridgeWater`:
+        /// Automatic makes stretches under the surface without cover bridge; `reach`: water beside a stretch within the
+        /// reach of its ground pavement's grading counts as water at it. `low`, `proposal`, `bored`: as for streets.</summary>
+        static bool Create(CareerState state,Airport airport,int from,Vector3 end,int endNode,TaxiwayEdge endEdge,
+            Runway endRunway,float width,PavementSurface surface,RoadClass road,out AirsideTerrainPlan plan,out string problem,
+            IEnumerable<GroundCoverInstance> ground,RoadBuildSettings? settings,AlignmentShape? lifted,bool bridgeWater,bool reach,
+            out RoadConstructionPlan.LowDeck low,out Alignment3D proposal,out bool bored)
+        {
+            plan=null;problem="Choose a longer stretch of dry ground.";low=null;proposal=null;bored=false;
             var world=state?.world;var net=airport!=null?airport.Taxiways:null;var start=net?.Node(from);
             if(world?.heights==null || start==null || !ValleyWorld.Finite(width) || width<1f || !ValleyWorld.Finite(end.x) || !ValleyWorld.Finite(end.y) || !ValleyWorld.Finite(end.z))return false;
+            var hangarPads=airport.Hangars.Select(h=>h.Pad).ToArray();
             if(endNode>=0) { if(net.Node(endNode)==null)return false; end=net.Node(endNode).position; }
             else if(endEdge!=null)
             {
@@ -110,25 +160,58 @@ namespace AirCity.Game
             }
             else if(endRunway!=null)end=endRunway.ClosestOnCentreline(end);
             var options=road!=RoadClass.None?settings??new RoadBuildSettings {mode=RoadBuildMode.Ground}:new RoadBuildSettings {mode=RoadBuildMode.Ground};
-            var shape=options.Shape(start.position,end);var alignment=new Alignment3D(start.position,end,shape);
+            var shape=lifted??options.Shape(start.position,end);var alignment=new Alignment3D(start.position,end,shape);
             float length=alignment.Length;
             if(length<6f)return false;
+            var visitorPathFootprints=new List<Vector2[]>();
+            foreach(var span in alignment.Spans())
+            {
+                problem=HangarConstruction.PathProblem(airport,Geo.XZ(span.a),Geo.XZ(span.b),width*.5f,protectApproach:road!=RoadClass.None);
+                if(problem!=null)return false;
+                var origin2=Geo.XZ(airport.transform.position);
+                var footprint=VisitorCentreConstruction.Strip(Geo.XZ(span.a)+origin2,Geo.XZ(span.b)+origin2,width*.5f+2f);
+                problem=VisitorCentreConstruction.OverlapProblem(state,footprint);
+                if(problem!=null)return false;
+                visitorPathFootprints.Add(footprint);
+            }
             float limit=road==RoadClass.None?MaximumTaxiwayGrade:MaximumRoadGrade;
             if(alignment.MaximumGrade>limit+.0001f)
-            {problem=$"This slope is too steep (maximum {limit*100f:0}% grade). Follow the contour.";return false;}
+            {
+                problem=road!=RoadClass.None&&settings.HasValue?RoadConstructionPlan.SteepProblem(alignment,limit):
+                    $"This slope is too steep (maximum {limit*100f:0}% grade). Follow the contour.";
+                return false;
+            }
             if(road==RoadClass.None || !settings.HasValue)
             {
                 problem=net.JoinProblem(Geo.XZ(start.position),from,null,Geo.XZ(end),endNode,endEdge,width,road);
                 if(problem!=null && endRunway==null)return false;
             }
-            RoadStructure Kind(Vector3 local)
+            // The same structure rule as public streets (RoadConstructionPlan.Structures), from the level above the
+            // ground at each 4 m stretch: ramps where a bridge or tunnel meets a surface road are ground road.
+            int stretches=Mathf.Max(1,Mathf.CeilToInt(length/4f));var gaps=new float[stretches];var waters=new float[stretches];
+            var covered=new bool[stretches];var banks=new float[stretches];
+            for(int i=0;i<stretches;i++)
             {
-                if(options.mode==RoadBuildMode.Bridge)return RoadStructure.Elevated;
-                if(options.mode==RoadBuildMode.Tunnel)return RoadStructure.Tunnel;
-                if(options.mode==RoadBuildMode.Ground)return RoadStructure.Ground;
-                float gap=local.y+airport.transform.position.y-world.Height(Geo.XZ(local)+Geo.XZ(airport.transform.position));
-                return gap>2?RoadStructure.Elevated:gap< -2?RoadStructure.Tunnel:RoadStructure.Ground;
+                var local=alignment.AtDistance(length*(i+.5f)/stretches);var at=Geo.XZ(local)+Geo.XZ(airport.transform.position);float y=local.y+airport.transform.position.y;
+                gaps[i]=y-world.Height(at);waters[i]=float.NaN;covered[i]=true;banks[i]=gaps[i];
+                // over water when the centre or either edge is, judged at the points the checks below use
+                for(int side=-1;side<=1;side++)
+                {
+                    var sample=alignment.Offset(length*(i+.5f)/stretches,side*width*.5f);var point=Geo.XZ(sample)+Geo.XZ(airport.transform.position);float floor=sample.y+airport.transform.position.y;
+                    RoadConstructionPlan.OverWater(world,point,floor,ref waters[i],ref covered[i]);banks[i]=Mathf.Min(banks[i],floor-world.Height(point));
+                    if(!reach||side==0)continue;
+                    // the grading's reach (PrepareGround): heightfield corners within 0.6 cells of the pavement
+                    var beside=Geo.XZ(alignment.Offset(length*(i+.5f)/stretches,side*(width*.5f+world.Spacing*.6f)))+Geo.XZ(airport.transform.position);
+                    if(world.IsWater(beside)){float above=floor-world.WaterSurfaceAt(beside);waters[i]=float.IsNaN(waters[i])?above:Mathf.Min(waters[i],above);covered[i]&=above>=0f;}
+                }
             }
+            var kinds=RoadConstructionPlan.Structures(options.mode,gaps,waters,covered,banks,bridgeWater);
+            if(road!=RoadClass.None&&settings.HasValue&&(options.mode==RoadBuildMode.Automatic||options.mode==RoadBuildMode.Bridge))
+            {
+                low=RoadConstructionPlan.LowDeck.Of(world,alignment,kinds,width*.5f,airport.transform.position);proposal=alignment;
+                for(int i=0;i<stretches&&options.mode==RoadBuildMode.Automatic;i++)bored|=kinds[i]==RoadStructure.Tunnel&&waters[i]<0f&&!covered[i];
+            }
+            RoadStructure Kind(Vector3 local)=>kinds[RoadConstructionPlan.Sample(alignment,stretches,local)];
             // Intersections are judged on their actual 3D paths. A separated crossing is never split into a node.
             foreach(var edge in net.edges)
             {
@@ -160,6 +243,7 @@ namespace AirCity.Game
                 sourceNodes=Nodes(net),sourceEdges=Edges(net),End=end,
                 endNode=endNode,endEdge=endEdge,endRunway=endRunway,width=width,
                 ConstructionPrice=Mathf.CeilToInt(length*(road==RoadClass.None?8f:12f)),Grade=(end.y-start.position.y)/length};
+            candidate.visitorFootprints.AddRange(visitorPathFootprints);
             var draft=net.ConstructionCopy();
             var triangles=new List<Triangle>();
             var origin=airport.transform.position;
@@ -172,7 +256,25 @@ namespace AirCity.Game
                 if(road!=RoadClass.None&&settings.HasValue)
                 {
                     var origin3=airport.transform.position;
-                    var foundations=airport.terminals.Select(t=>(IList<Vector2>)t.Outline()).Concat(airport.Depots.Select(d=>(IList<Vector2>)d.Corners)).ToArray();
+                    // How far the worst stretch over water misses: a deck below WaterClearance, or a bore without cover.
+                    float WaterShortfall(RoadStructure kind)
+                    {
+                        float worst=0f;
+                        for(int i=0;i<samples;i++)
+                        {
+                            if(Kind(alignment.AtDistance(length*(i+.5f)/samples))!=kind)continue;
+                            for(int side=-1;side<=1;side++)
+                            {
+                                var sample=alignment.Offset(length*(i+.5f)/samples,side*width*.5f);var point=Geo.XZ(sample)+Geo.XZ(origin3);float floor=sample.y+origin3.y;
+                                if(!world.IsWater(point))continue;
+                                worst=Mathf.Max(worst,kind==RoadStructure.Elevated?world.WaterSurfaceAt(point)+RoadConstructionPlan.WaterClearance-RoadConstructionPlan.WaterTolerance-floor:
+                                    floor+RoadStructureBuilder.TunnelClearance+RoadStructureBuilder.TunnelCover-world.Height(point));
+                            }
+                        }
+                        return worst;
+                    }
+                    var foundations=airport.terminals.Select(t=>(IList<Vector2>)t.Outline()).Concat(airport.Depots.Select(d=>(IList<Vector2>)d.Corners))
+                        .Concat(airport.Hangars.Select(h=>(IList<Vector2>)h.Pad)).ToArray();
                     for(int i=0;i<samples;i++)
                     {
                         var local=alignment.AtDistance(length*(i+.5f)/samples);var at=Geo.XZ(local)+Geo.XZ(origin3);var type=Kind(local);
@@ -185,10 +287,18 @@ namespace AirCity.Game
                             var point=Geo.XZ(sample)+Geo.XZ(origin3);float floor=sample.y+origin3.y;
                             if(!state.BuildableBounds.Contains(point)){problem="Keep the entire road inside the region.";return false;}
                             float h=world.Height(point);
-                            if(type==RoadStructure.Ground&&world.IsWater(point)){problem="Raise this road for a bridge or lower it for a covered tunnel.";return false;}
-                            if(type==RoadStructure.Elevated&&floor<(world.IsWater(point)?world.WaterSurfaceAt(point)+1f:h-.2f)){problem="The bridge intersects the hillside. Raise it or use Automatic sections.";return false;}
-                            if(type==RoadStructure.Tunnel&&world.IsWater(point)&&floor+RoadStructureBuilder.TunnelClearance+RoadStructureBuilder.TunnelCover>h)
-                            {problem="Tunnel entrances must stay on dry land, with sufficient cover beneath water.";return false;}
+                            bool water=world.IsWater(point);
+                            if(type==RoadStructure.Ground&&water){problem=RoadConstructionPlan.GroundOnWater;return false;}
+                            if(type==RoadStructure.Elevated&&water&&floor<world.WaterSurfaceAt(point)+RoadConstructionPlan.WaterClearance-RoadConstructionPlan.WaterTolerance)
+                            {problem=RoadConstructionPlan.LowOverWater(WaterShortfall(RoadStructure.Elevated));return false;}
+                            if(type==RoadStructure.Elevated&&!water&&floor<h-RoadConstructionPlan.HillsideTolerance)
+                            {
+                                problem=RoadConstructionPlan.IntoHillside(options.mode==RoadBuildMode.Bridge&&
+                                    RoadConstructionPlan.Structures(RoadBuildMode.Automatic,gaps,waters,covered,banks)[RoadConstructionPlan.Sample(alignment,stretches,local)]==RoadStructure.Ground);
+                                return false;
+                            }
+                            if(type==RoadStructure.Tunnel&&water&&floor+RoadStructureBuilder.TunnelClearance+RoadStructureBuilder.TunnelCover>h)
+                            {problem=RoadConstructionPlan.ShallowUnderWater(WaterShortfall(RoadStructure.Tunnel));return false;}
                             int x=Grid(point.x,world),z=Grid(point.y,world);
                             for(int dz=0;dz<=1;dz++)for(int dx=0;dx<=1;dx++){int key=Mathf.Min(z+dz,ValleyWorld.Resolution-1)*ValleyWorld.Resolution+Mathf.Min(x+dx,ValleyWorld.Resolution-1);candidate.terrainProbes[key]=world.heights[key];}
                         }
@@ -217,6 +327,13 @@ namespace AirCity.Game
                     int ia=list[i],ib=list[i+1],ic=list[i+2],owner=pavement.mesh.owners[ia];
                     if(owner<0 || !builder.owners[owner].edges.Any(e=>affected.Contains(e.id)) || builder.owners[owner].edges.All(e=>e.structure!=RoadStructure.Ground))continue;
                     var a=pavement.mesh.positions[ia]+origin;var b=pavement.mesh.positions[ib]+origin;var c=pavement.mesh.positions[ic]+origin;
+                    var outline=new[]{Geo.XZ(a-origin),Geo.XZ(b-origin),Geo.XZ(c-origin)};
+                    if(hangarPads.Any(pad=>Geo.Overlap(outline,pad)))
+                    {problem="The pavement or junction would overlap an aircraft hangar.";return false;}
+                    var visitorOutline=new[]{Geo.XZ(a),Geo.XZ(b),Geo.XZ(c)};
+                    problem=VisitorCentreConstruction.OverlapProblem(state,visitorOutline);
+                    if(problem!=null)return false;
+                    candidate.visitorFootprints.Add(visitorOutline);
                     var normal=Vector3.Cross(b-a,c-a);
                     if(Mathf.Abs(normal.y)<.0001f)continue;
                     if(new Vector2(normal.x,normal.z).magnitude/Mathf.Abs(normal.y)>limit+.001f)
@@ -256,7 +373,12 @@ namespace AirCity.Game
                 for(int i=0;i<list.Count;i+=3)
                 {
                     var a=pavement.mesh.positions[list[i]]+origin;var b=pavement.mesh.positions[list[i+1]]+origin;var c=pavement.mesh.positions[list[i+2]]+origin;
-                    if(Mathf.Abs(Vector3.Cross(b-a,c-a).y)>.0001f)triangles.Add(new Triangle(a,b,c));
+                    if(Mathf.Abs(Vector3.Cross(b-a,c-a).y)<.0001f)continue;
+                    var outline=new[]{Geo.XZ(a),Geo.XZ(b),Geo.XZ(c)};
+                    problem=VisitorCentreConstruction.OverlapProblem(state,outline);
+                    if(problem!=null)return false;
+                    candidate.visitorFootprints.Add(outline);
+                    triangles.Add(new Triangle(a,b,c));
                 }
             plan=candidate;
             using var protection=new BuiltSurfaceMap();
@@ -282,7 +404,7 @@ namespace AirCity.Game
                 foreach(var p in new[]{Geo.XZ(tri.a),Geo.XZ(tri.b),Geo.XZ(tri.c),(Geo.XZ(tri.a)+Geo.XZ(tri.b)+Geo.XZ(tri.c))/3f})
                 {
                     if(!state.BuildableBounds.Contains(p)){problem="Keep the pavement inside the region.";return false;}
-                    if(world.IsWater(p)){problem="Prepare dry land above the water before building here.";return false;}
+                    if(world.IsWater(p)){problem=NearWater;return false;}
                 }
             var footprint=new Pavement();foreach(var triangle in triangles)footprint.AddTriangle(triangle.a,triangle.b,triangle.c);
             var query=Rect.MinMaxRect(minX-14f,minZ-14f,maxX+14f,maxZ+14f);
@@ -321,7 +443,7 @@ namespace AirCity.Game
                 var p=new Vector2((key%ValleyWorld.Resolution)*world.Spacing-ValleyWorld.Size*.5f,
                     (key/ValleyWorld.Resolution)*world.Spacing-ValleyWorld.Size*.5f);
                 if(world.IsWater(p) && triangles.Any(t=>t.Distance(p)<world.Spacing*.6f))
-                {problem="Prepare dry land above the water before building here.";return false;}
+                {problem=NearWater;return false;}
             }
             const float feather=30f;
             candidate.Bounds=Rect.MinMaxRect(minX-world.Spacing-feather,minZ-world.Spacing-feather,maxX+world.Spacing+feather,maxZ+world.Spacing+feather);
@@ -332,6 +454,7 @@ namespace AirCity.Game
             foreach(var terminal in airport.terminals)protectedAreas.Add(terminal.Outline());
             foreach(var stand in airport.Taxiways.Layouts())protectedAreas.Add(stand.Pad);
             foreach(var depot in airport.Depots)protectedAreas.Add(depot.Corners);
+            foreach(var hangar in airport.Hangars)protectedAreas.Add(hangar.Pad);
             int sampleX0=Grid(candidate.Bounds.xMin,world),sampleX1=Grid(candidate.Bounds.xMax,world),sampleZ0=Grid(candidate.Bounds.yMin,world),sampleZ1=Grid(candidate.Bounds.yMax,world);
             int columns=sampleX1-sampleX0+1;
             using var queryTriangles=new NativeArray<Triangle>(triangles.ToArray(),Allocator.TempJob);
@@ -356,6 +479,11 @@ namespace AirCity.Game
                 if(next==old)continue;
                 if(!state.BuildableBounds.Contains(p) || next<1f || next>ValleyWorld.HeightRange-1f || Mathf.Abs(next-old)>60f)
                 {problem="This placement needs too much cut and fill. Choose gentler ground.";return false;}
+                if(Mathf.Abs(next-old)>.15f)
+                {
+                    problem=VisitorCentreConstruction.OverlapProblem(state,SampleFootprint(p,world.Spacing));
+                    if(problem!=null)return false;
+                }
                 var local=p-Geo.XZ(origin);
                 if(Mathf.Abs(next-old)>.15f && (airport.aprons.Any(a=>a.Contains(local,world.Spacing)) ||
                     protectedAreas.Any(outline=>Geo.Inside(outline,local)||Geo.DistanceToOutline(outline,local)<world.Spacing)))
@@ -412,6 +540,19 @@ namespace AirCity.Game
             for(int i=0;i<treesToClear.Count;i++)if(world.trees[treesToClear[i]].position!=treePositions[i])return false;
             for(int i=0;i<indices.Count;i++)if(world.heights[indices[i]]!=before[i])return false;
             foreach(var probe in terrainProbes)if(world.heights[probe.Key]!=probe.Value)return false;
+            foreach(var outline in visitorFootprints)
+            {
+                problem=VisitorCentreConstruction.OverlapProblem(state,outline);
+                if(problem!=null)return false;
+            }
+            for(int i=0;i<indices.Count;i++)
+            {
+                if(Mathf.Abs(after[i]-before[i])<=.15f)continue;
+                var point=new Vector2((indices[i]%ValleyWorld.Resolution)*world.Spacing-ValleyWorld.Size*.5f,
+                    (indices[i]/ValleyWorld.Resolution)*world.Spacing-ValleyWorld.Size*.5f);
+                problem=VisitorCentreConstruction.OverlapProblem(state,SampleFootprint(point,world.Spacing));
+                if(problem!=null)return false;
+            }
             if(state.mode!=GameMode.Sandbox && state.funds<Price){problem="Not enough funds for this pavement and its grading.";return false;}
             if(stand!=null && !airport.Taxiways.Fits(StandLayout.Of(stand)))
             {problem="The stand footprint changed. Move it to refresh the quote.";return false;}
@@ -433,5 +574,7 @@ namespace AirCity.Game
             applied=true;problem=null;return true;
         }
         static int Grid(float v,ValleyWorld world)=>Mathf.Clamp(Mathf.FloorToInt((v+ValleyWorld.Size*.5f)/world.Spacing),0,ValleyWorld.Resolution-1);
+        static Vector2[] SampleFootprint(Vector2 p,float radius)=>new[]{p+new Vector2(-radius,-radius),p+new Vector2(radius,-radius),
+            p+new Vector2(radius,radius),p+new Vector2(-radius,radius)};
     }
 }

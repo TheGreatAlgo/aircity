@@ -12227,6 +12227,8 @@ MonoBehaviour:
     asset: {fileID: 11400000, guid: fc94ef79c8d93464cb6081b3c344ec6a, type: 2}
   - key: asset:fcd49f9f097a247569c451978cfce30a:4800000
     asset: {fileID: 4800000, guid: fcd49f9f097a247569c451978cfce30a, type: 3}
+  - key: asset:fd4b338e71b384277ab43aa4d15e16f6:4800000
+    asset: {fileID: 4800000, guid: fd4b338e71b384277ab43aa4d15e16f6, type: 3}
   - key: asset:fdc89866e85149bda413cc1f8f549ec8:4800000
     asset: {fileID: 4800000, guid: fdc89866e85149bda413cc1f8f549ec8, type: 3}
   - key: asset:fdf593453113419c9aa07820290b5193:4800000

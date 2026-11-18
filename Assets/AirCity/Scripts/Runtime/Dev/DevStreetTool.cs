@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using AirCity.Airfield;
 using AirCity.Airfield.Building;
 using AirCity.World;
@@ -113,7 +114,7 @@ namespace AirCity.Dev
             }
             var q = game != null ? Geo.XZ(point) : Geo.XZ(airport.transform.InverseTransformPoint(point));
             streetSnap = SnapStreet(net, q, keys.shiftKey.isPressed);
-            if(streetSnap.node<0 && streetSnap.edge==null)streetSnap.p=new Vector2(Mathf.Round(streetSnap.p.x),Mathf.Round(streetSnap.p.y));
+            if(streetSnap.what==null)streetSnap.p=new Vector2(Mathf.Round(streetSnap.p.x),Mathf.Round(streetSnap.p.y));
             if (streetChainPoint is Vector2 from)
             {
                 var quoteKey=(net,streetChain,StreetPoint(net,streetSnap),streetStyle,game!=null?game.State.funds:0,airport.LayoutVersion);
@@ -128,6 +129,7 @@ namespace AirCity.Dev
             else HideStreetPreview();
             if (!click || streetProblem != null) return;
             int node;
+            bool joined=streetSnap.node>=0||streetSnap.edge!=null,structure=StreetStructure(net,streetSnap.node,streetSnap.edge);
             if (streetChain >= 0)
             {
                 var end = StreetPoint(net, streetSnap);
@@ -138,13 +140,15 @@ namespace AirCity.Dev
                 node=streetPlan.EndNode;HideStreetPreview();
                 view.network=proposed;net=proposed;streetDraftBase=null;
                 view.Rebuild();
+                if(joined)AdoptRoadLevel(PublicRoadNetwork.XZ(net.Node(node).position),net.Node(node).position.y,true,structure,false);
             }
             else
             {
                 streetDraftBase = net;
                 var draft = net.Clone();
                 var snap = (streetSnap.p, streetSnap.node, streetSnap.edge != null ? draft.Segment(streetSnap.edge.id) : null, streetSnap.what);
-                node = StreetNode(draft, snap);roadDatum=draft.Node(node).position.y-roadElevation;view.network = draft; net = draft;
+                node = StreetNode(draft, snap);view.network = draft; net = draft;
+                AdoptRoadLevel(PublicRoadNetwork.XZ(draft.Node(node).position),draft.Node(node).position.y,joined,structure,true);
             }
             streetChain = node;
             streetChainPoint = PublicRoadNetwork.XZ(net.Node(node).position);
@@ -161,29 +165,53 @@ namespace AirCity.Dev
         }
 
         /// <summary>Where the next point goes: a road node within reach, else onto a section, else free (Shift: 10° and
-        /// 5 m steps from the last point).</summary>
+        /// 5 m steps from the last point). Roads at the working level (SnapRoadLayer) stick from within reach; a road at
+        /// another level only where the cursor is on it (SnapAcrossLevels), the nearest level first, and the new road
+        /// then ramps to its level. So a bridge can come down onto a street, and a tunnel up onto one, by pointing at it.</summary>
         (Vector2 p, int node, PublicRoadSegment edge, string what) SnapStreet(PublicRoadNetwork net, Vector2 q, bool steps)
         {
             float reach = Mathf.Max(MetresPerPixel(game != null ? Geo.X0Z(q) + Vector3.up * game.valley.DisplayHeight(q) : airport.transform.TransformPoint(Geo.X0Z(q))) * 14f, RoadTypes.Of(streetStyle).Width * .5f);
+            float level=RoadWorkingLevel(q);var chain=streetChain>=0?net.Node(streetChain):null;
+            string Name(string what,float height)=>chain==null?what:what+LevelHint(height,chain.position.y);
             PublicRoadNode bestNode = null;
-            float best = reach;
+            float best = float.MaxValue;
             foreach (var n in net.nodes)
             {
-                if(!SnapRoadLayer(n.position.y,q))continue;
-                float d = Vector2.Distance(PublicRoadNetwork.XZ(n.position), q);
-                if (d < best && n.id != streetChain) { best = d; bestNode = n; }
+                if(n.id==streetChain)continue;
+                float d = Vector2.Distance(PublicRoadNetwork.XZ(n.position), q);if(d>=Mathf.Max(reach,WidestStreet)+AcrossParallax)continue;
+                bool same=SnapRoadLayer(n.position.y,q);
+                if(same?d>=reach:!SnapAcrossLevels(n.position.y,PublicRoadNetwork.XZ(n.position),Mathf.Max(reach,net.At(n.id).Select(e=>e.Type.FullWidth*.5f).DefaultIfEmpty(0f).Max())))continue;
+                float rank=same?d:AcrossRank(n.position.y,level,0f);
+                if (rank < best) { best = rank; bestNode = n; }
             }
-            if (bestNode != null) return (PublicRoadNetwork.XZ(bestNode.position), bestNode.id, null, "the junction");
+            if (bestNode != null)
+                return (PublicRoadNetwork.XZ(bestNode.position), bestNode.id, null,
+                    Name(bestNode.terminalEntrance == VisitorCentreLayout.EntranceId ? "the visitor centre's driveway" : "the junction", bestNode.position.y));
             PublicRoadSegment bestEdge = null;
-            Vector2 on = q;
+            Vector2 on = q;float onHeight=0f;
             best = float.MaxValue;
             foreach (var e in net.segments)
             {
-                var path=net.Path(e);float t=path.ClosestParameter(q);if(!SnapRoadLayer(path.Height(t),q))continue;var c=path.Horizontal(t);
-                float d = Vector2.Distance(c, q);
-                if (d < best && d <= Mathf.Max(reach, e.Width * .5f)) { best = d; bestEdge = e; on = c; }
+                var path=net.Path(e);float t=path.ClosestParameter(q);float h=path.Height(t);var c=path.Horizontal(t);
+                float d = Vector2.Distance(c, q);bool same=SnapRoadLayer(h,q);
+                if(!same)
+                {
+                    if(d>WidestStreet+AcrossParallax||!SnapAcrossSection(path,null,e.Type.FullWidth*.5f,out t,out h))continue;
+                    c=path.Horizontal(t);
+                }
+                else if(d>Mathf.Max(reach,e.Width*.5f))continue;
+                float rank=same?d:AcrossRank(h,level,0f);
+                if (rank < best) { best = rank; bestEdge = e; on = c;onHeight=h; }
             }
-            if (bestEdge != null) return (on, -1, bestEdge, "the " + bestEdge.Type.name.ToLowerInvariant());
+            if (bestEdge != null) return (on, -1, bestEdge, Name("the " + bestEdge.Type.name.ToLowerInvariant(),onHeight));
+            if (VisitorCentreConstruction.DrivewayOutward(game?.State, chain) is Vector2 outward && !net.At(chain.id).Any())
+            {
+                var mouth = Geo.XZ(chain.position);
+                var offset = q - mouth;
+                float forward = Vector2.Dot(offset, outward);
+                if (forward >= 6f && Mathf.Abs(Geo.Cross(offset, outward)) < Mathf.Clamp(reach, 4f, 8f))
+                    return (mouth + outward * forward, -1, null, "the visitor centre driveway alignment");
+            }
             if (steps && streetChainPoint is Vector2 from)
             {
                 var d = q - from;
@@ -193,6 +221,23 @@ namespace AirCity.Dev
             }
             return (q, -1, null, null);
         }
+
+        static float widestStreet;
+        /// <summary>Half the widest street's full width: no road further than this from the cursor is on its pavement.</summary>
+        static float WidestStreet
+        {
+            get
+            {
+                if(widestStreet<=0f)foreach(PublicRoadStyle style in System.Enum.GetValues(typeof(PublicRoadStyle)))widestStreet=Mathf.Max(widestStreet,RoadTypes.Of(style).FullWidth*.5f);
+                return widestStreet;
+            }
+        }
+        /// <summary>How far (x, z) the cursor at the working level may be from a road at another level that it points
+        /// at: the parallax of a low view over a deep level difference.</summary>
+        const float AcrossParallax=80f;
+        /// <summary>Is the snapped road a bridge or tunnel (any of its sections, for a node)?</summary>
+        static bool StreetStructure(PublicRoadNetwork net,int node,PublicRoadSegment edge)=>
+            edge!=null?edge.structure!=RoadStructure.Ground:node>=0&&net.At(node).Any(e=>e.structure!=RoadStructure.Ground);
 
         int StreetNode(PublicRoadNetwork net, (Vector2 p, int node, PublicRoadSegment edge, string what) snap)
         {

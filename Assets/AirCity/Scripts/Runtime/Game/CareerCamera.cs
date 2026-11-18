@@ -69,6 +69,7 @@ namespace AirCity.Game
                 position.y = Mathf.Max(position.y, valley.World.Height(new Vector2(position.x, position.z)) + 15f);
             transform.SetPositionAndRotation(position, Quaternion.LookRotation(pivot - position));
             cam.nearClipPlane = Mathf.Max(.3f, distance * .0003f); cam.farClipPlane = 20000f;
+            AirCity.Rendering.ShadowRange.Follow(cam, pivot);
         }
     }
 }

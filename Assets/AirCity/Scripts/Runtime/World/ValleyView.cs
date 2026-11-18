@@ -2,6 +2,7 @@ using System.Linq;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Rendering;
+using AirCity.Airfield.Building;
 
 namespace AirCity.World
 {
@@ -537,19 +538,13 @@ namespace AirCity.World
             forest.library = trees; forest.Rebuild(World, DisplayHeight);
         }
 
-        public GameObject BuildReception(AirportSite site) => BuildReception(site.centre + new Vector2(80f, -150f), site.elevation, 0f);
+        public GameObject BuildReception(AirportSite site) => BuildReception(site.centre + new Vector2(80f, -150f), site.elevation, 0f,false);
 
-        public GameObject BuildReception(Vector2 position, float elevation, float heading)
+        public GameObject BuildReception(Vector2 position, float elevation, float heading,bool includeParking=true,bool preview=false)
         {
-            var mesh = new LandscapeMesh(); var roofs = new LandscapeMesh(); var glass = new LandscapeMesh();
-            var at = new Vector3(position.x, elevation, position.y);
-            mesh.Box(at + Vector3.up * 2.3f, new Vector3(22f, 4.6f, 12f));
-            roofs.Box(at + Vector3.up * 5f, new Vector3(25f, .8f, 15f));
-            glass.Box(at + new Vector3(0f, 2.3f, 6.05f), new Vector3(17f, 2.6f, .1f));
-            var root = MakeMesh("Passenger reception", mesh, wall);
-            MakeMesh("Reception roof", roofs, roof).transform.SetParent(root.transform, true);
-            MakeMesh("Reception windows", glass, water).transform.SetParent(root.transform, true);
-            root.transform.RotateAround(at, Vector3.up, heading);
+            var root=VisitorCentreBuilder.Build(transform,position,elevation,heading,builtAirport!=null ? builtAirport.building : null);
+            if(includeParking)VisitorCentreSiteBuilder.Build(root.transform,builtAirport!=null ? builtAirport.building : null);
+            if(!preview)RegisterVisitorCentre(root,position,elevation,heading,includeParking);
             return root;
         }
 
@@ -597,14 +592,52 @@ namespace AirCity.World
     {
         readonly List<Vector3> vertices = new List<Vector3>();
         readonly List<int> triangles = new List<int>();
+        static readonly Color32 White = new Color32(255, 255, 255, 255);
+        /// <summary>Optional per-vertex detail for what is added next (the road-structure shader reads it): a colour,
+        /// and a texture coordinate worked out from each vertex's position. Meshes that never set either carry neither.</summary>
+        public Color32 colour = White;
+        public System.Func<Vector3, Vector2> uv;
+        List<Color32> colours; List<Vector2> uvs;
+        void Detail(int added)
+        {
+            if (colours == null)
+            {
+                if (uv == null && colour.r == 255 && colour.g == 255 && colour.b == 255 && colour.a == 255) return;
+                colours = new List<Color32>(vertices.Count); uvs = new List<Vector2>(vertices.Count);
+            }
+            while (colours.Count < vertices.Count - added) { colours.Add(White); uvs.Add(Vector2.zero); }
+            for (int i = vertices.Count - added; i < vertices.Count; i++) { colours.Add(colour); uvs.Add(uv != null ? uv(vertices[i]) : Vector2.zero); }
+        }
         public void Triangle(Vector3 a, Vector3 b, Vector3 c)
         {
             int n = vertices.Count; vertices.Add(a); vertices.Add(b); vertices.Add(c);
-            triangles.Add(n); triangles.Add(n + 1); triangles.Add(n + 2);
+            triangles.Add(n); triangles.Add(n + 1); triangles.Add(n + 2); Detail(3);
         }
         public void Quad(Vector3 a, Vector3 b, Vector3 c, Vector3 d) { Triangle(a, b, c); Triangle(a, c, d); }
         /// <summary>A quad seen from both sides (kerb faces, barriers: whichever way their corners wind).</summary>
         public void TwoSided(Vector3 a, Vector3 b, Vector3 c, Vector3 d) { Quad(a, b, c, d); Quad(a, d, c, b); }
+        /// <summary>A quad or triangle wound to face `outward`, whichever way its corners were given (solid shapes:
+        /// the structure shader draws both sides, so the winding is what lights it).</summary>
+        public void Face(Vector3 a, Vector3 b, Vector3 c, Vector3 d, Vector3 outward)
+        { if (Vector3.Dot(Vector3.Cross(b - a, c - a), outward) < 0f) Quad(a, d, c, b); else Quad(a, b, c, d); }
+        public void Face(Vector3 a, Vector3 b, Vector3 c, Vector3 outward)
+        { if (Vector3.Dot(Vector3.Cross(b - a, c - a), outward) < 0f) Triangle(a, c, b); else Triangle(a, b, c); }
+        /// <summary>An upright round column without ends. Its rings share their vertices, so it shades smooth.</summary>
+        public void Tube(Vector3 foot, float height, float radius, int sides)
+        {
+            int n = vertices.Count;
+            for (int i = 0; i < sides; i++)
+            {
+                float a = i * Mathf.PI * 2f / sides; var r = new Vector3(Mathf.Cos(a), 0f, Mathf.Sin(a)) * radius;
+                vertices.Add(foot + r); vertices.Add(foot + r + Vector3.up * height);
+            }
+            for (int i = 0; i < sides; i++)
+            {
+                int b0 = n + i * 2, t0 = b0 + 1, b1 = n + (i + 1) % sides * 2, t1 = b1 + 1;
+                triangles.Add(b0); triangles.Add(t0); triangles.Add(t1); triangles.Add(b0); triangles.Add(t1); triangles.Add(b1);
+            }
+            Detail(sides * 2);
+        }
         public void Box(Vector3 centre, Vector3 size)
             => OrientedBox(centre, size, Quaternion.identity);
 
@@ -629,7 +662,13 @@ namespace AirCity.World
         public Mesh Create(string name,Mesh target=null)
         {
             var mesh=target!=null?target:new Mesh();mesh.Clear();mesh.name=name;mesh.indexFormat=vertices.Count>65535?IndexFormat.UInt32:IndexFormat.UInt16;
-            mesh.SetVertices(vertices); mesh.SetTriangles(triangles, 0); mesh.RecalculateNormals(); mesh.RecalculateBounds();
+            mesh.SetVertices(vertices);
+            if (colours != null)
+            {
+                while (colours.Count < vertices.Count) { colours.Add(White); uvs.Add(Vector2.zero); }
+                mesh.SetColors(colours); mesh.SetUVs(0, uvs);
+            }
+            mesh.SetTriangles(triangles, 0); mesh.RecalculateNormals(); mesh.RecalculateBounds();
             return mesh;
         }
     }

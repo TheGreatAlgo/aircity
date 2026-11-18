@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using AirCity.Airfield;
+using AirCity.Airfield.Building;
 using AirCity.Dev;
 using AirCity.EditorTools.Game;
 using AirCity.Game;
@@ -181,6 +182,38 @@ namespace AirCity.Tests.Game
             var finish = loaded.Taxiways.stands.Single().bridges.Single().appearance;
             Assert.That(finish, Is.Not.SameAs(appearance)); Assert.That(finish.glazing, Is.EqualTo(Color.cyan));
             Assert.That(loaded.GetComponent<AirportOwnedAssets>().assets, Does.Contain(finish));
+        }
+
+        [Test]
+        public void SavedVisitorCentreRestoresWhenTheAirportHasNoRoadAccess()
+        {
+            var scene = SceneManager.GetActiveScene();
+            var before = new HashSet<GameObject>(scene.GetRootGameObjects());
+            try
+            {
+                var game = NewGameSetup.Build();
+                var state = CareerState.New(42);
+                Assert.IsTrue(state.StartRegion(out var why), why);
+                state.mode = GameMode.Sandbox;
+                game.Initialize(state, false);
+                state.airport = AirportSaveData.Capture(game.Airport, GameAssetCatalog.Load());
+                state.layout.receptionBuilt = true;
+                state.layout.receptionSiteVersion = VisitorCentreConstruction.SiteVersion;
+                state.layout.reception = state.Site.centre;
+                var entrance = VisitorCentreLayout.Entrance(state.Site.centre, state.layout.elevation, 0f);
+                int port = state.publicRoads.AddNode(entrance, VisitorCentreLayout.EntranceId);
+                var saved = JsonUtility.FromJson<CareerState>(JsonUtility.ToJson(CareerSnapshot.Capture(state)));
+                Assert.IsFalse(saved.HasAccess);
+                Assert.IsFalse(saved.IsOpen);
+
+                game.Initialize(saved, false);
+
+                var centre = game.valley.GetComponentsInChildren<VisitorCentreVisual>().Single();
+                Assert.AreEqual(state.Site.centre, Geo.XZ(centre.transform.position));
+                Assert.IsTrue(game.valley.BuiltSurfaces.Contains(state.Site.centre + new Vector2(0f, 21.5f)));
+                Assert.AreEqual(VisitorCentreLayout.EntranceId, game.Streets.network.Node(port).terminalEntrance);
+            }
+            finally { foreach (var go in scene.GetRootGameObjects()) if (!before.Contains(go)) Object.DestroyImmediate(go); }
         }
 
         [Test]

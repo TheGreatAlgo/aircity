@@ -95,6 +95,7 @@ Shader "AirCity/Vegetation"
                 if (_BakeMode > .5) return surface;
                 half3 normal = normalize(input.normalWS);
                 Light sun = GetMainLight(TransformWorldToShadowCoord(input.positionWS));
+                sun.shadowAttenuation = lerp(sun.shadowAttenuation, 1, GetMainLightShadowFade(input.positionWS)); // fade out at the end of the shadow range, as the terrain does
                 half light = saturate(dot(normal, sun.direction));
                 half3 ambient = SampleSH(normal);
                 float3 origin = TransformObjectToWorld(float3(0,0,0));

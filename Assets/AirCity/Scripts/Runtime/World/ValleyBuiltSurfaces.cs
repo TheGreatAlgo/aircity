@@ -20,7 +20,8 @@ namespace AirCity.World
         public bool HasConstructionPreview=>constructionActive;
 
         /// <summary>Render-only ownership for a detached construction network. No land or vegetation is edited.</summary>
-        public void PreviewBuiltSurfaces(Mesh taxiways,Matrix4x4 toWorld,PublicRoadGeometry roads=null,PublicRoadGeometry unchangedRoads=null,IReadOnlyList<BuiltSurfaceMap.Triangle> taxiwayOwnership=null)
+        public void PreviewBuiltSurfaces(Mesh taxiways,Matrix4x4 toWorld,PublicRoadGeometry roads=null,PublicRoadGeometry unchangedRoads=null,IReadOnlyList<BuiltSurfaceMap.Triangle> taxiwayOwnership=null,
+            System.Action<BuiltSurfaceMap> additional=null)
         {
             var next=constructionSurfaces??new BuiltSurfaceMap();next.ResetPreview();
             var publicRoads=roads??roadGeometry;
@@ -36,7 +37,10 @@ namespace AirCity.World
                 else if(builtAirport.Taxiways.GroundOwnership!=null)AddOwnership(next,builtAirport.Taxiways.GroundOwnership,matrix,false);
                 else next.AddMesh(builtAirport.Taxiways.SurfaceMesh,matrix,false);
                 next.AddMesh(builtAirport.ApronMesh,matrix,false);
+                AddHangarFloors(next,builtAirport,false);
             }
+            AddVisitorCentre(next,false);
+            additional?.Invoke(next);
             next.Build();constructionSurfaces=next;constructionActive=true;BindBuiltSurfaces();
             if(roadRoot!=null)roadRoot.SetActive(roads==null);
         }
@@ -63,8 +67,8 @@ namespace AirCity.World
         Rect? SyncBuiltSurfaces(Rect? roadChange=null,Rect? airportChange=null)
         {
             int version=builtAirport!=null?builtAirport.LayoutVersion:-1;
-            if(builtSurfaces!=null && mappedRoads==roadGeometry && mappedAirportVersion==version)return null;
-            bool airportChanged=mappedAirportVersion!=version || builtSurfaces==null;
+            if(builtSurfaces!=null && mappedRoads==roadGeometry && mappedAirportVersion==version && mappedVisitorCentreVersion==visitorCentreVersion)return null;
+            bool airportChanged=mappedAirportVersion!=version || mappedVisitorCentreVersion!=visitorCentreVersion || builtSurfaces==null;
             bool roadsChanged=mappedRoads!=roadGeometry;
             var next=new BuiltSurfaceMap();
             if(roadGeometry!=null)foreach(var triangle in roadGeometry.groundTriangles)next.AddTriangle(triangle);
@@ -80,12 +84,14 @@ namespace AirCity.World
                 {AddOwnership(next,builtAirport.Taxiways.GroundOwnership,toWorld);AddOwnership(airportOnly,builtAirport.Taxiways.GroundOwnership,toWorld);}
                 else {next.AddMesh(builtAirport.Taxiways.SurfaceMesh,toWorld);airportOnly.AddMesh(builtAirport.Taxiways.SurfaceMesh,toWorld);}
                 next.AddMesh(builtAirport.ApronMesh,toWorld);airportOnly.AddMesh(builtAirport.ApronMesh,toWorld);
+                AddHangarFloors(next,builtAirport);AddHangarFloors(airportOnly,builtAirport);
             }
+            AddVisitorCentre(next);AddVisitorCentre(airportOnly);
             Rect? bounds=airportOnly.TriangleCount>0?airportOnly.Bounds:(Rect?)null;
             Rect? changed=airportChanged?(airportChange??Union(mappedAirportBounds,bounds)):null;
             if(roadsChanged)changed=Union(changed,roadChange??(next.TriangleCount>0?next.Bounds:(Rect?)null));
             next.Build();var old=builtSurfaces;builtSurfaces=next;mappedRoads=roadGeometry;mappedAirportVersion=version;mappedAirportBounds=bounds;
-            BindBuiltSurfaces();old?.Dispose();
+            mappedVisitorCentreVersion=visitorCentreVersion;BindBuiltSurfaces();old?.Dispose();
             if(changed.HasValue)
             {
                 pendingBuiltChange=Union(pendingBuiltChange,changed);
@@ -98,6 +104,29 @@ namespace AirCity.World
                 QueueGroundCover(changed.Value,false);
             }
             return changed;
+        }
+        static void AddHangarFloors(BuiltSurfaceMap map,Airport airport,bool foundation=true)
+        {
+            foreach(var hangar in airport.HangarBuildings)
+            {
+                // Only the opaque floor owns ground. Projecting the roof overhang would cut holes beside
+                // the concrete slab in terrain colour, shadow and depth passes.
+                float half=hangar.Spec.Width*.5f,depth=hangar.Spec.Depth;
+                var matrix=hangar.transform.localToWorldMatrix;
+                var a=matrix.MultiplyPoint3x4(new Vector3(-half,0f,-depth));
+                var b=matrix.MultiplyPoint3x4(new Vector3(half,0f,-depth));
+                var c=matrix.MultiplyPoint3x4(new Vector3(half,0f,0f));
+                var d=matrix.MultiplyPoint3x4(new Vector3(-half,0f,0f));
+                map.AddTriangle(new BuiltSurfaceMap.Triangle(a,b,c,foundation));
+                map.AddTriangle(new BuiltSurfaceMap.Triangle(a,c,d,foundation));
+                if(HangarConnection.Approach(hangar,out var approach))
+                {
+                    var airportMatrix=airport.transform.localToWorldMatrix;
+                    Vector3 P(int index)=>airportMatrix.MultiplyPoint3x4(new Vector3(approach[index].x,0f,approach[index].y));
+                    map.AddTriangle(new BuiltSurfaceMap.Triangle(P(0),P(1),P(2),foundation));
+                    map.AddTriangle(new BuiltSurfaceMap.Triangle(P(0),P(2),P(3),foundation));
+                }
+            }
         }
         static void AddOwnership(BuiltSurfaceMap map,IReadOnlyList<BuiltSurfaceMap.Triangle> source,Matrix4x4 matrix,bool foundation=true)
         {
@@ -114,6 +143,7 @@ namespace AirCity.World
             constructionSurfaces?.Dispose();constructionSurfaces=null;constructionActive=false;
             builtSurfaces?.Dispose();builtSurfaces=null;builtAirport=null;mappedRoads=null;mappedAirportVersion=-1;
             mappedAirportBounds=pendingBuiltChange=null;pendingBuiltProps.Clear();
+            visitorCentreRoot=null;visitorCentreVersion=0;mappedVisitorCentreVersion=-1;
         }
     }
 }

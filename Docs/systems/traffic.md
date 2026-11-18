@@ -6,6 +6,12 @@ takes off; an arrival flies a 3° final, lands, takes the first exit it can and 
 aircraft apart on the runways, through junctions and along taxiways. Flights are simulated in game seconds from
 `Airport.Simulate`, like the depots' teams, so tests run them headless.
 
+Compatible aircraft can make ground-only trips to and from [hangars](hangars.md).
+`AirTraffic.TaxiToHangar` reserves the bay and follows the taxiway graph into its doors.
+`TaxiToStand` backs a nose-in resident out and taxis to a free stand. These use
+`FlightKind.GroundTransfer`, normal holds/spacing and `Ready → HandPush / StartingEngines → Taxi → Parked`.
+They need no runway. The destination is retained across replanning; a disconnect stops the aircraft.
+
 Aircraft with an explicitly requested [baggage turnaround](baggage.md#airport-connected-bulk-turnaround) wait
 in `FlightPhase.Ready` until incoming bags have reached arrivals, outgoing bags are loaded and equipment has
 returned clear. `Flight.StepReady` checks `Airport.Baggage.DepartureBlocker` before requesting a tug or starting

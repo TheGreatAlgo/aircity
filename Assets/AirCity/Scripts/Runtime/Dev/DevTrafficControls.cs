@@ -71,6 +71,16 @@ namespace AirCity.Dev
             preview = null;
         }
 
+        public void TaxiToHangar(SmallHangar hangar)
+        {
+            if (sandbox.Selected==null || Traffic==null) return;
+            sandbox.Taxiing=false;
+            hangar.SetDoorsOpen(true);
+            var flight=Traffic.TaxiToHangar(sandbox.Selected,hangar,out var problem);
+            Message=flight==null ? "Can't taxi to hangar: "+problem : null;
+            preview=null;
+        }
+
         /// <summary>A new aircraft of this type comes in to land.</summary>
         public void Land(AircraftType type)
         {
@@ -171,7 +181,7 @@ namespace AirCity.Dev
             var stood = new List<Aircraft.Aircraft>();
             foreach (var a in Aircraft.Aircraft.All)
             {
-                if (a == null || a.type == null || traffic.FlightOf(a) != null || a.Moving || a.transform.position.y > 1f) continue;
+                if (a == null || a.type == null || SmallHangar.OfResident(a)!=null || traffic.FlightOf(a) != null || a.Moving || a.transform.position.y > 1f) continue;
                 if (!parkedSince.ContainsKey(a)) parkedSince[a] = now;
                 stood.Add(a);
             }
@@ -307,7 +317,9 @@ namespace AirCity.Dev
             }
             // where it ends: the stand's pad, or a box round the line-up point
             pts.Clear();
-            if (route.stand != null)
+            if (route.hangar != null)
+                foreach (var c in route.hangar.Pad) pts.Add(t.TransformPoint(Geo.X0Z(c)));
+            else if (route.stand != null)
                 foreach (var c in route.stand.Pad) pts.Add(t.TransformPoint(Geo.X0Z(c)));
             else
             {

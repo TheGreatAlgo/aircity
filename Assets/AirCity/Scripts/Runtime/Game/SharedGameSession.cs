@@ -33,6 +33,9 @@ namespace AirCity.Game
             if (Airport != null)
             {
                 Airport.TerrainHeight = p => State.world.Height(p + Geo.XZ(Airport.transform.position)) - Airport.transform.position.y;
+                Airport.HangarApproachProblem = HangarApproachProblem;
+                hangarSites.Clear();
+                Airport.LayoutChanged();
                 if (Airport.Taxiways.edges.Any(e => e.structure != RoadStructure.Ground)) Airport.Taxiways.Rebuild();
             }
             BuildTools.game = this; BuildTools.airport = Airport; BuildTools.SetTool(DevTool.Select);BuildTools.SetRoadUnderground(false);
@@ -88,6 +91,8 @@ namespace AirCity.Game
                 if (component is DevToolbar || component is DevSandboxControls || component is DevTrafficControls || component is DevBaggageControls || component is DevContainerControls)
                     component.enabled = active;
             if (!active || Airport == null) return;
+            if(reception!=null && reception.GetComponent<VisitorCentreVisual>()?.geometryVersion!=VisitorCentreBuilder.GeometryVersion)
+            {Remove(reception);reception=BuildReception();}
             view.PointerOverHud |= DevGui.PointerOverHud;
             view.KeyboardCaptured |= DevGui.KeyboardCaptured;
             view.PlacementTakesScroll |= DevAirfieldTool.TakesScroll;
@@ -118,7 +123,7 @@ namespace AirCity.Game
             CareerTool required = tool switch {
                 DevTool.ClearTrees => CareerTool.ClearTrees, DevTool.Level => CareerTool.Level,
                 DevTool.Runway => CareerTool.Runway, DevTool.Taxiway => CareerTool.Taxiway,
-                DevTool.Stand => CareerTool.Stand, DevTool.Street => CareerTool.Road,
+                DevTool.Stand => CareerTool.Stand, DevTool.Hangar => CareerTool.Stand, DevTool.Street => CareerTool.Road,
                 DevTool.Reception => CareerTool.Reception, DevTool.Delete => CareerTool.Select,
                 _ => CareerTool.Taxiway
             };
@@ -132,7 +137,7 @@ namespace AirCity.Game
         }
         public void Spend(int price) { if (!Sandbox) State.funds -= price; }
 
-        public bool CheckFootprint(IEnumerable<Vector2> local, float radius, out string problem)
+        public bool CheckFootprint(IEnumerable<Vector2> local, float radius, out string problem,bool checkHeight=true)
         {
             var origin = Geo.XZ(Airport.transform.position);
             var points = local.Select(p => p + origin).ToArray();
@@ -162,8 +167,49 @@ namespace AirCity.Game
                 }
             }
             problem = "Level this footprint to meet the airport pavement first.";
-            if (points.Any(p => Mathf.Abs(State.world.Height(p) - Airport.transform.position.y - Airport.PavementElevationAt(p-origin)) > .3f)) return false;
+            if (checkHeight && points.Any(p => Mathf.Abs(State.world.Height(p) - Airport.transform.position.y - Airport.PavementElevationAt(p-origin)) > .3f)) return false;
             problem = null; return true;
+        }
+
+        int hangarSiteVersion = -1;
+        readonly Dictionary<(Vector2, Vector2, Vector2, Vector2), string> hangarSites = new();
+
+        string HangarApproachProblem(IList<Vector2> outline)
+        {
+            // The traffic and rent checks can revisit the same prepared approach on every simulation step.
+            if (hangarSiteVersion != Airport.LayoutVersion)
+            {
+                hangarSiteVersion = Airport.LayoutVersion;
+                hangarSites.Clear();
+            }
+            var key = (outline[0], outline[1], outline[2], outline[3]);
+            if (!hangarSites.TryGetValue(key, out var problem))
+                hangarSites[key] = problem = CheckHangarApproach(outline);
+            return problem;
+        }
+
+        string CheckHangarApproach(IList<Vector2> outline)
+        {
+            var origin=Geo.XZ(Airport.transform.position);
+            var siteProblem = VisitorCentreConstruction.OverlapProblem(State, outline.Select(p => p + origin).ToArray());
+            if (siteProblem != null) return siteProblem;
+            var roads=State.RoadNetwork();
+            foreach(var road in roads.segments)
+                foreach(var span in roads.Path(road).Spans())
+                {
+                    var a=Geo.XZ(span.a)-origin; var b=Geo.XZ(span.b)-origin;
+                    var right=Geo.Right((b-a).normalized)*(road.Type.FullWidth*.5f+2f);
+                    if (Geo.Overlap(outline,new[]{a-right,b-right,b+right,a+right}))
+                        return "Keep the hangar approach clear of public roads.";
+                }
+            var samples = new List<Vector2>(outline);
+            var min = outline.Aggregate(Vector2.Min); var max = outline.Aggregate(Vector2.Max);
+            for (float x=min.x; x<=max.x; x+=3f)
+                for (float z=min.y; z<=max.y; z+=3f)
+                { var p=new Vector2(x,z); if (Geo.Inside(outline,p)) samples.Add(p); }
+            if (samples.Any(p=>State.world.IsWater(p+Geo.XZ(Airport.transform.position))))
+                return "Prepare dry land along the hangar approach first.";
+            return CheckFootprint(samples,0f,out var problem) ? null : problem;
         }
 
         public void SharedConstructionChanged()
@@ -214,6 +260,7 @@ namespace AirCity.Game
                 State.layout.Unlock(CareerTool.Reception);
             }
             else State.accessRoadRoute.Clear();
+            if (Airport != null && Airport.Hangars.Any()) Airport.LayoutChanged();
             valley.RefreshRoads(network);
             SharedConstructionChanged();
         }

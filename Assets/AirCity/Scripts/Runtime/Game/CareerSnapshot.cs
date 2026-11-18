@@ -59,6 +59,7 @@ namespace AirCity.Game
             return new CareerLayout {
                 unlocked = source.unlocked, clearedTrees = source.clearedTrees, earthwork = source.earthwork, elevation = source.elevation,
                 runwayBuilt = source.runwayBuilt, standBuilt = source.standBuilt, receptionBuilt = source.receptionBuilt,
+                receptionSiteVersion = source.receptionSiteVersion,
                 runwayA = source.runwayA, runwayB = source.runwayB, stand = source.stand, standAlong = source.standAlong,
                 reception = source.reception, standHeading = source.standHeading, receptionHeading = source.receptionHeading,
                 taxiways = Copy(source.taxiways, t => t == null ? null : new CareerTaxiway { points = Copy(t.points) })

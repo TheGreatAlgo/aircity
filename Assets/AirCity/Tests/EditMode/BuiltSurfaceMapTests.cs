@@ -79,6 +79,25 @@ namespace AirCity.Tests.World
             Assert.IsFalse(map.Contains(new Vector2(0,10f)),"The translucent fringe must keep terrain beneath it.");
         }
         [Test]
+        public void HangarFloorsExcludePlantsAndProtectTheirFoundationUntilDemolition()
+        {
+            var world=World();var airport=Airport();
+            var door=new Vector2(-1200,-1200);var hangar=airport.AddHangar(door,30f);Assert.IsNotNull(hangar);
+            var view=Own(new GameObject("Hangar ownership valley")).AddComponent<ValleyView>();
+            view.Build(world,new PublicRoadNetwork(),false);var before=(float[])world.heights.Clone();
+            view.SetBuiltAirport(airport);
+            var centre=door-hangar.Axis*SmallHangar.Depth*.5f;
+            var outside=door+hangar.Axis*20f;
+            Assert.IsTrue(view.BuiltSurfaces.Contains(centre));Assert.IsFalse(view.BuiltSurfaces.Contains(outside));
+            Assert.AreEqual(ValleyWorld.Resolution*ValleyWorld.Resolution,view.BuiltSurfaces.Formation.Length);
+            var props=new[]{new GroundCoverInstance {id=1,kind=GroundCoverKind.Grass,position=centre,scale=1f},
+                new GroundCoverInstance {id=2,kind=GroundCoverKind.Grass,position=outside,scale=1f}};
+            CollectionAssert.AreEqual(new[]{2},view.BuiltSurfaces.Exclude(props).Select(p=>p.id));
+            CollectionAssert.AreEqual(before,world.heights,"Registering a hangar floor must not rewrite source terrain.");
+            airport.RemoveHangar(hangar);view.SetBuiltAirport(airport);
+            Assert.IsFalse(view.BuiltSurfaces.Contains(centre),"A demolished floor must stop clipping terrain and excluding plants.");
+        }
+        [Test]
         public void PublicRoadCoverageIncludesGroundCurvesAndSidewalksButLeavesTerrainUnderElevatedDecks()
         {
             var graph=new PublicRoadNetwork();int a=graph.AddNode(new Vector3(-150,100,0)),b=graph.AddNode(new Vector3(0,100,0)),c=graph.AddNode(new Vector3(0,100,150));
