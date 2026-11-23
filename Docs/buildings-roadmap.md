@@ -20,9 +20,12 @@ a system doc specifies them.
 | [Executive hangar](systems/hangars.md) | One 84 × 42 m clear-span building with an 80 m lift door and three independently leased parking spots for business jets or general aviation. | Snap a straight, level paved taxiway across the shared apron at a 38 m setback. Use code B or wider according to the aircraft. |
 | [Airline hangar](systems/hangars.md) | One 92 × 90 m clear-span bay for commercial aircraft, including Starling widebody and double-deck airliners. | Snap a straight, level paved taxiway across the door at a 95 m setback. Use code C or wider according to the aircraft. |
 | [Visitor centre](systems/visitor-centre.md) | One reception building and an 18-bay car park. Individual visits and parking income are future work. | The placement quote includes a two-way driveway from the parking lot to an outside-connected public road within 95 m. The parking entrance is separate from the original airport progression entrance. |
+| [Flying school](systems/flying-school.md) | A clubhouse, a 16-bay car park and a flight line of three tie-downs. The school buys trainers, hires instructors, enrols students and flies a 12-lesson course: local flights and visible circuits with touch-and-goes. It earns lesson fees and pays wages; three upgrades add a classroom, a simulator and night training. | Airside, the flight line snaps onto a straight, level taxiway (code A or wider) and is connected by whichever taxiway runs along its front. Landside, the quote includes a two-way driveway from the car park to an outside-connected public road within 95 m. |
 
 The hangar approach is airside and the visitor driveway is landside. Lay out their pavement independently
 and leave clearance between the hangar, its approach, and the visitor centre and car park.
+The flying school is the first building with both: its tie-downs face the taxiway and its car park faces
+the road.
 
 The Hangar tool snaps the doorway to an existing taxiway, and the Taxiway tool snaps to the two sides
 of a disconnected hangar's approach. The Street tool snaps to the visitor centre's driveway mouth and
@@ -59,7 +62,7 @@ Character: grass or modest paved runway, light aircraft, small buildings and a f
 | Building | Proposed gameplay |
 |---|---|
 | Airfield clubhouse / reception | Extend the playable visitor centre with visiting-pilot reception, flight bookings, basic administration and a small café. |
-| Flying school | Student and instructor activity, training contracts and regular flights. Training circuits compete with visitors for runway time. |
+| Flying school | **Playable** ([system guide](systems/flying-school.md)). Still proposed: students and instructors shown walking out, cars in the car park, training contracts, trainer hangars, and airside security between the car park and the flight line at larger airports. |
 | Small aircraft hangars | Extend the playable single-bay rental hangar with more unit and door arrangements. |
 | Light aircraft maintenance workshop | Inspections and repairs requiring mechanics, spare parts and available workshop space. |
 | Fuel hut and tank | Fuel sales and supplier deliveries; storage limits affect how much traffic can be served. |
@@ -162,7 +165,7 @@ Suggested order, subject to the user's next feature choice:
 
 | Priority | Building family | Why start here | Suggested first playable scope |
 |---|---|---|---|
-| 1 | Flying school | Gives the smallest aircraft a purpose and creates recognisable daily activity. | Place a school, assign training aircraft and run training activity through shared traffic. Start with supported flight behaviour; circuits need a separate traffic extension. |
+| Done | Flying school | Gives the smallest aircraft a purpose and creates recognisable daily activity. | Built 2026-11-18, including the circuit and touch-and-go traffic extension. Next for this family: a school for larger aircraft (the flight line's size code and spot count are data in `FlyingSchoolLayout`), a simulator centre as its own building, and airside security. |
 | 2 | Private terminal / FBO | Creates a second passenger business alongside scheduled airlines. | Connect reception to a private apron, assign eligible visiting flights and show service activity and capacity. |
 | 3 | Maintenance workshop / hangar | Gives aircraft a reason to stay and makes bay occupancy meaningful. | Assign a supported aircraft to a bay and simulate a timed inspection with staff/parts requirements as those systems become available. Towing into buildings is a separate movement requirement. |
 | 4 | Fuel facilities | Connects aircraft services to storage, deliveries and road access. | Store fuel, receive deliveries and serve compatible aircraft through a defined service workflow. |
@@ -205,6 +208,11 @@ business roles and scale as well as entirely new buildings.
 5. Validate placement, access, aircraft clearance and save/load for the chosen feature. Check visual
    quality with close-up renders and airport-scale views; use meaningful simulation tests where needed.
 6. Update the relevant system/asset docs and this roadmap with actual implemented scope and remaining work.
+
+Decided for the flying school (user, 2026-11-18): an integral flight line rather than assigned public stands;
+its own driveway and car park; a management tab for hiring, aircraft and upgrades; no instructor or student
+walk-out animation; larger airports should later put the school behind airside security, and the school
+should later be upgradable to larger aircraft.
 
 Open design choices to resolve when relevant: expanded hangar tenant ownership, shared-bay indoor aircraft movement,
 pilot versus staff training progression, contract structure, utility depth, passenger interior simulation

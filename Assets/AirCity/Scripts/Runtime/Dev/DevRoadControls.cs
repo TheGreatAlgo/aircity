@@ -1,4 +1,6 @@
-using System.Globalization;
+using System.Collections.Generic;
+using System.Linq;
+using AirCity.Airfield;
 using AirCity.Game;
 using AirCity.Airfield.Building;
 using AirCity.World;
@@ -12,13 +14,130 @@ namespace AirCity.Dev
         RoadBuildSettings roadBuildSettings=RoadBuildSettings.Default;
         float roadElevation;
         float? roadDatum;
+        float? undergroundDatum;
+        Vector2? lastRoadPointer;
         bool roadUnderground;
-        float roadKeyHoldStart,roadKeyHoldLast;
-        int roadKeyDirection;
-        public RoadBuildMode RoadMode=>roadBuildSettings.mode;
+        Pick undergroundTunnel;
+        int undergroundTunnelNode = -1;
         public float RoadElevation=>roadElevation;
-        public float RoadBend=>roadBuildSettings.bend;
         public bool RoadUnderground=>roadUnderground;
+        public RoadBridgeDesign NewBridgeDesign=>roadBuildSettings.bridgeDesign;
+        public RoadBridgeDesign? SelectedBridgeDesign=>SelectedPublicRoad?.structure==RoadStructure.Elevated
+            ? SelectedPublicRoad.bridgeDesign : SelectedEdge?.IsRoad==true&&SelectedEdge.structure==RoadStructure.Elevated
+                ? SelectedEdge.bridgeDesign : (RoadBridgeDesign?)null;
+
+        public void SetRoadBridgeDesign(RoadBridgeDesign design)
+        {
+            if(roadBuildSettings.bridgeDesign==design)return;
+            roadBuildSettings.bridgeDesign=design;
+            InvalidateRoadPlan();
+        }
+
+        public void SetSelectedBridgeDesign(RoadBridgeDesign design)
+        {
+            if(!SelectedBridgeDesign.HasValue||!Valid(selection))return;
+            if(SelectedPublicRoad is PublicRoadSegment street)
+            {
+                var view=Streets;
+                var draft=view.network.Clone();
+                if(!PublicRoadGeometry.Layout(draft).SetBridgeDesign(new[]{street.id},design))return;
+                view.network=draft;
+                selection.publicRoad=draft.Segment(street.id);
+                view.Rebuild();
+            }
+            else
+            {
+                var net=airport.Taxiways;
+                if(!new TaxiwayBuilder(net,airport.Runways).SetBridgeDesign(new HashSet<int>{SelectedEdge.id},design))return;
+                net.Rebuild();
+                game?.SharedConstructionChanged();
+            }
+            InvalidateRoadPlan();
+        }
+
+        public TunnelPortalStyle NewTunnelPortalStyle => roadBuildSettings.tunnelPortalStyle;
+        public TunnelPortalStyle? SelectedTunnelPortalStyle
+        {
+            get
+            {
+                if (SelectedPublicRoad?.structure == RoadStructure.Tunnel) return SelectedPublicRoad.tunnelPortalStyle;
+                if (SelectedEdge?.IsRoad == true && SelectedEdge.structure == RoadStructure.Tunnel) return SelectedEdge.tunnelPortalStyle;
+                return null;
+            }
+        }
+
+        public void SetRoadTunnelPortalStyle(TunnelPortalStyle style)
+        {
+            if (roadBuildSettings.tunnelPortalStyle == style) return;
+            roadBuildSettings.tunnelPortalStyle = style;
+            InvalidateRoadPlan();
+        }
+
+        public void SetSelectedTunnelPortalStyle(TunnelPortalStyle style)
+        {
+            if (!SelectedTunnelPortalStyle.HasValue || !Valid(selection)) return;
+            if (SelectedPublicRoad is PublicRoadSegment street)
+            {
+                var view = Streets;
+                var draft = view.network.Clone();
+                var section = draft.Segment(street.id);
+                if (!PublicRoadGeometry.Layout(draft).SetTunnelPortalStyle(section, style)) return;
+                view.network = draft;
+                selection.publicRoad = section;
+                view.Rebuild();
+            }
+            else
+            {
+                var net = airport.Taxiways;
+                if (!new TaxiwayBuilder(net, airport.Runways).SetTunnelPortalStyle(SelectedEdge, style)) return;
+                net.Rebuild();
+                game?.SharedConstructionChanged();
+            }
+            InvalidateRoadPlan();
+        }
+
+        public string SelectedBridgeDesignNotice
+        {
+            get
+            {
+                var requested=SelectedBridgeDesign;
+                if(!requested.HasValue)return null;
+                if(SelectedPublicRoad is PublicRoadSegment street)
+                {
+                    var geometry=game!=null?game.valley.RoadGeometry:Streets.Geometry;
+                    return geometry!=null?BridgeDesignNotice(requested.Value,geometry.BridgeFor(street).Design):null;
+                }
+                return BridgeDesignNotice(requested.Value,airport.Taxiways.BridgeDesignFor(SelectedEdge.id));
+            }
+        }
+
+        public string PreviewBridgeDesignNotice
+        {
+            get
+            {
+                var requested=NewBridgeDesign;
+                if(!RoadDrawing||requested==RoadBridgeDesign.Automatic||requested==RoadBridgeDesign.Piers)return null;
+                if(tool==DevTool.Street)
+                {
+                    var geometry=streetPreview?.Geometry;
+                    if(streetPlan==null||geometry==null||geometry.graph!=streetPlan.Draft)return null;
+                    if(!streetPlan.NewSegments.Select(geometry.graph.Segment).Any(e=>e.structure==RoadStructure.Elevated&&
+                        geometry.BridgeFor(e).Design!=requested))return null;
+                }
+                else if(airsideTerrain?.UsesDifferentBridgeDesign(requested)!=true)return null;
+                return BridgeDesignNotice(requested,RoadBridgeDesign.Piers);
+            }
+        }
+
+        static string BridgeDesignNotice(RoadBridgeDesign requested,RoadBridgeDesign actual)
+        {
+            if(requested==RoadBridgeDesign.Automatic)return "Uses "+(actual==RoadBridgeDesign.Piers?"piers":actual.ToString().ToLowerInvariant());
+            if(actual==requested)return null;
+            return requested==RoadBridgeDesign.Arch
+                ? "Uses piers here · Arch needs straight, supported ends 30–350 m apart."
+                : "Uses piers here · Suspension needs straight, supported ends at least 60 m apart.";
+        }
+        // Explicit modes are used by construction review scenes. The player tools always start in Automatic.
         public void SetRoadMode(RoadBuildMode mode)
         {
             roadBuildSettings.mode=mode;
@@ -28,21 +147,76 @@ namespace AirCity.Dev
             if(mode==RoadBuildMode.Tunnel)SetRoadUnderground(true);else if(mode==RoadBuildMode.Bridge||mode==RoadBuildMode.Ground)SetRoadUnderground(false);
             InvalidateRoadPlan();
         }
-        public void SetRoadElevation(float value){value=Mathf.Clamp(value,-150f,150f);if(value==roadElevation)return;roadElevation=value;InvalidateRoadPlan();}
-        public void SetRoadBend(float value){roadBuildSettings.bend=Mathf.Clamp(value,-500f,500f);InvalidateRoadPlan();}
+        public void SetRoadElevation(float value) => ApplyRoadElevation(Mathf.Clamp(value, -150f, 150f));
+        void ApplyRoadElevation(float value)
+        {
+            if (value == roadElevation) return;
+            roadElevation = value;
+            InvalidateRoadPlan();
+        }
+        const float RoadElevationStep = 5f;
+        public void StepRoadElevation(int direction)
+        {
+            bool wasBelowGround = roadElevation < 0f;
+            float step = roadElevation / RoadElevationStep;
+            float next = (direction > 0 ? Mathf.Floor(step) + 1 : Mathf.Ceil(step) - 1) * RoadElevationStep;
+            ApplyRoadElevation(Mathf.Clamp(next, Mathf.Min(-150f, roadElevation), Mathf.Max(150f, roadElevation)));
+            if (wasBelowGround != (roadElevation < 0f)) SetRoadUnderground(roadElevation < 0f);
+        }
+
+        void SetRoadBend(float bend)
+        {
+            if (roadBuildSettings.bend == bend) return;
+            roadBuildSettings.bend = bend;
+            InvalidateRoadPlan();
+        }
+
         void InvalidateRoadPlan(){streetQuoteKey=default;streetPreviewBuilt=default;airsideQuoteKey=default;}
         float RoadTargetHeight(Vector2 p)
         {
             if(roadDatum.HasValue&&(roadBuildSettings.mode==RoadBuildMode.Bridge||roadBuildSettings.mode==RoadBuildMode.Tunnel||roadBuildSettings.mode==RoadBuildMode.Automatic&&Mathf.Abs(roadElevation)>.01f))return roadDatum.Value+roadElevation;
-            if(game==null)return roadElevation;float height=game.valley.DisplayHeight(p);
-            // following the ground over water means a low bridge (LowDeck over the surface), enough to come down onto a
-            // low bank without dipping under the water clearance
-            if(roadBuildSettings.mode!=RoadBuildMode.Tunnel&&game.State.world.IsWater(p))height=Mathf.Max(height,game.State.world.WaterSurfaceAt(p)+LowDeck);
+            if (roadUnderground && undergroundDatum.HasValue)
+                return RoadDrawing && RoadStart is Vector3 anchor ? anchor.y : undergroundDatum.Value + roadElevation;
+            if (game == null) return roadElevation;
+            float height = game.valley.DisplayHeight(p);
+            var world = game.State.world;
+            if (world.IsWater(p))
+            {
+                if (roadBuildSettings.mode != RoadBuildMode.Tunnel)
+                    height = Mathf.Max(height, world.WaterSurfaceAt(p) + LowDeck);
+            }
+            else if (RoadDrawing && roadBuildSettings.mode == RoadBuildMode.Automatic &&
+                roadElevation == 0f && RoadStart is Vector3 start)
+            {
+                var from = Geo.XZ(start);
+                float rise = height - start.y;
+                float limit = tool == DevTool.Street ? PublicRoadConstruction.MaximumGroundGrade : AirsideTerrainPlan.MaximumRoadGrade;
+                float distance = Vector2.Distance(from, p);
+                // A free point against a steep face keeps the road's level so it can bore into the hill or span a drop.
+                // A deliberately snapped endpoint still uses the height of the road being joined.
+                if (Mathf.Abs(rise) > RoadConstructionPlan.AtGrade)
+                {
+                    if (Mathf.Abs(rise) > distance * limit) return start.y;
+                    float approach = Mathf.Min(24f, distance);
+                    var beforeFace = Vector2.MoveTowards(p, from, approach);
+                    float faceRise = height - game.valley.DisplayHeight(beforeFace);
+                    if (Mathf.Sign(faceRise) == Mathf.Sign(rise) &&
+                        Mathf.Abs(faceRise) > approach * limit + RoadConstructionPlan.AtGrade)
+                        return start.y;
+                }
+            }
             return height+roadElevation;
         }
         public void SetRoadUnderground(bool shown)
         {
-            roadUnderground=shown;UpdateUndergroundView();
+            if (shown != roadUnderground)
+            {
+                Vector2 at = lastRoadPointer ?? Geo.XZ(lastGround);
+                undergroundDatum = shown && game != null ? RoadGround(at) : (float?)null;
+                roadUnderground = shown;
+                InvalidateRoadPlan();
+            }
+            UpdateUndergroundView();
         }
         void UpdateUndergroundView()
         {
@@ -50,8 +224,63 @@ namespace AirCity.Dev
             var view=game.GetComponent<UndergroundRoadView>();
             if(view==null && !roadUnderground)return;
             if(view==null)view=game.gameObject.AddComponent<UndergroundRoadView>();
-            float height=RoadTargetHeight(Geo.XZ(lastGround))+2.5f;
-            view.Show(roadUnderground&&(tool==DevTool.Street||tool==DevTool.Road||tool==DevTool.Select||tool==DevTool.Delete),height);
+            bool shown = roadUnderground && (tool == DevTool.Street || tool == DevTool.Road || tool == DevTool.Select || tool == DevTool.Delete);
+            view.Show(shown, shown ? RoadTargetHeight(lastRoadPointer ?? Geo.XZ(lastGround)) + UndergroundRoadView.Headroom : 0f);
+        }
+
+        // The tunnel guides sit over the rendered cutaway, so they also take priority when picking.
+        bool PickUndergroundTunnel(Ray ray, out Vector3 point)
+        {
+            var hit = Vector3.zero;
+            var match = Pick.None;
+            int node = -1;
+            float best = float.PositiveInfinity;
+            const float lift = .3f;
+
+            void Test(Alignment3D path, float half, int a, int b, int anchor, Transform space, Pick pick)
+            {
+                var localRay = space == null ? ray : new Ray(space.InverseTransformPoint(ray.origin), space.InverseTransformDirection(ray.direction));
+                bool End(Vector3 local, int id)
+                {
+                    if (id == anchor) return false;
+                    var world = space == null ? local : space.TransformPoint(local);
+                    var offset = world + Vector3.up * lift - ray.origin;
+                    float along = Vector3.Dot(offset, ray.direction);
+                    float reach = Mathf.Max(1.5f, MetresPerPixel(world) * 10f);
+                    if (along < 0f || along >= best || (offset - ray.direction * along).sqrMagnitude > reach * reach)
+                        return false;
+                    (hit, match, node, best) = (world, pick, id, along);
+                    return true;
+                }
+                bool atStart = End(path.start, a);
+                bool atEnd = End(path.end, b);
+                if (atStart || atEnd || !path.Raycast(localRay, half, out float distance, lift)) return;
+                var localHit = localRay.GetPoint(distance) - Vector3.up * lift;
+                var worldHit = space == null ? localHit : space.TransformPoint(localHit);
+                float along = Vector3.Dot(worldHit + Vector3.up * lift - ray.origin, ray.direction);
+                if (along < best) (hit, match, node, best) = (worldHit, pick, -1, along);
+            }
+
+            if (tool != DevTool.Road)
+            {
+                var roads = Streets.network;
+                foreach (var edge in roads.segments)
+                    if (edge.structure == RoadStructure.Tunnel)
+                        Test(roads.Path(edge), edge.Type.FullWidth * .5f, edge.a, edge.b, streetChain, null,
+                            new Pick { kind = Kind.PublicRoad, publicRoad = edge, apron = -1 });
+            }
+            if (tool != DevTool.Street)
+            {
+                var net = airport.Taxiways;
+                foreach (var edge in net.edges)
+                    if (edge.IsRoad && edge.structure == RoadStructure.Tunnel)
+                        Test(net.Path(edge), edge.width * .5f, edge.a, edge.b, chainNode, airport.transform,
+                            new Pick { kind = Kind.Edge, edge = edge, apron = -1 });
+            }
+            undergroundTunnel = match;
+            undergroundTunnelNode = node;
+            point = hit;
+            return match.kind != Kind.None;
         }
         bool PickRoadLevel(Ray ray,float maximum,out Vector3 point)
         {
@@ -74,11 +303,105 @@ namespace AirCity.Dev
                 }
             return found;
         }
-        bool RoadDrawing=>tool==DevTool.Street?streetChainPoint.HasValue:chainNode>=0;
+        bool RoadDrawing => tool == DevTool.Street ? streetChainPoint.HasValue : tool == DevTool.Road && chainNode >= 0;
+        Vector3? RoadStart => tool == DevTool.Street ? Streets.network.Node(streetChain)?.position :
+            airport.Taxiways.Node(chainNode) is TaxiwayNode node ? airport.transform.TransformPoint(node.position) : (Vector3?)null;
+
+        Vector2? roadEndpointPress;
+        Vector3 roadCurveStart, roadCurveEnd;
+        bool roadCurveDragging;
+        public string RoadPlacementHint => roadCurveDragging ? "Drag sideways to shape the curve. Release to build."
+            : RoadDrawing ? "Click to place · Drag sideways to curve\nShift snaps · Right-click ends"
+            : roadUnderground ? "Click a cyan tunnel end to continue"
+            : "Click where the road starts";
+
+        void ResetRoadDrag()
+        {
+            roadEndpointPress = null;
+            roadCurveDragging = false;
+            SetRoadBend(0f);
+        }
+
+        // Pressing over an endpoint locks its snap. Moving sideways before releasing bows the midpoint of the
+        // proposed road, leaving both connections in place.
+        void PlaceRoad(Mouse mouse, Keyboard keys, bool click, bool free, Vector3 point)
+        {
+            bool street = tool == DevTool.Street;
+            if (roadEndpointPress.HasValue && (!RoadDrawing || !free || !mouse.leftButton.isPressed &&
+                !mouse.leftButton.wasReleasedThisFrame))
+                ResetRoadDrag();
+
+            bool pressEndpoint = click && RoadDrawing && !mouse.leftButton.wasReleasedThisFrame;
+            bool releaseEndpoint = roadEndpointPress.HasValue && mouse.leftButton.wasReleasedThisFrame;
+            bool place = releaseEndpoint || (click && !pressEndpoint);
+            if (roadEndpointPress is Vector2 pressedAt)
+                DragRoadCurve(pressedAt, mouse.position.ReadValue());
+            if (street) StreetTool(mouse, keys, place, free, point);
+            else TaxiwayTool(place, free, point, true);
+
+            if (releaseEndpoint) ResetRoadDrag();
+            if (!pressEndpoint || !(RoadStart is Vector3 start)) return;
+            roadCurveStart = start;
+            roadCurveEnd = street ? StreetEndpoint : AirsideEndpoint;
+            if (street && game == null)
+            {
+                roadCurveStart = airport.transform.TransformPoint(roadCurveStart);
+                roadCurveEnd = airport.transform.TransformPoint(roadCurveEnd);
+            }
+            roadEndpointPress = mouse.position.ReadValue();
+        }
+
+        void DragRoadCurve(Vector2 pressedAt, Vector2 cursor)
+        {
+            if (!roadCurveDragging && (cursor - pressedAt).sqrMagnitude < 36f) return;
+            roadCurveDragging = true;
+            var plane = new Plane(Vector3.up, roadCurveEnd);
+            var pressRay = cam.ScreenPointToRay(pressedAt);
+            var cursorRay = cam.ScreenPointToRay(cursor);
+            if (!plane.Raycast(pressRay, out float pressDistance) || !plane.Raycast(cursorRay, out float cursorDistance)) return;
+            var move = cursorRay.GetPoint(cursorDistance) - pressRay.GetPoint(pressDistance);
+            var chord = roadCurveEnd - roadCurveStart;
+            if (tool == DevTool.Road || game == null)
+            {
+                move = airport.transform.InverseTransformVector(move);
+                chord = airport.transform.InverseTransformVector(chord);
+            }
+            float length = Geo.XZ(chord).magnitude;
+            var right = new Vector2(chord.z, -chord.x).normalized;
+            SetRoadBend(Mathf.Clamp(2f * Vector2.Dot(Geo.XZ(move), right), -length, length));
+        }
+
+        void DrawRoadCurveGuide()
+        {
+            if (!roadCurveDragging) return;
+            var colour = new Color(.62f, .78f, .86f, .7f);
+            loop.Clear();
+            loop.Add(roadCurveStart);
+            loop.Add(roadCurveEnd);
+            outlines.Line(cam, loop, colour, 1f, false, true);
+        }
+
+        void DrawRoadEndpoint(Vector3 end, bool snapped, bool invalid)
+        {
+            float radius = MetresPerPixel(end) * (snapped ? 9f : 6f);
+            loop.Clear();
+            for (int i = 0; i < 16; i++)
+            {
+                float angle = i * Mathf.PI / 8f;
+                loop.Add(end + new Vector3(Mathf.Cos(angle), 0f, Mathf.Sin(angle)) * radius);
+            }
+            outlines.Line(cam, loop, invalid ? DevGui.Danger : DevGui.Accent, 2f, true, true);
+        }
+
         /// <summary>The level the cursor works at (world): before a chain in Automatic at 0, whatever it is on;
         /// otherwise where the next free point would go.</summary>
         float RoadWorkingLevel(Vector2 point)=>!RoadDrawing&&roadBuildSettings.mode==RoadBuildMode.Automatic&&Mathf.Abs(roadElevation)<.1f?lastGround.y:RoadTargetHeight(point);
-        bool SnapRoadLayer(float height,Vector2 point)=>Mathf.Abs(height-RoadWorkingLevel(point))<3f;
+        bool SnapRoadLayer(float height, float level, Vector2 at)
+        {
+            if (Mathf.Abs(height - level) >= 3f) return false;
+            float roof = height + RoadStructureBuilder.TunnelClearance + RoadStructureBuilder.TunnelCover;
+            return game == null || roadUnderground || roof >= game.valley.DisplayHeight(at);
+        }
         /// <summary>The last cursor ray (world) and how far along it the visible ground is (+∞ in the underground view
         /// or where pavement clips the terrain): set by Ground.</summary>
         Ray roadRay;
@@ -92,10 +415,9 @@ namespace AirCity.Dev
             at=Geo.XZ(roadRay.GetPoint(t));return true;
         }
         /// <summary>A road at another level is joined only where the player points at it: the cursor ray, at that road's
-        /// own level, passes within `within` of it (world x, z), and that point is not hidden behind the ground. In the
-        /// underground view the cut ground hides nothing, and the roads it cuts away are outlined (DrawRoadLevelGuide).
-        /// So drawing over or under a road crosses it unless the cursor is put on it, and a buried tunnel is never
-        /// joined from the surface view.</summary>
+        /// own level, passes within `within` of it (world x, z), and that point is not hidden behind the ground.
+        /// The cutaway lets the player point at its road outlines, including an upper road to join at the end of a ramp.
+        /// Drawing over or under a road crosses it unless the cursor is put on it.</summary>
         bool SnapAcrossLevels(float height,Vector2 world,float within)=>RoadRayAt(height,out var at)&&Vector2.Distance(at,world)<=within;
         /// <summary>SnapAcrossLevels for a section (path in `space`, null for world): its parameter where the ray at its
         /// level comes nearest, and that point's height (world).</summary>
@@ -121,49 +443,64 @@ namespace AirCity.Dev
             return Mathf.Abs(rise)<=PublicRoadNetwork.JunctionHeightTolerance?"":$", {Mathf.Abs(rise):0.0} m {(rise>0?"up":"down")}: the road ramps to it";
         }
 
-        /// <summary>In the underground view, the roads its cut hides near the cursor are outlined where they are (drawn
-        /// over the cutaway); pointing at an outline joins that road (SnapAcrossLevels), so a tunnel can be brought up
-        /// onto a surface road without leaving the underground view.</summary>
+        readonly Plane[] undergroundFrustum = new Plane[6];
+
+        /// <summary>Tunnels stay readable through terrain, roofs and the grid at every depth. Nearby upper roads
+        /// give context and can still be joined from the cutaway.</summary>
         void DrawRoadLevelGuide()
         {
-            if(game==null || tool!=DevTool.Street&&tool!=DevTool.Road || !lineSnapShown&&tool==DevTool.Road || !streetSnapShown&&tool==DevTool.Street)return;
-            var view=game.GetComponent<UndergroundRoadView>();if(view==null||!view.Visible)return;
-            var centre=Geo.XZ(lastGround);const float Radius=300f;int drawn=0;
-            var colour=new Color(.62f,.78f,.86f);
-            bool Near(Vector3 a,Vector3 b,Vector2 control)
+            if (game == null) return;
+            var view = game.GetComponent<UndergroundRoadView>();
+            if (view == null || !view.Visible) return;
+            GeometryUtility.CalculateFrustumPlanes(cam, undergroundFrustum);
+            int upperRoads = 0;
+
+            void Outline(Alignment3D path, float half, Transform space, RoadStructure structure)
             {
-                var min=Vector2.Min(Vector2.Min(Geo.XZ(a),Geo.XZ(b)),control);var max=Vector2.Max(Vector2.Max(Geo.XZ(a),Geo.XZ(b)),control);
-                return centre.x>min.x-Radius&&centre.x<max.x+Radius&&centre.y>min.y-Radius&&centre.y<max.y+Radius;
-            }
-            void Outline(Alignment3D path,float half,Transform space)
-            {
-                int count=Mathf.Clamp(Mathf.CeilToInt(path.Length/10f),1,60);
-                for(int side=-1;side<=1;side+=2)
+                bool tunnel = structure == RoadStructure.Tunnel;
+                Vector3 origin = space == null ? Vector3.zero : space.position;
+                if (!tunnel && (upperRoads >= 48 || Mathf.Max(path.start.y, path.end.y) + origin.y <= view.Height)) return;
+                var bounds = new Bounds(path.start + origin, Vector3.zero);
+                bounds.Encapsulate(path.end + origin);
+                if (path.shape.curved) bounds.Encapsulate(Geo.X0Z(path.shape.control, path.start.y) + origin);
+                float gradeReach = path.Length * Mathf.Max(Mathf.Abs(path.shape.startGrade), Mathf.Abs(path.shape.endGrade)) / 3f;
+                bounds.Expand(new Vector3(half * 2f, 2f * gradeReach + 2f, half * 2f));
+                if (!GeometryUtility.TestPlanesAABB(undergroundFrustum, bounds)) return;
+                if (!tunnel)
                 {
-                    loop.Clear();
-                    for(int i=0;i<=count;i++)
-                    {var p=path.Offset(path.Length*i/count,side*half);loop.Add(space!=null?space.TransformPoint(p):p);}
-                    outlines.Line(cam,loop,colour,1.5f,false,true);
+                    var centre = Geo.XZ(lastGround);
+                    float radius = 300f;
+                    if (centre.x < bounds.min.x - radius || centre.x > bounds.max.x + radius ||
+                        centre.y < bounds.min.z - radius || centre.y > bounds.max.z + radius) return;
+                    upperRoads++;
                 }
-                drawn++;
-            }
-            if(tool==DevTool.Street)
-            {
-                var roads=Streets.network;
-                foreach(var e in roads.segments)
+
+                int count = Mathf.Clamp(Mathf.CeilToInt(path.Length / 10f), 1, 60);
+                loop.Clear();
+                for (int side = -1; side <= 1; side += 2)
                 {
-                    if(drawn>=48)break;var a=roads.Node(e.a).position;var b=roads.Node(e.b).position;
-                    if(Mathf.Max(a.y,b.y)<=view.Height||!Near(a,b,e.alignment.curved?e.alignment.control:Geo.XZ(a)))continue;
-                    Outline(roads.Path(e),e.Type.FullWidth*.5f,null);
+                    for (int i = 0; i <= count; i++)
+                    {
+                        float distance = path.Length * (side < 0 ? i : count - i) / count;
+                        var at = path.Offset(distance, side * half);
+                        loop.Add(space == null ? at : space.TransformPoint(at));
+                    }
                 }
-                return;
+                var colour = tunnel ? new Color(.35f, .86f, 1f) : new Color(.62f, .78f, .86f, .55f);
+                outlines.Line(cam, loop, colour, tunnel ? 2.5f : 1.5f, true, true);
             }
-            var net=airport.Taxiways;var origin=airport.transform.position;
-            foreach(var e in net.edges)
+
+            if (tool != DevTool.Road)
             {
-                if(drawn>=48)break;if(!e.IsRoad)continue;var a=net.Node(e.a).position+origin;var b=net.Node(e.b).position+origin;
-                if(Mathf.Max(a.y,b.y)<=view.Height||!Near(a,b,(e.alignment.curved?e.alignment.control:Geo.XZ(a-origin))+Geo.XZ(origin)))continue;
-                Outline(net.Path(e),e.width*.5f,airport.transform);
+                var roads = Streets.network;
+                foreach (var edge in roads.segments)
+                    Outline(roads.Path(edge), edge.Type.FullWidth * .5f, null, edge.structure);
+            }
+            if (tool != DevTool.Street)
+            {
+                var net = airport.Taxiways;
+                foreach (var edge in net.edges)
+                    if (edge.IsRoad) Outline(net.Path(edge), edge.width * .5f, airport.transform, edge.structure);
             }
         }
 
@@ -194,7 +531,8 @@ namespace AirCity.Dev
             bool raised=structure||Mathf.Abs(height-ground)>RoadConstructionPlan.AtGrade;
             if(!raised&&start)return;
             if(!adoptedElevation.HasValue)chosenElevation=roadElevation;
-            SetRoadElevation(raised?height-ground:0f);adoptedElevation=roadElevation;
+            ApplyRoadElevation(raised ? height - ground : 0f);
+            adoptedElevation=roadElevation;
             // back on a surface road: the cutaway has nothing left to show
             if(!raised&&roadUnderground)SetRoadUnderground(false);
         }
@@ -204,66 +542,67 @@ namespace AirCity.Dev
             if(tool==DevTool.Road&&chainNode<0 || tool==DevTool.Street&&!streetChainPoint.HasValue || tool!=DevTool.Road&&tool!=DevTool.Street)
             {
                 roadDatum=null;
-                if(adoptedElevation.HasValue){if(roadElevation==adoptedElevation.Value)SetRoadElevation(chosenElevation);adoptedElevation=null;}
+                if (adoptedElevation.HasValue)
+                {
+                    if (roadElevation == adoptedElevation.Value)
+                    {
+                        var view = game != null ? game.GetComponent<UndergroundRoadView>() : null;
+                        if (view != null && view.Visible)
+                            undergroundDatum = view.Height - UndergroundRoadView.Headroom - chosenElevation;
+                        ApplyRoadElevation(chosenElevation);
+                    }
+                    adoptedElevation = null;
+                }
             }
             if(tool!=DevTool.Street && tool!=DevTool.Road){UpdateUndergroundView();return;}
-            int direction=keys.pageUpKey.isPressed?1:keys.pageDownKey.isPressed?-1:0;
-            float now=Time.unscaledTime;
-            if(direction==0)roadKeyDirection=0;
-            else if(roadKeyDirection!=direction)
-            {roadKeyDirection=direction;roadKeyHoldStart=roadKeyHoldLast=now;SetRoadElevation(roadElevation+direction*.5f);}
-            else
-            {float rate=CareerHud.BrushHeightRate(now-roadKeyHoldStart);SetRoadElevation(roadElevation+direction*rate*Mathf.Min(.1f,now-roadKeyHoldLast));roadKeyHoldLast=now;}
+            if (keys.pageUpKey.wasPressedThisFrame) StepRoadElevation(1);
+            if (keys.pageDownKey.wasPressedThisFrame) StepRoadElevation(-1);
             UpdateUndergroundView();
         }
     }
     public partial class DevToolbar
     {
-        string roadHeightText;
-        int heldRoadHeight,roadHeightFrame=-1;
-        float heldRoadStart,heldRoadLast;
         void RoadBuildControls()
         {
-            Section("STRUCTURE");
-            Buttons(B("Auto",()=>airfield.SetRoadMode(RoadBuildMode.Automatic),"Choose ground, bridge or tunnel from the path and landscape",airfield.RoadMode==RoadBuildMode.Automatic),
-                B("Ground",()=>airfield.SetRoadMode(RoadBuildMode.Ground),"Grade the ground beneath the road",airfield.RoadMode==RoadBuildMode.Ground));
-            Buttons(B("Bridge",()=>airfield.SetRoadMode(RoadBuildMode.Bridge),"Build a supported deck above the landscape",airfield.RoadMode==RoadBuildMode.Bridge),
-                B("Tunnel",()=>airfield.SetRoadMode(RoadBuildMode.Tunnel),"Build a lined tunnel with open entrances",airfield.RoadMode==RoadBuildMode.Tunnel));
-            Prop("Elevation",r=>
-            {
-                float bw=U(30),gap=U(4);bool down=RoadHeightButton(new Rect(r.x,r.y,bw,r.height),"−");
-                var field=new Rect(r.x+bw+gap,r.y,r.width-(bw+gap)*2,r.height);
-                const string control="RoadElevation";bool focused=GUI.GetNameOfFocusedControl()==control;
-                if(!focused)roadHeightText=airfield.RoadElevation.ToString("+0.0;-0.0;0.0",CultureInfo.InvariantCulture);
-                GUI.SetNextControlName(control);string next=GUI.TextField(field,roadHeightText??"",12,DevGui.Small);
-                if(focused)DevGui.KeyboardCaptured=true;
-                if(next!=roadHeightText){roadHeightText=next;if(float.TryParse(next,NumberStyles.Float,CultureInfo.InvariantCulture,out float value)&&!float.IsNaN(value)&&!float.IsInfinity(value))airfield.SetRoadElevation(value);}
-                bool up=RoadHeightButton(new Rect(r.xMax-bw,r.y,bw,r.height),"+");RepeatRoadHeight(down?-1:up?1:0);
-            });
-            Note("Metres above the ground where the road starts · click a road to take its level · Page Up / Down");
+            float elevation = airfield.RoadElevation;
+            PropStepper("Elevation", $"{Mathf.RoundToInt(elevation):+0;-0;0} m", () => airfield.StepRoadElevation(-1),
+                () => airfield.StepRoadElevation(1), "Change height by 5 m · Page Up / Down",
+                canDown: elevation > -150f, canUp: elevation < 150f);
             Buttons(B(airfield.RoadUnderground?"Surface view":"Underground view",()=>airfield.SetRoadUnderground(!airfield.RoadUnderground),"Reveal roads below the landscape",airfield.RoadUnderground));
-            Prop("Curve",r=>
-            {
-                float value=GUI.HorizontalSlider(r,airfield.RoadBend,-150f,150f);
-                if(Mathf.Abs(value-airfield.RoadBend)>.1f)airfield.SetRoadBend(Mathf.Abs(value)<2f?0:Mathf.Round(value));
-            });
-            Buttons(B("Straight",()=>airfield.SetRoadBend(0),"Reset the curve",Mathf.Abs(airfield.RoadBend)<.1f));
+            BridgeDesignStepper(airfield.NewBridgeDesign,airfield.SetRoadBridgeDesign);
+            TunnelPortalStyleStepper(airfield.NewTunnelPortalStyle, airfield.SetRoadTunnelPortalStyle);
+            var notice=airfield.PreviewBridgeDesignNotice;
+            if(notice!=null)Note(notice);
         }
-        bool RoadHeightButton(Rect r,string label)
+
+        void SelectedBridgeDesignControls()
         {
-            int id=GUIUtility.GetControlID(label.GetHashCode(),FocusType.Passive,r);var e=Event.current;
-            if(e.type==EventType.MouseDown&&e.button==0&&r.Contains(e.mousePosition)){GUIUtility.hotControl=id;e.Use();}
-            if(e.type==EventType.MouseUp&&e.button==0&&GUIUtility.hotControl==id){GUIUtility.hotControl=0;e.Use();}
-            bool held=GUIUtility.hotControl==id&&Mouse.current!=null&&Mouse.current.leftButton.isPressed;
-            DevGui.Fill(r,DevGui.GUI(held?DevGui.Accent:DevGui.Surface),U(6));GUI.Label(r,label,Centred);return held;
+            var design=airfield.SelectedBridgeDesign;
+            if(!design.HasValue)return;
+            BridgeDesignStepper(design.Value,airfield.SetSelectedBridgeDesign);
+            var notice=airfield.SelectedBridgeDesignNotice;
+            if(notice!=null)Note(notice);
         }
-        void RepeatRoadHeight(int direction)
+
+        void SelectedTunnelPortalStyleControls()
         {
-            if(direction==0){heldRoadHeight=0;return;}float now=Time.unscaledTime;
-            if(heldRoadHeight!=direction)
-            {heldRoadHeight=direction;heldRoadStart=heldRoadLast=now;roadHeightFrame=Time.frameCount;GUI.FocusControl(null);airfield.SetRoadElevation(airfield.RoadElevation+direction*.5f);}
-            else if(roadHeightFrame!=Time.frameCount)
-            {airfield.SetRoadElevation(airfield.RoadElevation+direction*CareerHud.BrushHeightRate(now-heldRoadStart)*Mathf.Min(.1f,now-heldRoadLast));heldRoadLast=now;roadHeightFrame=Time.frameCount;}
+            if (airfield.SelectedTunnelPortalStyle is TunnelPortalStyle style)
+                TunnelPortalStyleStepper(style, airfield.SetSelectedTunnelPortalStyle);
+        }
+
+        void TunnelPortalStyleStepper(TunnelPortalStyle style, System.Action<TunnelPortalStyle> select)
+        {
+            PropStepper("Tunnel portal", style == TunnelPortalStyle.Arched ? "Arched" : "Rectangular",
+                () => select(TunnelPortalStyle.Rectangular), () => select(TunnelPortalStyle.Arched),
+                "Choose the concrete frame at tunnel entrances", canDown: style == TunnelPortalStyle.Arched,
+                canUp: style == TunnelPortalStyle.Rectangular);
+        }
+
+        void BridgeDesignStepper(RoadBridgeDesign design,System.Action<RoadBridgeDesign> select)
+        {
+            PropStepper("Bridge design",design.ToString(),()=>select((RoadBridgeDesign)((int)design-1)),
+                ()=>select((RoadBridgeDesign)((int)design+1)),"Choose how elevated road spans are supported",
+                canDown:design!=RoadBridgeDesign.Automatic,canUp:design!=RoadBridgeDesign.Suspension);
         }
     }
 }

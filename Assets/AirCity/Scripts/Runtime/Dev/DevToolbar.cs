@@ -34,7 +34,7 @@ namespace AirCity.Dev
         DevTrafficControls traffic;
         readonly DevGateDesigner gateDesigner = new DevGateDesigner();
         public DevGateDesigner GateDesigner => gateDesigner;
-        public void ResetWorkspace() { gateDesigner.Close(); CloseDeicingManagement(); openPop = null; }
+        public void ResetWorkspace() { gateDesigner.Close(); CloseDeicingManagement(); CancelSchoolPurchase(); openPop = null; }
 
         public void OpenGateDesigner(Stand stand = null)
         {
@@ -46,8 +46,11 @@ namespace AirCity.Dev
         }
         public void OpenTerminalDesigner(Terminal terminal)
         {
-            OpenGateDesigner();
+            if (airfield == null) airfield = GetComponent<DevAirfieldTool>();
+            if (airfield == null || airfield.airport == null || !airfield.airport.terminals.Contains(terminal)) return;
+            gateDesigner.Open(airfield.airport, null);
             gateDesigner.SelectTerminal(terminal);
+            openPop = null;
         }
         public void OpenBridgeBuilder()
         {
@@ -70,7 +73,7 @@ namespace AirCity.Dev
             if (!gateDesigner.IsOpen) OpenGateDesigner(stand);
             airfield.SelectStand(stand); gateDesigner.FocusParking(airfield, stand);
         }
-        void OnDisable() { gateDesigner.Close(); CloseDeicingManagement(); }
+        void OnDisable() { gateDesigner.Close(); CloseDeicingManagement(); CancelSchoolPurchase(); }
         void OnDestroy() => gateDesigner.Dispose();
 
         /// <summary>The bottom bar's buttons: the tool (null: the gate designer), its icon (Resources/AirCityIcons), name,
@@ -89,6 +92,7 @@ namespace AirCity.Dev
             (DevTool.Reception, "terminal", "Visitor centre", "Place the visitor centre, parking lot and public-road driveway", null, 3),
             (DevTool.Terminal, "terminal", "Terminal", "Click corners for a terminal building (or drag out a rectangle); select one and Shift+scroll to curve a wall", null, 3),
             (DevTool.Hangar, "hangar", "Hangar", "Build a light-aircraft, executive or airline hangar with taxiway access", null, 3),
+            (DevTool.FlyingSchool, "flying-school", "Flying school", "Build a flying school: clubhouse, car park and a flight line of tie-downs beside a taxiway", null, 3),
             (DevTool.Stand, "stand", "Stand", "Click beside a taxiway to add an aircraft stand (it snaps to the stands beside it)", null, 3),
             (DevTool.Bridge, "bridge", "Bridge", "Place jet bridges and bridge heads by hand, starting from a terminal wall", null, 3),
             (null, "gates", "Gates", "Design gate layouts, aircraft stops, bridge families and saved presets", null, 3),
@@ -127,7 +131,11 @@ namespace AirCity.Dev
             var keys = Keyboard.current;
             if (keys == null || DevGui.KeyboardCaptured) return;
             if (gateDesigner.IsOpen && airfield != null && gateDesigner.HandleWorldInput(airfield, GetComponent<Camera>(), Mouse.current, keys)) return;
-            if (keys.hKey.wasPressedThisFrame) DevGui.Visible = !DevGui.Visible;
+            if (keys.hKey.wasPressedThisFrame)
+            {
+                DevGui.Visible = !DevGui.Visible;
+                if (!DevGui.Visible) CancelSchoolPurchase();
+            }
             if (keys.escapeKey.wasPressedThisFrame)
             {
                 openPop = null;
@@ -159,6 +167,7 @@ namespace AirCity.Dev
             bool wasEnabled = GUI.enabled;
             GUI.enabled &= airfield?.game == null || !airfield.game.State.charterActive;
             ToolBar();
+            if (gateDesigner.IsOpen || DeicingManagementOpen || !GUI.enabled) CancelSchoolPurchase();
             if (gateDesigner.IsOpen) gateDesigner.Draw(airfield, traffic);
             else if (DeicingManagementOpen) DrawDeicingManagement();
             else RightColumn();
@@ -312,6 +321,9 @@ namespace AirCity.Dev
                     break;
                 case DevTool.Baggage:
                     BaggageCards();
+                    break;
+                case DevTool.FlyingSchool:
+                    FlyingSchoolCards();
                     break;
                 case DevTool.DeIcing:
                     CodeCards();
@@ -813,6 +825,20 @@ namespace AirCity.Dev
             }
         }
 
+        void DrawWorkspaceRows(Rect body, ref Vector2 scroll, Action build)
+        {
+            main.Clear();
+            into = main;
+            float width = body.width - AirfieldWorkspaceGui.Scrollbar;
+            innerWidth = width - Pad * 2;
+            build();
+            float height = Height(main);
+            var content = new Rect(0, 0, width, height);
+            scroll = GUI.BeginScrollView(body, scroll, content, false, height > body.height);
+            DrawRows(main, content);
+            GUI.EndScrollView();
+        }
+
         /// <summary>Where a row starts (from the panel's top).</summary>
         static float RowTop(List<(float h, Action<Rect> draw)> rows, int index)
         {
@@ -876,7 +902,7 @@ namespace AirCity.Dev
             if (airfield.Tool != DevTool.Select) return airfield.Tool;
             if (AircraftShown) return sandbox.Selected;
             return (object)airfield.SelectedStand ?? (object)airfield.SelectedRunway ?? (object)airfield.SelectedEdge ??
-                   (object)airfield.SelectedDepot ?? (object)airfield.SelectedHangar ?? (object)airfield.SelectedBaggageHall ?? (object)airfield.SelectedDeicingWorkArea ??
+                   (object)airfield.SelectedDepot ?? (object)airfield.SelectedHangar ?? (object)airfield.SelectedFlyingSchool ?? (object)airfield.SelectedBaggageHall ?? (object)airfield.SelectedDeicingWorkArea ??
                    (object)airfield.SelectedDeicingParkingBay ?? (object)airfield.SelectedDeicingOutsideAccess ?? (object)airfield.SelectedTerminal ?? airfield.SelectedApron;
         }
 
@@ -891,11 +917,16 @@ namespace AirCity.Dev
         void RightColumn()
         {
             var e = Event.current;
+            var subject = Subject();
+            var school = subject as FlyingSchool;
+            var hangar = subject as SmallHangar;
+            bool workspace = school != null || hangar != null;
+            if (school == null) CancelSchoolPurchase();
             // a press anywhere but the pop-out (or its button) closes it, but for the bridges one
             if (e.type == EventType.MouseDown && openPop != null &&
                 !popRect.Contains(e.mousePosition) && !popAnchor.Contains(e.mousePosition))
                 openPop = null;
-            if (openPop != null && !Equals(Subject(), popSubject)) openPop = null;
+            if (openPop != null && !Equals(subject, popSubject)) openPop = null;
 
             float margin = U(12f), colW = U(ColumnUnits), popW = U(PopUnits);
             main.Clear();
@@ -905,7 +936,8 @@ namespace AirCity.Dev
             popFill = null;
             into = main;
             innerWidth = colW - Pad * 2f;
-            if (airfield != null && airfield.airport != null) Inspector();
+            if (workspace) openPop = null;
+            else if (airfield != null && airfield.airport != null) Inspector();
             else if (AircraftShown) AircraftInspector();
             if (airfield != null && airfield.SupportsPlacementRotation && !IsDeicingTool)
             {
@@ -928,9 +960,12 @@ namespace AirCity.Dev
 
             float x = Screen.width - margin - colW;
             float top = airfield?.game != null ? AirCity.Game.CareerHud.ContentTop : margin;
-            var inspector = main.Count > 0 ? new Rect(x, top, colW, Height(main)) : new Rect(x, top - U(8f), colW, 0f);
+            var inspector = workspace ? AirfieldWorkspaceGui.PanelRect(top, hangar != null ? 520 : 650, 150) :
+                main.Count > 0 ? new Rect(x, top, colW, Height(main)) : new Rect(x, top - U(8f), colW, 0f);
             float sideH = Height(side);
             var sideRect = new Rect(x, inspector.yMax + U(8f), colW, sideH);
+            if (workspace && sideRect.yMax > Screen.height - U(80f) && inspector.x > colW + U(8))
+                sideRect = new Rect(inspector.x - colW - U(8), top, colW, sideH);
             if (main.Count > 0 && sideRect.yMax > Screen.height - margin) sideRect = new Rect(x - colW - U(8f), top, colW, sideH);
 
             float inspectorAvailable = Mathf.Max(U(100), Screen.height - margin - U(110));
@@ -946,7 +981,9 @@ namespace AirCity.Dev
             }
             bool repaint = e.type == EventType.Repaint;
             if (!repaint && pop.Count > 0) Draw(pop, popRect);
-            if (main.Count > 0)
+            if (school != null) DrawFlyingSchoolWorkspace(school, inspector);
+            else if (hangar != null) DrawHangarWorkspace(hangar, inspector);
+            else if (main.Count > 0)
             {
                 if (!scrollInspector) Draw(main, inspector);
                 else
@@ -1005,7 +1042,8 @@ namespace AirCity.Dev
                     if (airfield.StreetProblem != null) Danger(airfield.StreetProblem);
                     else
                         Note((airfield.StreetSnapName != null ? $"{DevGui.Tag(Cyan)}joins {airfield.StreetSnapName}</color>   " : "") +
-                             $"{t.name}, {t.Width:0.#} m   click points   Shift: 10° and 5 m steps   right-click ends   crossings get traffic lights");
+                             $"{t.name}, {t.Width:0.#} m");
+                    Note(airfield.RoadPlacementHint);
                     return;
                 }
                 case DevTool.Road:
@@ -1013,8 +1051,8 @@ namespace AirCity.Dev
                     RoadBuildControls();
                     if (airfield.RoadProblem != null) Danger(airfield.RoadProblem);
                     else
-                        Note(Joins($"service road, {RunwayRules.RoadWidth:0} m wide   click points   Shift: 10° and 5 m steps   " +
-                                   "right-click ends   paint only across paved aprons"));
+                        Note(Joins($"Service road, {RunwayRules.RoadWidth:0} m wide"));
+                    Note(airfield.RoadPlacementHint);
                     return;
                 case DevTool.Apron:
                     Title("Apron tool");
@@ -1042,6 +1080,9 @@ namespace AirCity.Dev
                     return;
                 case DevTool.Hangar:
                     HangarBuildInspector();
+                    return;
+                case DevTool.FlyingSchool:
+                    FlyingSchoolBuildInspector();
                     return;
                 case DevTool.Baggage:
                     BaggageBuildInspector();
@@ -1096,12 +1137,16 @@ namespace AirCity.Dev
             {
                 Title(airfield.SelectionName);
                 Note("Public road · "+airfield.SelectedPublicRoad.Type.name);
+                SelectedBridgeDesignControls();
+                SelectedTunnelPortalStyleControls();
                 Buttons(B("Delete section",()=>airfield.DeleteSelection(),"Remove this section between junctions",hint:"Del",danger:true));
             }
             else if (airfield.SelectedEdge != null)
             {
                 var edge = airfield.SelectedEdge;
                 Title(airfield.SelectionName);
+                SelectedBridgeDesignControls();
+                SelectedTunnelPortalStyleControls();
                 Section("MAINTENANCE");
                 Maintenance(edge.surface == PavementSurface.Grass, edge.HasVerges);
                 Space();
@@ -1112,7 +1157,6 @@ namespace AirCity.Dev
             else if (airfield.SelectedDeicingParkingBay != null) DeicingParkingInspector(airfield.SelectedDeicingParkingBay);
             else if (airfield.SelectedDeicingOutsideAccess != null) DeicingOutsideAccessInspector(airfield.SelectedDeicingOutsideAccess);
             else if (airfield.SelectedBaggageHall!=null) BaggageHallInspector(airfield.SelectedBaggageHall);
-            else if (airfield.SelectedHangar!=null) HangarInspector(airfield.SelectedHangar);
             else if (airfield.SelectedDepot != null)
             {
                 var depot = airfield.SelectedDepot;
@@ -1334,6 +1378,10 @@ namespace AirCity.Dev
             AircraftBaggage(a);
             AircraftContainers(a);
             var flight = traffic != null ? traffic.SelectedFlight : null;
+            if (a.Airstair is AircraftAirstair airstair)
+                Buttons(B(airstair.TargetOpen ? "Stow airstair" : "Deploy airstair",
+                    () => airstair.SetOpen(!airstair.TargetOpen), "Operate the passenger door and its built-in steps",
+                    enabled: airstair.TargetOpen || (!a.Moving && flight == null && sandbox.SelectedTow == null && !sandbox.Taxiing)));
             if (ShowMore && a.type != null && a.type.cargoDoors.Length > 0)
                 Buttons(B("Open cargo", () => a.CargoDoors.SetOpen(true), "Open the cargo hatches for inspection", enabled: !a.Moving && flight == null && sandbox.SelectedTow == null),
                     B("Close cargo", () => a.CargoDoors.SetOpen(false), "Close the cargo hatches; active baggage service controls its own door"));
@@ -1356,6 +1404,7 @@ namespace AirCity.Dev
                     Buttons(B("Push back", () => sandbox.PushBack(Shifted),
                         "A tug comes and pushes it back off its stand onto the taxiway (Shift: to face the other way)", hint: "Enter"));
                 AircraftHangar(a);
+                AircraftSchool(a);
                 Buttons(B("Park", sandbox.Park, "Put it on the nearest free stand that takes it"));
                 if (ShowMore) Buttons(B("Taxi", () => sandbox.Taxiing = !sandbox.Taxiing, "Taxi it round in a slow weave", sandbox.Taxiing, "T"));
             }

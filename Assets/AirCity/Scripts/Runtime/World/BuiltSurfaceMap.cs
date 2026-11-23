@@ -12,14 +12,38 @@ namespace AirCity.World
     public sealed class BuiltSurfaceMap : IDisposable
     {
         public const float CellSize=32f;
+        public const float SurfaceTolerance = .025f;
+        // Shared edges can round to different world-space floats after terrain rasterization.
+        // Keep the GPU overlap and its cell candidates in the same world-space units.
+        const float RenderEdgeOverlap = .001f;
         public const int Columns=200;
         const float Half=ValleyWorld.Size*.5f;
         public struct Triangle
         {
             public Vector3 a,b,c;
             public int foundation;
-            public Triangle(Vector3 a,Vector3 b,Vector3 c,bool foundation=false)
-            {this.a=a;this.b=b;this.c=c;this.foundation=foundation?1:0;}
+            public float excavationHeight, excavationDepth;
+            readonly int buried;
+            public bool OwnsGround => buried == 0;
+
+            public Triangle(Vector3 a, Vector3 b, Vector3 c, bool foundation = false, float excavationHeight = 0f, bool buried = false,
+                float excavationDepth = SurfaceTolerance)
+            {
+                this.a = a;
+                this.b = b;
+                this.c = c;
+                this.foundation = foundation ? 1 : 0;
+                this.excavationHeight = excavationHeight;
+                this.excavationDepth = excavationDepth;
+                this.buried = buried ? 1 : 0;
+            }
+
+            public Triangle Transform(Matrix4x4 matrix, bool includeFoundation)
+            {
+                float up = matrix.MultiplyVector(Vector3.up).y;
+                return new Triangle(matrix.MultiplyPoint3x4(a), matrix.MultiplyPoint3x4(b), matrix.MultiplyPoint3x4(c),
+                    includeFoundation && foundation != 0, up * excavationHeight, !OwnsGround, up * excavationDepth);
+            }
             static Vector2 Flat(Vector3 p)=>new Vector2(p.x,p.z);
             static float Cross(Vector2 p,Vector2 q)=>p.x*q.y-p.y*q.x;
             public float Height(Vector2 p)
@@ -122,11 +146,13 @@ namespace AirCity.World
             for(int i=0;i<source.Count;i++)
             {
                 var t=source[i];foundations|=t.foundation!=0;
-                int x0=Coordinate(Mathf.Min(t.a.x,Mathf.Min(t.b.x,t.c.x))),x1=Coordinate(Mathf.Max(t.a.x,Mathf.Max(t.b.x,t.c.x)));
-                int z0=Coordinate(Mathf.Min(t.a.z,Mathf.Min(t.b.z,t.c.z))),z1=Coordinate(Mathf.Max(t.a.z,Mathf.Max(t.b.z,t.c.z)));
+                int x0=Coordinate(Mathf.Min(t.a.x,Mathf.Min(t.b.x,t.c.x))-RenderEdgeOverlap),x1=Coordinate(Mathf.Max(t.a.x,Mathf.Max(t.b.x,t.c.x))+RenderEdgeOverlap);
+                int z0=Coordinate(Mathf.Min(t.a.z,Mathf.Min(t.b.z,t.c.z))-RenderEdgeOverlap),z1=Coordinate(Mathf.Max(t.a.z,Mathf.Max(t.b.z,t.c.z))+RenderEdgeOverlap);
                 for(int z=z0;z<=z1;z++)for(int x=x0;x<=x1;x++)
                 {
-                    if(!t.Intersects(new Rect(x*CellSize-Half,z*CellSize-Half,CellSize,CellSize)))continue;
+                    var cell = new Rect(x*CellSize-Half-RenderEdgeOverlap, z*CellSize-Half-RenderEdgeOverlap,
+                        CellSize+2f*RenderEdgeOverlap, CellSize+2f*RenderEdgeOverlap);
+                    if(!t.Intersects(cell))continue;
                     int key=z*Columns+x;var bucket=buckets[key]??=new List<int>();
                     if(bucket.Count==0)occupied.Add(key);bucket.Add(i);
                 }
@@ -152,7 +178,8 @@ namespace AirCity.World
             var cell=cells[Coordinate(p.y)*Columns+Coordinate(p.x)];float best=float.MaxValue;
             for(int i=cell.start;i<cell.start+cell.count;i++)
             {
-                var triangle=triangles[indices[i]];if(triangle.DistanceSquared(p)>.000001f)continue;
+                var triangle=triangles[indices[i]];
+                if(!triangle.OwnsGround || triangle.DistanceSquared(p)>.000001f)continue;
                 float h=triangle.Height(p),difference=Mathf.Abs(h-hint);if(difference>=best)continue;
                 var normal=Vector3.Cross(triangle.b-triangle.a,triangle.c-triangle.a);
                 height=h;gradient=new Vector2(-normal.x,-normal.z)/normal.y;best=difference;
@@ -167,7 +194,11 @@ namespace AirCity.World
             for(int z=z0;z<=z1;z++)for(int x=x0;x<=x1;x++)
             {
                 var cell=cells[z*Columns+x];
-                for(int i=cell.start;i<cell.start+cell.count;i++)if(triangles[indices[i]].DistanceSquared(p)<=limit)return true;
+                for (int i = cell.start; i < cell.start + cell.count; i++)
+                {
+                    var triangle = triangles[indices[i]];
+                    if (triangle.OwnsGround && triangle.DistanceSquared(p) <= limit) return true;
+                }
             }
             return false;
         }
@@ -206,7 +237,10 @@ namespace AirCity.World
                 if(gpuTriangles==null || gpuTriangles.Length<vertices)gpuTriangles=new Vector4[Mathf.NextPowerOfTwo(vertices)];
                 for(int i=0;i<source.Count;i++)
                 {
-                    var t=source[i];gpuTriangles[i*3]=new Vector4(t.a.x,t.a.z,t.a.y,0);gpuTriangles[i*3+1]=new Vector4(t.b.x,t.b.z,t.b.y,0);gpuTriangles[i*3+2]=new Vector4(t.c.x,t.c.z,t.c.y,0);
+                    var t = source[i];
+                    gpuTriangles[i*3] = new Vector4(t.a.x,t.a.z,t.a.y,t.excavationHeight);
+                    gpuTriangles[i*3+1] = new Vector4(t.b.x,t.b.z,t.b.y,t.excavationDepth);
+                    gpuTriangles[i*3+2] = new Vector4(t.c.x,t.c.z,t.c.y,RenderEdgeOverlap);
                 }
                 if(triangleBuffer==null || triangleBuffer.count<vertices)
                 {triangleBuffer?.Dispose();triangleBuffer=new GraphicsBuffer(GraphicsBuffer.Target.Structured,gpuTriangles.Length,16);}

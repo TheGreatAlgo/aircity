@@ -37,6 +37,8 @@ namespace AirCity.Tests.Game
             for(int i=0;i<triangles.Length;i+=3)
             {
                 var a=airport.transform.TransformPoint(vertices[triangles[i]]);var b=airport.transform.TransformPoint(vertices[triangles[i+1]]);var c=airport.transform.TransformPoint(vertices[triangles[i+2]]);
+                // The road's edge faces descend into the supporting soil. Check only the drivable top.
+                if (Mathf.Abs(Vector3.Cross(b-a,c-a).y) < .0001f) continue;
                 for(int j=0;j<=4;j++)for(int k=0;k<=4-j;k++)
                 {
                     var p=a*(j/4f)+b*(k/4f)+c*(1f-(j+k)/4f);

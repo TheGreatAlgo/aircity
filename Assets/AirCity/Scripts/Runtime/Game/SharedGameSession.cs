@@ -33,10 +33,13 @@ namespace AirCity.Game
             if (Airport != null)
             {
                 Airport.TerrainHeight = p => State.world.Height(p + Geo.XZ(Airport.transform.position)) - Airport.transform.position.y;
+                Airport.BridgeWaterHeight = p => State.world.BridgeWaterAt(p + Geo.XZ(Airport.transform.position)) - Airport.transform.position.y;
                 Airport.HangarApproachProblem = HangarApproachProblem;
+                schoolRoads.Clear();
+                Airport.SchoolRoadProblem = SchoolRoadProblem;
                 hangarSites.Clear();
                 Airport.LayoutChanged();
-                if (Airport.Taxiways.edges.Any(e => e.structure != RoadStructure.Ground)) Airport.Taxiways.Rebuild();
+                Airport.Taxiways.RefreshStructures();
             }
             BuildTools.game = this; BuildTools.airport = Airport; BuildTools.SetTool(DevTool.Select);BuildTools.SetRoadUnderground(false);
             if (Airport != null && !State.HasRunway) BuildTools.UseStarterDefaults();
@@ -124,6 +127,7 @@ namespace AirCity.Game
                 DevTool.ClearTrees => CareerTool.ClearTrees, DevTool.Level => CareerTool.Level,
                 DevTool.Runway => CareerTool.Runway, DevTool.Taxiway => CareerTool.Taxiway,
                 DevTool.Stand => CareerTool.Stand, DevTool.Hangar => CareerTool.Stand, DevTool.Street => CareerTool.Road,
+                DevTool.FlyingSchool => CareerTool.Reception,
                 DevTool.Reception => CareerTool.Reception, DevTool.Delete => CareerTool.Select,
                 _ => CareerTool.Taxiway
             };
@@ -212,6 +216,42 @@ namespace AirCity.Game
             return CheckFootprint(samples,0f,out var problem) ? null : problem;
         }
 
+        /// <summary>A flying school's driveway has been bought with its site: the saved graph and its rendering.</summary>
+        internal void SchoolRoadBuilt(PublicRoadNetwork network)
+        {
+            State.publicRoads = network;
+            if (valley != null) valley.RefreshRoads(network, false);
+            if (Streets != null) Streets.network = network;
+        }
+
+        readonly Dictionary<FlyingSchool, int> schoolNotices = new();
+        readonly Dictionary<FlyingSchool, (PublicRoadNetwork roads, int nodes, int segments, string problem)> schoolRoads = new();
+
+        /// <summary>Schools ask every game second; the route search runs again only when the road graph has changed.</summary>
+        string SchoolRoadProblem(FlyingSchool school)
+        {
+            var roads = State.RoadNetwork();
+            if (schoolRoads.TryGetValue(school, out var known) && known.roads == roads && known.nodes == roads.nodes.Count &&
+                known.segments == roads.segments.Count) return known.problem;
+            string problem = FlyingSchoolConstruction.RoadProblem(roads, school);
+            schoolRoads[school] = (roads, roads.nodes.Count, roads.segments.Count, problem);
+            return problem;
+        }
+
+        /// <summary>Lesson fees and wages, and the schools' news (a first solo, a new licence) on the message line.</summary>
+        void SchoolAccounts()
+        {
+            if (Airport == null) return;
+            FlyingSchoolAccounts.Advance(Airport, State);
+            foreach (var school in Airport.FlyingSchools)
+            {
+                schoolNotices.TryGetValue(school, out int seen);
+                if (school.NoticeSerial == seen) continue;
+                schoolNotices[school] = school.NoticeSerial;
+                if (school.NoticeSerial > 0 && school.Notice != null) Message = school.name + ": " + school.Notice;
+            }
+        }
+
         public void SharedConstructionChanged()
         {
             SyncProgress(); RefreshGroundCover(); QueueAutosave();
@@ -230,7 +270,7 @@ namespace AirCity.Game
             var net = Airport.Taxiways;
             l.taxiways = net.edges.Where(e => !e.IsRoad).Select(e => new CareerTaxiway { points = new List<Vector2> { net.At(e.a) + origin, net.At(e.b) + origin } }).ToList();
             if (l.taxiways.Count > 0) l.Unlock(CareerTool.Stand);
-            var stand = net.stands.FirstOrDefault(s => !s.DeIcing);
+            var stand = net.stands.FirstOrDefault(s => !s.DeIcing && !s.Owned);
             l.standBuilt = stand != null;
             if (stand != null) { l.stand = Geo.XZ(stand.position) + origin; l.standHeading = stand.heading; l.standAlong = stand.Front; l.Unlock(CareerTool.Road); }
             if (State.HasAccess) l.Unlock(CareerTool.Reception);

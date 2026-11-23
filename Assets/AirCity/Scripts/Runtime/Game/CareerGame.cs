@@ -67,16 +67,18 @@ namespace AirCity.Game
                 float roadClock = State.roadTrafficSeconds;
                 State.charterElapsed = 0f; State.operatingSeconds -= elapsed;
                 replaying = true;
+                if (Airport != null) Airport.reconstructing = true;
                 try
                 {
                     if (!LaunchCharter(out problem)) throw new InvalidOperationException("Could not resume charter: " + problem);
                     Advance(elapsed);
                 }
-                finally { replaying = false; State.roadTrafficSeconds = roadClock; }
+                finally { replaying = false; State.roadTrafficSeconds = roadClock; if (Airport != null) Airport.reconstructing = false; }
             }
             valley.SetRoadClock(State.roadTrafficSeconds);
             // Resume resident ground trips only after historical charter/weather reconstruction.
             if (Airport!=null) foreach (var hangar in Airport.Hangars) hangar.ResumeResidentTrip();
+            if (Airport!=null) foreach (var school in Airport.FlyingSchools) school.ResumeTrips();
             Message = null;
         }
 
@@ -299,7 +301,7 @@ namespace AirCity.Game
                 valley.RefreshLand(terrainBounds ?? State.BuildableBounds);
                 if (Airport != null && Airport.Runways.Count == 0 && Airport.terminals.Count == 0 && Airport.aprons.Count == 0 &&
                     Airport.Taxiways.edges.Count == 0 && Airport.Taxiways.stands.Count == 0 && Airport.Depots.Count == 0 &&
-                    !Airport.Hangars.Any() && !State.layout.receptionBuilt)
+                    !Airport.Hangars.Any() && !Airport.FlyingSchools.Any() && !State.layout.receptionBuilt)
                 {
                     var p = Airport.transform.position; p.y = GetComponent<CareerBuildTool>().TargetHeight; Airport.transform.position = p;
                     State.layout.elevation = p.y;
@@ -322,7 +324,7 @@ namespace AirCity.Game
         {
             if (tool == CareerTool.ClearTrees) valley.QueueClearingSurface(strokeBounds);
             else if (tool == CareerTool.Level) valley.QueueLevelSurface(strokeBounds);
-            if (Airport != null && Airport.Hangars.Any())
+            if (Airport != null && (Airport.Hangars.Any() || Airport.FlyingSchools.Any()))
             {
                 Airport.LayoutChanged();
                 RefreshGroundCover();
@@ -365,7 +367,7 @@ namespace AirCity.Game
             {
                 if (!State.charterActive || Airport == null) break;
                 Airport.Simulate(StepSeconds);
-                if (!replaying) HangarAccounts.Advance(Airport, State, StepSeconds);
+                if (!replaying) { HangarAccounts.Advance(Airport, State, StepSeconds); SchoolAccounts(); }
                 State.charterElapsed += StepSeconds; State.operatingSeconds += StepSeconds;
                 State.roadTrafficSeconds += StepSeconds;
                 valley.SetRoadClock(State.roadTrafficSeconds);
@@ -437,6 +439,7 @@ namespace AirCity.Game
                 valley.SetRoadClock(State.roadTrafficSeconds);
                 if (Airport != null) Airport.Simulate(seconds);
                 HangarAccounts.Advance(Airport, State, seconds);
+                SchoolAccounts();
                 return;
             }
             accumulated += Time.unscaledDeltaTime * Speed;

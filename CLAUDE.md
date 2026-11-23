@@ -76,6 +76,17 @@ ArtSource/README.md. When you change a system, update its doc in `Docs/` in the 
   end `Terminal.BandBelowFloor` (= -`JetBridgeRules.LinkBottom`) under the floor line, so a corridor sits on the band
   and the storey above's glass starts level with it: change both together. Corridors are
   drawn by bending the readable `Link` mesh (`CorridorMesh`), mitred at corners and buried in the wall they leave. Face overrides follow original edge indices.
+- A flying school (`FlyingSchool`, `Airport.FlyingSchools`) is one facility: a generated clubhouse, car park and
+  public-road driveway (`FlyingSchoolLayout` holds every dimension) behind a flight line of real stands marked
+  `Stand.owner`. Owned stands are picked, moved and removed with their facility, take only its aircraft
+  (`AirTraffic.FreeStands`) and are left out of public stand lists: check `Stand.Owned` wherever stands are offered to
+  the player or to other traffic. The school's aircraft are kept when they fly out of sight (`OnTrainerGone`) and come
+  back with `Arrive`. Its money waits in the school until `FlyingSchoolAccounts.Advance` collects it from the live
+  session; never credit funds from `Airport.Simulate`, which also replays history on load. `CaptureState` writes a
+  separate saved snapshot and must not change the running session (saves happen during play).
+  Circuits (`AirTraffic.DepartForCircuits`, `FlightPhase.Pattern` / `TouchAndGo`) change a flight's `kind` from
+  departure to arrival when it joins the pattern; use `Flight.DueIn` for anything that asks when an inbound aircraft
+  will land. See `Docs/systems/flying-school.md` and `Docs/systems/traffic.md`.
 - Hot per-pixel or per-entity work goes in Burst jobs (see `AircraftLiveryCompositor`). Runtime-made textures go
   through `Bc1TextureBuilder`, not `Texture2D.Compress` (which is slow and main-thread only).
 

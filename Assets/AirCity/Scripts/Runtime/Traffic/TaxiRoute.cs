@@ -86,6 +86,9 @@ namespace AirCity.Traffic
         public Hold vacate;
         /// <summary>Arrivals: where the landing roll goes, from touchdown (metres from the threshold).</summary>
         public float touchdownS;
+        /// <summary>Circuit training: it touches down and takes off again without leaving the runway, so the way has
+        /// no taxiways, holds or stand: only the runway is needed.</summary>
+        public bool touchAndGo;
         /// <summary>Arrivals: from here on (nose wheel, metres) the way turns into the stand, between the parked
         /// aircraft either side, so it doesn't stop for them.</summary>
         public float standFrom = float.MaxValue;

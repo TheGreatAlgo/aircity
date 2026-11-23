@@ -9,6 +9,8 @@ namespace AirCity.World
     /// <summary>Saved by number: append new types, never reorder. Dimensions and markings: RoadTypes.</summary>
     public enum PublicRoadStyle { Rural, AirportAccess, Urban, Highway, Ramp, Avenue, Boulevard, OneWay1, OneWay2, OneWay3 }
     public enum RoadStructure { Ground, Elevated, Tunnel }
+    public enum RoadBridgeDesign { Automatic, Piers, Arch, Suspension }
+    public enum TunnelPortalStyle { Rectangular, Arched }
     public enum JunctionControl { Priority, TrafficLights, Uncontrolled }
     public enum RoadTurn { Straight, Left, Right }
     public enum RoadSignal { Red, Amber, Green }
@@ -33,6 +35,8 @@ namespace AirCity.World
         public int id, a, b;
         public PublicRoadStyle style;
         public RoadStructure structure;
+        public RoadBridgeDesign bridgeDesign;
+        public TunnelPortalStyle tunnelPortalStyle;
         public AlignmentShape alignment;
         public RoadType Type => RoadTypes.Of(style);
         public int ForwardLanes => Type.forward;
@@ -98,10 +102,11 @@ namespace AirCity.World
             nodes.Add(node); return node.id;
         }
 
-        public PublicRoadSegment AddSegment(int a, int b, PublicRoadStyle style, RoadStructure structure)
+        public PublicRoadSegment AddSegment(int a, int b, PublicRoadStyle style, RoadStructure structure,
+            RoadBridgeDesign bridgeDesign = RoadBridgeDesign.Automatic, TunnelPortalStyle tunnelPortalStyle = TunnelPortalStyle.Rectangular)
         {
             if (a == b || Node(a) == null || Node(b) == null) throw new ArgumentException("Road endpoints must be two existing nodes.");
-            var edge = new PublicRoadSegment { id = nextId++, a = a, b = b, style = style, structure = structure };
+            var edge = new PublicRoadSegment { id = nextId++, a = a, b = b, style = style, structure = structure, bridgeDesign = bridgeDesign, tunnelPortalStyle = tunnelPortalStyle };
             segments.Add(edge); return edge;
         }
 
@@ -139,7 +144,7 @@ namespace AirCity.World
             }
             var path=Path(edge);float t=path.ClosestParameter(XZ(point));point=path.Position(t);
             int node = AddNode(point); int b = edge.b; edge.b = node;
-            edge.alignment=path.Slice(0,t);AddSegment(node,b,edge.style,edge.structure).alignment=path.Slice(t,1);return node;
+            edge.alignment=path.Slice(0,t);AddSegment(node,b,edge.style,edge.structure,edge.bridgeDesign,edge.tunnelPortalStyle).alignment=path.Slice(t,1);return node;
         }
 
         /// <summary>Connect a segment atomically: ground-level crossings split; overpasses stay separate.</summary>
@@ -290,7 +295,7 @@ namespace AirCity.World
                 if(Mathf.Abs(q.y-p.y)>JunctionHeightTolerance)continue;
                 if(!edge.Type.atGrade || !RoadTypes.Of(style).atGrade)continue;
                 int far=edge.b;edge.b=node;edge.alignment=path.Slice(0,t);
-                AddSegment(node,far,edge.style,edge.structure).alignment=path.Slice(t,1);
+                AddSegment(node,far,edge.style,edge.structure,edge.bridgeDesign,edge.tunnelPortalStyle).alignment=path.Slice(t,1);
                 Control(node);
                 return;
             }
@@ -336,6 +341,49 @@ namespace AirCity.World
             if (edge == null) return;
             segments.Remove(edge);
             foreach (int end in new[] { edge.a, edge.b })
+            {
+                var n = Node(end);
+                if (n == null) continue;
+                if (!At(end).Any() && n.terminalEntrance == null) nodes.Remove(n);
+                else Control(end);
+            }
+        }
+
+        /// <summary>A long section is bulldozed a piece at a time, however long it was when laid: pieces of equal
+        /// length, none longer than this.</summary>
+        public const float DeletePieceLength = 40f;
+
+        /// <summary>The piece of a section `length` long that a point `at` metres along it lies in (DeletePieceLength):
+        /// where it starts and ends, metres along the section.</summary>
+        public static (float from, float to) DeletePiece(float length, float at)
+        {
+            int count = Mathf.Max(1, Mathf.CeilToInt(length / DeletePieceLength - .001f));
+            int index = Mathf.Clamp(Mathf.FloorToInt(at / Mathf.Max(length, .001f) * count), 0, count - 1);
+            return (length * index / count, length * (index + 1f) / count);
+        }
+
+        /// <summary>
+        /// Remove the part of a section between two distances along it (from its node a). What is left either side
+        /// stays as it was, each now ending in a dead end where the part was; a part reaching a node takes the
+        /// section's end there with it, and the whole section is simply removed.
+        /// </summary>
+        public void RemovePart(int id, float from, float to)
+        {
+            var edge = Segment(id);
+            if (edge == null) return;
+            var path = Path(edge);
+            float length = path.Length;
+            bool head = from > .5f, tail = to < length - .5f;
+            if (!head && !tail || to - from < .01f) { if (to - from >= .01f) RemoveSegment(id); return; }
+            float t0 = path.ParameterAtDistance(from), t1 = path.ParameterAtDistance(to);
+            Vector3 p0 = path.Position(t0), p1 = path.Position(t1);
+            AlignmentShape before = path.Slice(0f, t0), after = path.Slice(t1, 1f);
+            int a = edge.a, b = edge.b;
+            if (tail) AddSegment(AddNode(p1), b, edge.style, edge.structure, edge.bridgeDesign, edge.tunnelPortalStyle).alignment = after;
+            if (head) { edge.b = AddNode(p0); edge.alignment = before; }
+            else segments.Remove(edge);
+            // an end that lost its road: gone if nothing else uses it, otherwise its junction is controlled afresh
+            foreach (int end in new[] { head ? -1 : a, tail ? -1 : b })
             {
                 var n = Node(end);
                 if (n == null) continue;
@@ -452,7 +500,8 @@ namespace AirCity.World
             var edgeIds = new HashSet<int>();
             foreach (var e in segments)
                 if (e == null || e.id <= 0 || !edgeIds.Add(e.id) || e.a == e.b || !ids.Contains(e.a) || !ids.Contains(e.b) ||
-                    !Enum.IsDefined(typeof(PublicRoadStyle), e.style) || !Enum.IsDefined(typeof(RoadStructure), e.structure) || !e.alignment.IsValid) return false;
+                    !Enum.IsDefined(typeof(PublicRoadStyle), e.style) || !Enum.IsDefined(typeof(RoadStructure), e.structure) ||
+                    !Enum.IsDefined(typeof(RoadBridgeDesign),e.bridgeDesign) || !Enum.IsDefined(typeof(TunnelPortalStyle),e.tunnelPortalStyle) || !e.alignment.IsValid) return false;
             if (nodes.Any(n => n.id >= nextId) || segments.Any(e => e.id >= nextId)) return false;
             for (int i = 0; i < segments.Count; i++)
             for (int j = i + 1; j < segments.Count; j++)

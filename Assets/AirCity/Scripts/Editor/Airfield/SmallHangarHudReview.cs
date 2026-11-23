@@ -25,7 +25,7 @@ namespace AirCity.EditorTools.Airfield
         static Vector3 focusPivot;
         static SmallHangar focusedHangar;
         static int focusCount;
-        static string beforeTyping;
+        static string beforeTyping, leaseTenant;
         const BindingFlags Instance = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
         const BindingFlags Static = BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.FlattenHierarchy;
         [Serializable] sealed class ViewState { public string id; public int index; }
@@ -48,8 +48,10 @@ namespace AirCity.EditorTools.Airfield
             SessionState.SetString(Key + "Views", JsonUtility.ToJson(saved));
             SessionState.SetInt(Key + "EditorInput", (int)InputSystem.settings.editorInputBehaviorInPlayMode);
             SessionState.SetBool(Key + "Background", Application.runInBackground);
+            SessionState.SetBool(Key + "AsyncShaders", ShaderUtil.allowAsyncCompilation);
             InputSystem.settings.editorInputBehaviorInPlayMode = InputSettings.EditorInputBehaviorInPlayMode.AllDeviceInputAlwaysGoesToGameView;
             Application.runInBackground = true;
+            ShaderUtil.allowAsyncCompilation = false;
             SetReviewSize();
             SessionState.SetBool(Key + "Running", true); SessionState.SetInt(Key + "Stage", 0);
             SessionState.SetFloat(Key + "Started", (float)EditorApplication.timeSinceStartup);
@@ -88,6 +90,30 @@ namespace AirCity.EditorTools.Airfield
                     if (EditorApplication.timeSinceStartup < next) return;
                     var toolbar = tool.GetComponent<DevToolbar>();
                     var field = typeof(DevToolbar).GetField("hangarTenant", BindingFlags.NonPublic | BindingFlags.Instance);
+                    if (stage == 23)
+                    {
+                        if (!focusedHangar.Occupied || focusedHangar.TenantName != leaseTenant || DevGui.KeyboardCaptured)
+                        {
+                            var problem = typeof(DevToolbar).GetField("hangarMessage", Instance).GetValue(toolbar);
+                            throw new InvalidOperationException($"Start lease did not create the resident and release keyboard capture. " +
+                                $"Expected tenant '{leaseTenant}', got '{focusedHangar.TenantName}', keyboard captured: {DevGui.KeyboardCaptured}. {problem}");
+                        }
+                        SessionState.SetInt(Key + "Stage", 3); next = EditorApplication.timeSinceStartup + 1; return;
+                    }
+                    if (stage == 24)
+                    {
+                        var page = typeof(DevToolbar).GetField("hangarPage", Instance).GetValue(toolbar);
+                        if (page.ToString() != "Building")
+                            throw new InvalidOperationException("The Building tab did not open.");
+                        ClickFooter(toolbar);
+                        SessionState.SetInt(Key + "Stage", 25); next = EditorApplication.timeSinceStartup + 1; return;
+                    }
+                    if (stage == 25)
+                    {
+                        if (tool.SelectedHangar.DoorsOpen)
+                            throw new InvalidOperationException("The Building footer did not close the hangar doors.");
+                        SessionState.SetInt(Key + "Stage", 4); next = EditorApplication.timeSinceStartup + 1; return;
+                    }
                     if (stage == 20)
                     {
                         if (!DevGui.KeyboardCaptured) { FocusTenant(toolbar); next = EditorApplication.timeSinceStartup + .2f; return; }
@@ -96,6 +122,7 @@ namespace AirCity.EditorTools.Airfield
                         reviewKeyboard = InputSystem.AddDevice<Keyboard>(); reviewKeyboard.MakeCurrent();
                         InputSystem.QueueStateEvent(reviewKeyboard, new KeyboardState(UnityEngine.InputSystem.Key.W));
                         SendKey(new Event { type = EventType.KeyDown, keyCode = KeyCode.W, character = 'w' });
+                        SendKey(new Event { type = EventType.KeyDown, keyCode = KeyCode.S, character = 's' });
                         SessionState.SetInt(Key + "Stage", 21); next = EditorApplication.timeSinceStartup + .4f; return;
                     }
                     if (stage == 21)
@@ -111,9 +138,9 @@ namespace AirCity.EditorTools.Airfield
                         throw new InvalidOperationException("Typing/backspace escaped the tenant field into camera movement or demolition.");
                     InputSystem.RemoveDevice(reviewKeyboard); reviewKeyboard = null;
                     Debug.Log("HANGAR HUD keyboard passed: tenant input accepted typing/backspace without camera movement or demolition.");
-                    if (!focusedHangar.TryLease(tool.airport.aircraftTypes.First(SmallHangar.Fits), "Local aircraft owner", "AC-004", out var failure))
-                        throw new InvalidOperationException(failure);
-                    SessionState.SetInt(Key + "Stage", 3); next = EditorApplication.timeSinceStartup + 1; return;
+                    leaseTenant = ((string)field.GetValue(toolbar)).Trim();
+                    ClickFooter(toolbar);
+                    SessionState.SetInt(Key + "Stage", 23); next = EditorApplication.timeSinceStartup + 1; return;
                 }
                 if (stage > 4 || EditorApplication.timeSinceStartup < next) return;
                 string name = stage == 1 ? "palette" : stage == 2 ? "vacant" : stage == 3 ? "leased" : "closed";
@@ -131,7 +158,12 @@ namespace AirCity.EditorTools.Airfield
                     FocusTenant(tool.GetComponent<DevToolbar>());
                     SessionState.SetInt(Key + "Stage", 20); next = EditorApplication.timeSinceStartup + .5f; return;
                 }
-                if (stage == 3) tool.SelectedHangar.SetDoorsOpen(false);
+                if (stage == 3)
+                {
+                    var body = HangarBody(tool.GetComponent<DevToolbar>());
+                    ClickHud(new Vector2(body.x - DevGui.U(60), body.y + DevGui.U(97)));
+                    SessionState.SetInt(Key + "Stage", 24); next = EditorApplication.timeSinceStartup + 1; return;
+                }
                 SessionState.SetInt(Key + "Stage", stage + 1); next = EditorApplication.timeSinceStartup + 1;
                 if (stage == 4)
                 { Debug.Log("HANGAR HUD passed: shared placement, vacant inspector, resident lease and closed doors."); EditorApplication.ExitPlaymode(); }
@@ -155,16 +187,26 @@ namespace AirCity.EditorTools.Airfield
 
         static void FocusTenant(DevToolbar toolbar)
         {
+            var rows = (List<(float h, Action<Rect> draw)>)typeof(DevToolbar).GetField("main", Instance).GetValue(toolbar);
+            if (rows == null || rows.Count <= 2) return;
+            // In the single-bay fixture, the resident heading and aircraft picker precede the tenant.
+            var body = HangarBody(toolbar);
+            float y = body.y + DevGui.U(14 + 12) + rows[0].h + rows[1].h + rows[2].h * .5f;
+            ClickHud(new Vector2(body.x + DevGui.U(14 + 78 + 60), y));
+        }
+
+        static Rect HangarBody(DevToolbar toolbar) => (Rect)typeof(DevToolbar).GetField("hangarBody", Instance).GetValue(toolbar);
+
+        static void ClickFooter(DevToolbar toolbar)
+        {
+            var body = HangarBody(toolbar);
+            ClickHud(new Vector2(body.xMax - DevGui.U(86), body.yMax + DevGui.U(25)));
+        }
+
+        static void ClickHud(Vector2 point)
+        {
             var target = Target(); if (target == null) return;
-            var flags = BindingFlags.NonPublic | BindingFlags.Instance;
-            var rows = (List<(float h, Action<Rect> draw)>)typeof(DevToolbar).GetField("main", flags).GetValue(toolbar);
-            if (rows == null || rows.Count <= 8) return;
-            // The fixture's vacant inspector includes its Sandbox note before the resident section.
-            float y = DevGui.U(12 + 14 + 16);
-            for (int i = 0; i < 8; i++) y += rows[i].h + DevGui.U(6);
-            float x = target.width - DevGui.U(12 + 300 - 14 - 78 - 60);
-            var point = new Vector2(x, y);
-            if (Mouse.current != null) InputState.Change(Mouse.current.position, new Vector2(x, target.height - y));
+            if (Mouse.current != null) InputState.Change(Mouse.current.position, new Vector2(point.x, target.height - point.y));
             SendKey(new Event { type = EventType.MouseDown, button = 0, mousePosition = point });
             SendKey(new Event { type = EventType.MouseUp, button = 0, mousePosition = point });
         }
@@ -200,15 +242,25 @@ namespace AirCity.EditorTools.Airfield
         static bool Capture(string path)
         {
             var target = Target();
-            if (target == null || !target.IsCreated() || target.width != 1440 || target.height != 900)
+            if (ShaderUtil.anythingCompiling || target == null || !target.IsCreated() || target.width != 1440 || target.height != 900)
             { window.Repaint(); return false; }
             var previous = RenderTexture.active; var image = new Texture2D(target.width, target.height, TextureFormat.RGB24, false);
             try
             {
                 RenderTexture.active = target; image.ReadPixels(new Rect(0, 0, target.width, target.height), 0, 0); image.Apply();
                 var pixels = image.GetPixels32();
-                bool Paper(Color32 p) => p.r > 200 && p.g > 200 && p.b > 190;
-                if (Paper(pixels[25 * target.width + target.width - 25]) && !Paper(pixels[(target.height - 25) * target.width + target.width - 25]))
+                bool Toolbar(int row)
+                {
+                    int paper = 0;
+                    for (int x = target.width / 2 - 120; x < target.width / 2 + 120; x += 37)
+                    {
+                        var p = pixels[row * target.width + x];
+                        if (p.r > 200 && p.g > 200 && p.b > 190) paper++;
+                    }
+                    return paper >= 4;
+                }
+                int toolbarInset = Mathf.RoundToInt(DevGui.U(17));
+                if (Toolbar(target.height - 1 - toolbarInset) && !Toolbar(toolbarInset))
                 {
                     var flipped = new Color32[pixels.Length];
                     for (int row = 0; row < target.height; row++) Array.Copy(pixels, row * target.width, flipped, (target.height - 1 - row) * target.width, target.width);
@@ -226,6 +278,7 @@ namespace AirCity.EditorTools.Airfield
             SessionState.SetBool(Key + "Running", false); EditorApplication.update -= Update;
             InputSystem.settings.editorInputBehaviorInPlayMode = (InputSettings.EditorInputBehaviorInPlayMode)SessionState.GetInt(Key + "EditorInput", 0);
             Application.runInBackground = SessionState.GetBool(Key + "Background", false);
+            ShaderUtil.allowAsyncCompilation = SessionState.GetBool(Key + "AsyncShaders", true);
             try
             {
                 var saved = JsonUtility.FromJson<Views>(SessionState.GetString(Key + "Views", "{\"items\":[]}"));

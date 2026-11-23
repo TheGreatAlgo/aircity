@@ -35,6 +35,10 @@ namespace AirCity.Traffic
         Parked = 11,
         /// <summary>Climbed away out of sight.</summary>
         Gone = 12,
+        /// <summary>Circuit training: flying the visible pattern round to final (crosswind, downwind, base).</summary>
+        Pattern = 13,
+        /// <summary>Circuit training: rolling along the runway after touching down, before taking off again.</summary>
+        TouchAndGo = 14,
     }
 
     /// <summary>
@@ -53,7 +57,9 @@ namespace AirCity.Traffic
         /// DecisionTime.</summary>
         public const float LandingCall = 60f, DecisionTime = 12f;
 
-        public readonly FlightKind kind;
+        /// <summary>What the tower takes it for now. Circuit training starts as a departure and is an arrival from
+        /// the moment it turns into the pattern.</summary>
+        public FlightKind kind { get; internal set; }
         public readonly Aircraft.Aircraft aircraft;
         public readonly AircraftType type;
         readonly AirTraffic traffic;
@@ -107,7 +113,7 @@ namespace AirCity.Traffic
         public string Name => aircraft != null ? aircraft.name : "aircraft";
         public bool Finished => Phase == FlightPhase.Parked || Phase == FlightPhase.Gone || aircraft == null;
         public bool OnGround => Phase != FlightPhase.Approach && Phase != FlightPhase.GoAround && Phase != FlightPhase.Climb &&
-                                Phase != FlightPhase.Gone && !(Phase == FlightPhase.TakeoffRoll && Height > 0f);
+                                Phase != FlightPhase.Pattern && Phase != FlightPhase.Gone && !(Phase == FlightPhase.TakeoffRoll && Height > 0f);
         /// <summary>Departures: off the front of the stand it left (pushed back, its tail past the stand's side; taxiing
         /// out, past the swing out of it). Until then the stand is taken.</summary>
         internal bool ClearOfStand => Route == null || Route.leaving == null ||
@@ -135,7 +141,7 @@ namespace AirCity.Traffic
             get
             {
                 if (Route == null) return -1f;
-                if (AwaitingPush || Phase == FlightPhase.GoAround || (Phase == FlightPhase.Approach && !LandingCleared))
+                if (AwaitingPush || Phase == FlightPhase.GoAround || Phase == FlightPhase.Pattern || (Phase == FlightPhase.Approach && !LandingCleared))
                     return -1f;
                 foreach (var h in Route.holds)
                     if (!h.cleared) return h.at;
@@ -165,6 +171,8 @@ namespace AirCity.Traffic
                     FlightPhase.Approach => $"on final for {rwy}, {ToTouchdown / 1000f:0.0} km" +
                                             (LandingCleared ? ", cleared to land" : landingProblem != null ? $", not cleared yet: {landingProblem}" : ""),
                     FlightPhase.GoAround => $"going around{wait}",
+                    FlightPhase.Pattern => $"in the circuit for {rwy}, {LegName}{wait}",
+                    FlightPhase.TouchAndGo => $"touch-and-go on {rwy}",
                     FlightPhase.Landing => $"landing on {rwy}",
                     FlightPhase.Parked => Route != null && Route.hangar != null ? $"stored in {Route.hangar.name}" : Route != null && Route.stand != null ? $"parked on {Route.stand.stand.Name}" : "parked",
                     _ => "gone",
@@ -179,7 +187,7 @@ namespace AirCity.Traffic
             if (aircraft == null) return;
             switch (Phase)
             {
-                case FlightPhase.Ready: StepReady(); break;
+                case FlightPhase.Ready: StepReady(dt); break;
                 case FlightPhase.PushBack: StepPushBack(); break;
                 case FlightPhase.HandPush: StepHandPush(dt); break;
                 case FlightPhase.StartingEngines:
@@ -210,13 +218,22 @@ namespace AirCity.Traffic
                     break;
                 case FlightPhase.Approach: StepApproach(dt); break;
                 case FlightPhase.GoAround: StepGoAround(dt); break;
+                case FlightPhase.Pattern: StepPattern(dt); break;
+                case FlightPhase.TouchAndGo: StepTouchAndGo(dt); break;
             }
+            if (Phase != FlightPhase.Pattern && bank != 0f) bank = Mathf.MoveTowards(bank, 0f, 14f * dt);
             if (Waiting != null) WaitedFor += dt;
             Lights();
         }
 
-        void StepReady()
+        void StepReady(float dt)
         {
+            var airstair = aircraft.Airstair;
+            if (airstair != null && !airstair.StowForDeparture(dt))
+            {
+                Waiting = "stowing the airstair";
+                return;
+            }
             string baggage = traffic.Airport.Baggage.DepartureBlocker(aircraft);
             if (baggage != null) { Waiting = baggage; return; }
             if (!traffic.RouteValid(this))
@@ -513,6 +530,7 @@ namespace AirCity.Traffic
             rollS = 0f;
             Speed = 0f;
             rotating = false;
+            touched = false;
             Route.runway.AddMovement(type);
         }
 
@@ -546,12 +564,12 @@ namespace AirCity.Traffic
                 pitch = Mathf.MoveTowards(pitch, target, 2f * dt);
             }
             rollS += Speed * dt;
-            // settle onto the centreline over the first metres of the roll
-            var gear0 = Route.path.GearEnd;
+            // settle onto the centreline over the first metres of the roll (a touch-and-go is on it already)
+            var gear0 = touched ? rollFrom : Route.path.GearEnd;
             var onLine = Geo.ClosestOnSegment(gear0, Geo.XZ(r.start), Geo.XZ(r.end), out _);
             float blend = Mathf.SmoothStep(0f, 1f, rollS / 60f);
             var p = Vector2.Lerp(gear0, onLine, blend) + T * rollS;
-            var f = Vector2.Lerp(Route.path.EndHeading, T, Mathf.SmoothStep(0f, 1f, rollS / 40f)).normalized;
+            var f = touched ? T : Vector2.Lerp(Route.path.EndHeading, T, Mathf.SmoothStep(0f, 1f, rollS / 40f)).normalized;
             Place(p, f, Height);
             Drive(Height > 0.2f ? 0f : Speed, 0f);
             Surfaces(Height > 0.2f ? 0f : 0.35f, rotating && Phase == FlightPhase.TakeoffRoll ? 0.6f : 0.15f);
@@ -564,6 +582,12 @@ namespace AirCity.Traffic
                     released = true;
                     traffic.ReleaseRunway(this, r);
                 }
+            }
+            // circuit training turns crosswind into the pattern instead of flying away
+            if (PatternWork && Phase == FlightPhase.Climb && Height >= CrosswindHeight)
+            {
+                EnterPattern(p);
+                return;
             }
             if (Height > 450f || p.magnitude > 9000f) traffic.Gone(this);
         }
@@ -624,6 +648,11 @@ namespace AirCity.Traffic
                     return;
                 }
             }
+            if (ToTouchdown <= 0f && Route.touchAndGo)
+            {
+                StartTouchAndGo();
+                return;
+            }
             if (ToTouchdown <= 0f)
             {
                 // touchdown: on the runway, rolling along the route
@@ -680,6 +709,12 @@ namespace AirCity.Traffic
             pitch = Mathf.MoveTowards(pitch, Mathf.Atan2(climbRate, Speed) * Mathf.Rad2Deg + 4f, 2f * dt);
             Place(TouchdownPoint - RunwayAxis * ToTouchdown, RunwayAxis, Height);
             Surfaces(0.5f, 0.2f);
+            // circuit training goes round the visible pattern again
+            if (PatternWork && Height >= CrosswindHeight)
+            {
+                EnterPattern(TouchdownPoint - RunwayAxis * ToTouchdown);
+                return;
+            }
             if (Height < 300f) return;
             circling = true;
             timer = CircuitTime;
@@ -689,6 +724,201 @@ namespace AirCity.Traffic
 
         /// <summary>Flying round to come back onto final after a go-around (game seconds, out of sight).</summary>
         const float CircuitTime = 90f;
+
+        // ------------------------------------------------------------------ circuits
+
+        /// <summary>The circuit: its height above the airfield, the height at which a climb-out turns crosswind, and
+        /// the bank in its turns (degrees).</summary>
+        public const float PatternHeight = 240f, CrosswindHeight = 110f, PatternBank = 27f;
+        /// <summary>A circuit extends its downwind leg behind other traffic this far at most (metres).</summary>
+        const float MaxExtension = 3000f;
+
+        /// <summary>Circuit training (AirTraffic.DepartForCircuits): after taking off it flies the pattern back to
+        /// the runway it left instead of flying away.</summary>
+        public bool PatternWork { get; internal set; }
+        /// <summary>Touch-and-goes still to fly before the landing to a full stop.</summary>
+        public int CircuitsLeft { get; internal set; }
+        /// <summary>Touch-and-goes flown, and how often it has had to plan a way down again.</summary>
+        public int TouchAndGoes { get; private set; }
+        internal int patternTries;
+        /// <summary>The leg flown (0 the turn crosswind, 1 crosswind, 2 the turn downwind, 3 downwind, 4 the turn onto
+        /// base, 5 base, 6 the turn onto final), how far along it, and where and which way it started.</summary>
+        int leg;
+        float legAlong, downwind, abeam, extended, finalFrom, patternRadius, patternCross, bank, touchTimer;
+        Vector2 legFrom, legDir, rollFrom;
+        bool committed, touched, shadowLooked;
+        Renderer contactShadow;
+
+        string LegName => leg <= 1 ? "crosswind" : leg <= 3 ? "downwind" : leg <= 5 ? "base" : "turning final";
+
+        /// <summary>In the circuit: turned (or turning) onto base, so its place in the landing order is fixed.</summary>
+        internal bool CommittedToLand => Phase == FlightPhase.Approach || (Phase == FlightPhase.Pattern && committed);
+
+        /// <summary>Seconds until it touches down: on final, or in the circuit with the rest of the way round to
+        /// fly; float.MaxValue for anything else.</summary>
+        internal float DueIn => Phase == FlightPhase.Approach ? TimeToTouchdown
+            : Phase == FlightPhase.Pattern ? RemainingPattern / Mathf.Max(Speed, 1f) + (finalFrom + extended) / Mathf.Max(type.ApproachSpeed, 1f)
+            : float.MaxValue;
+
+        bool Arc(int l) => l == 0 || l == 2 || l == 4 || l == 6;
+        float LegLength(int l) => Arc(l) ? patternRadius * Mathf.PI * 0.5f : l == 3 ? downwind : patternCross;
+
+        float RemainingPattern
+        {
+            get
+            {
+                float d = LegLength(leg) - legAlong;
+                for (int l = leg + 1; l <= 6; l++) d += LegLength(l);
+                return Mathf.Max(d, 0f);
+            }
+        }
+
+        static Vector2 Rotated(Vector2 v, float radians)
+        {
+            float c = Mathf.Cos(radians), s = Mathf.Sin(radians);
+            return new Vector2(v.x * c - v.y * s, v.x * s + v.y * c);
+        }
+
+        /// <summary>Where it is on a leg, and the way it points. The circuit is left-hand: every turn is to the left.</summary>
+        void LegPose(int l, float along, out Vector2 at, out Vector2 heading)
+        {
+            if (!Arc(l))
+            {
+                at = legFrom + legDir * along;
+                heading = legDir;
+                return;
+            }
+            var centre = legFrom + Geo.Left(legDir) * patternRadius;
+            float angle = along / patternRadius;
+            at = centre + Rotated(legFrom - centre, angle);
+            heading = Rotated(legDir, angle);
+        }
+
+        /// <summary>
+        /// Join the circuit from a point on the runway's extended centreline, heading along it (climbing out after a
+        /// takeoff, a touch-and-go or a go-around): the tower plans the way down again (another touch-and-go, or the
+        /// landing and the way to its stand), and it flies crosswind, downwind and base round to final. With nowhere
+        /// to land it leaves the airfield.
+        /// </summary>
+        void EnterPattern(Vector2 at)
+        {
+            var axis = RunwayAxis;
+            if (!traffic.PlanCircuit(this))
+            {
+                PatternWork = false;
+                traffic.Gone(this);
+                return;
+            }
+            Phase = FlightPhase.Pattern;
+            LandingCleared = false;
+            touched = false;
+            Waiting = landingProblem = null;
+            float v = type.ClimbSpeed;
+            patternRadius = Mathf.Clamp(v * v / (9.81f * Mathf.Tan(PatternBank * Mathf.Deg2Rad)), 180f, 1500f);
+            patternCross = 0.6f * patternRadius;
+            finalFrom = Mathf.Max(1500f, type.ApproachSpeed * 50f);
+            // downwind runs from abeam this point back past the touchdown point to where base brings it onto final
+            abeam = Mathf.Max(Vector2.Dot(at - TouchdownPoint, axis), 0f);
+            downwind = abeam + finalFrom;
+            extended = 0f;
+            committed = false;
+            leg = 0;
+            legAlong = 0f;
+            legFrom = at;
+            legDir = axis;
+        }
+
+        void StepPattern(float dt)
+        {
+            Speed = Mathf.MoveTowards(Speed, leg >= 4 ? type.ApproachSpeed : type.ClimbSpeed, 1.2f * dt);
+            float d = Speed * dt;
+            while (d > 0f)
+            {
+                float length = LegLength(leg);
+                if (leg == 3 && !committed && legAlong + d >= length)
+                {
+                    // the end of downwind: turn base, or go on behind someone who lands first
+                    float turn = (patternRadius * Mathf.PI + patternCross) / Mathf.Max(type.ApproachSpeed, 1f) +
+                                 (finalFrom + extended) / Mathf.Max(type.ApproachSpeed, 1f);
+                    string first = extended < MaxExtension ? traffic.PatternWait(this, turn) : null;
+                    if (first != null)
+                    {
+                        downwind += d;
+                        extended += d;
+                        length = downwind;
+                        Waiting = $"extending downwind behind {first}";
+                    }
+                    else
+                    {
+                        committed = true;
+                        Waiting = null;
+                    }
+                }
+                if (legAlong + d < length)
+                {
+                    legAlong += d;
+                    break;
+                }
+                d -= length - legAlong;
+                LegPose(leg, length, out legFrom, out legDir);
+                legAlong = 0f;
+                leg++;
+                if (leg > 6)
+                {
+                    // rolled out on the centreline: the ordinary final approach from here
+                    StartApproach(finalFrom + extended);
+                    return;
+                }
+            }
+            // climb to the circuit height, then down from abeam the touchdown point to the glide path at the roll-out
+            bool descending = leg > 3 || (leg == 3 && legAlong >= abeam);
+            float vertical;
+            if (!descending) vertical = Mathf.Min(type.ClimbRate, (PatternHeight - Height) / Mathf.Max(dt, 1e-3f));
+            else
+            {
+                float left = RemainingPattern / Mathf.Max(Speed, 1f);
+                vertical = Mathf.Clamp((GlideHeight(finalFrom + extended) - Height) / Mathf.Max(left, dt), -6f, type.ClimbRate);
+            }
+            climbRate = Mathf.MoveTowards(climbRate, vertical, type.ClimbRate / 3f * dt);
+            Height = Mathf.Max(Height + climbRate * dt, 20f);
+            pitch = Mathf.MoveTowards(pitch, Mathf.Atan2(climbRate, Mathf.Max(Speed, 1f)) * Mathf.Rad2Deg + 3f, 2f * dt);
+            bank = Mathf.MoveTowards(bank, Arc(leg) ? PatternBank : 0f, 14f * dt);
+            LegPose(leg, legAlong, out var p, out var facing);
+            Place(p, facing, Height);
+            Drive(0f, 0f);
+            Surfaces(leg >= 4 ? 0.7f : leg == 3 && descending ? 0.35f : 0f, 0f);
+        }
+
+        /// <summary>Touched down on a touch-and-go: it rolls a few seconds, flaps coming up, then takes off again.</summary>
+        void StartTouchAndGo()
+        {
+            Height = 0f;
+            Phase = FlightPhase.TouchAndGo;
+            rollFrom = TouchdownPoint;
+            rollS = 0f;
+            touched = true;
+            touchTimer = 4f;
+            Speed = type.TouchdownSpeed;
+            rotating = false;
+            if (CircuitsLeft > 0) CircuitsLeft--;
+            TouchAndGoes++;
+            Route.runway.AddMovement(type);
+            Place(rollFrom, RunwayAxis, 0f);
+        }
+
+        void StepTouchAndGo(float dt)
+        {
+            touchTimer -= dt;
+            Speed = Mathf.MoveTowards(Speed, Mathf.Min(type.TouchdownSpeed, type.RotateSpeed * 0.92f), 1.5f * dt);
+            pitch = Mathf.MoveTowards(pitch, 0f, 4f * dt);
+            rollS += Speed * dt;
+            Place(rollFrom + RunwayAxis * rollS, RunwayAxis, 0f);
+            Drive(Speed, 0f);
+            Surfaces(Mathf.Clamp01(touchTimer / 4f) * 0.65f + 0.35f, 0f);
+            if (touchTimer > 0f) return;
+            // power on: the takeoff roll goes on from here (StepTakeoff)
+            Phase = FlightPhase.TakeoffRoll;
+        }
 
         // ------------------------------------------------------------------ placing
 
@@ -711,7 +941,7 @@ namespace AirCity.Traffic
             float support=0f,slope=0f;
             if(airport.HasElevatedPavement)
             {
-                if(Route?.runway!=null && (Phase==FlightPhase.Approach || Phase==FlightPhase.GoAround))
+                if(Route?.runway!=null && (Phase==FlightPhase.Approach || Phase==FlightPhase.GoAround || Phase==FlightPhase.Pattern))
                     support=Mathf.Max(Route.runway.ElevationAt(TouchdownPoint),Route.runway.ElevationAt(origin));
                 else if(Route?.runway!=null && (Phase==FlightPhase.TakeoffRoll || Phase==FlightPhase.Climb))
                     support=Route.runway.ElevationAt(origin);
@@ -723,8 +953,17 @@ namespace AirCity.Traffic
             HangarSupport(Route?.hangar);
             HangarSupport(Route?.leavingHangar);
             var direction=new Vector3(facing.x,slope,facing.y).normalized;
-            var rotation = Quaternion.LookRotation(t.TransformDirection(direction), Vector3.up) * Quaternion.Euler(-pitch, 0f, 0f);
+            // banked into the circuit's turns: a positive bank rolls it left
+            var rotation = Quaternion.LookRotation(t.TransformDirection(direction), Vector3.up) * Quaternion.Euler(-pitch, 0f, bank);
             aircraft.transform.SetPositionAndRotation(t.TransformPoint(Geo.X0Z(origin, support+height)), rotation);
+            // The contact shadow is a flat part of the model under the gear: off the ground it would hang in the air.
+            if (!shadowLooked)
+            {
+                shadowLooked = true;
+                foreach (var r in aircraft.GetComponentsInChildren<Renderer>(true))
+                    if (r.name == "GroundShadow") contactShadow = r;
+            }
+            if (contactShadow != null) contactShadow.enabled = height < 1.5f;
 
             void HangarSupport(SmallHangar hangar)
             {
@@ -766,6 +1005,7 @@ namespace AirCity.Traffic
             bool engines = Phase >= FlightPhase.StartingEngines && Phase != FlightPhase.Parked;
             bool runway = Phase == FlightPhase.LinedUp || Phase == FlightPhase.TakeoffRoll || Phase == FlightPhase.Climb ||
                           Phase == FlightPhase.Approach || Phase == FlightPhase.GoAround ||
+                          Phase == FlightPhase.Pattern || Phase == FlightPhase.TouchAndGo ||
                           (Phase == FlightPhase.Landing && (Route.runwayFree < 0f || Along < Route.runwayFree));
             if (l != null)
             {

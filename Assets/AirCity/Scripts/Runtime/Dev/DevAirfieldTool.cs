@@ -4,6 +4,7 @@ using System.Text;
 using AirCity.Aircraft;
 using AirCity.Airfield;
 using AirCity.Airfield.Building;
+using AirCity.Game;
 using AirCity.Vehicles;
 using AirCity.World;
 using UnityEngine;
@@ -13,7 +14,7 @@ namespace AirCity.Dev
 {
     /// <summary>The sandbox's airfield tools (DevToolbar has a button for each).</summary>
     /// <summary>The sandbox's tools.</summary>
-    public enum DevTool { Select, Runway, Taxiway, Road, Apron, Terminal, Depot, Stand, DeIcing, Bridge, Lights, Delete, Baggage, Containers, DeicingStorage, DeicingParking, DeicingOutsideAccess, Street, ClearTrees, Level, Reception, Hangar }
+    public enum DevTool { Select, Runway, Taxiway, Road, Apron, Terminal, Depot, Stand, DeIcing, Bridge, Lights, Delete, Baggage, Containers, DeicingStorage, DeicingParking, DeicingOutsideAccess, Street, ClearTrees, Level, Reception, Hangar, FlyingSchool }
 
     /// <summary>What the lights tool puts on the taxiway sections or runways it's clicked or dragged over: blue taxiway
     /// edge lights, a runway's basic lighting (night) or precision lighting (night, fog and low cloud), or nothing
@@ -98,7 +99,7 @@ namespace AirCity.Dev
 
         public static readonly float[] TimeScales = { 1f, 5f, 20f, 60f };
 
-        enum Kind { None, Runway, Edge, Depot, Apron, Stand, Terminal, BaggageHall, DeicingWorkArea, DeicingParking, DeicingOutsideAccess, PublicRoad, Hangar }
+        enum Kind { None, Runway, Edge, Depot, Apron, Stand, Terminal, BaggageHall, DeicingWorkArea, DeicingParking, DeicingOutsideAccess, PublicRoad, Hangar, FlyingSchool }
 
         /// <summary>Something on the airfield to select or delete.</summary>
         struct Pick
@@ -107,19 +108,23 @@ namespace AirCity.Dev
             public Runway runway;
             public TaxiwayEdge edge;
             public PublicRoadSegment publicRoad;
+            /// <summary>The Delete tool takes a long road, taxiway or public road a piece at a time: the piece under the
+            /// pointer, metres along the section (both 0: the whole section).</summary>
+            public float from, to;
             public MaintenanceDepot depot;
             public int apron;
             public Stand stand;
             public Terminal terminal;
             public SmallHangar hangar;
+            public FlyingSchool school;
             public BaggageDepot baggageHall;
             public DeicingWorkArea deicingWorkArea;
             public DeicingParkingBay deicingParking;
             public DeicingOutsideAccess deicingAccess;
 
             public static Pick None => new Pick { apron = -1 };
-            public bool Same(in Pick o) => kind == o.kind && publicRoad == o.publicRoad && runway == o.runway && edge == o.edge && depot == o.depot &&
-                                           apron == o.apron && stand == o.stand && terminal == o.terminal && hangar == o.hangar && baggageHall==o.baggageHall &&
+            public bool Same(in Pick o) => kind == o.kind && publicRoad == o.publicRoad && from == o.from && to == o.to && runway == o.runway && edge == o.edge && depot == o.depot &&
+                                           apron == o.apron && stand == o.stand && terminal == o.terminal && hangar == o.hangar && school == o.school && baggageHall==o.baggageHall &&
                                            deicingWorkArea == o.deicingWorkArea && deicingParking == o.deicingParking && deicingAccess == o.deicingAccess;
         }
 
@@ -966,6 +971,8 @@ namespace AirCity.Dev
 
         void OnDisable()
         {
+            SetRoadUnderground(false);
+            ResetRoadDrag();
             modelPreview.Hide();
             ClearBridgePreviews();
             Active = Deleting = TakesScroll = false;
@@ -989,6 +996,7 @@ namespace AirCity.Dev
             var gateDesigner = GetComponent<DevToolbar>()?.GateDesigner;
             if (gateDesigner != null && gateDesigner.HandleWorldInput(this, cam, mouse, keys))
             {
+                ResetRoadDrag();
                 ClearBridgePreviews();
                 linePreview.Hide();
                 modelPreview.Hide();
@@ -1007,6 +1015,7 @@ namespace AirCity.Dev
             if (onGround) lastGround = point;
             else point = lastGround;
             bool free = onGround && !DevGui.PointerOverHud && (game == null || (!game.view.PointerOverHud && game.ToolProblem(tool) == null));
+            if (free && (tool == DevTool.Street || tool == DevTool.Road)) lastRoadPointer = Geo.XZ(point);
             bool click = free && mouse.leftButton.wasPressedThisFrame;
             PlacementDrag(mouse, keys, free, ref click, ref point);
             bool overAircraft = free && !DevGui.GateDesignerOpen && Aircraft.Aircraft.TryPick(cam.ScreenPointToRay(screen), out _);
@@ -1016,12 +1025,13 @@ namespace AirCity.Dev
             {
                 case DevTool.Runway: RunwayTool(mouse, keys, click, free, point); break;
                 case DevTool.Taxiway: TaxiwayTool(click, free, point, false); break;
-                case DevTool.Road: TaxiwayTool(click, free, point, true); break;
-                case DevTool.Street: StreetTool(mouse, keys, click, free, point); break;
+                case DevTool.Road:
+                case DevTool.Street: PlaceRoad(mouse, keys, click, free, point); break;
                 case DevTool.Apron: ApronTool(mouse, keys, click, free, point); break;
                 case DevTool.Terminal: TerminalTool(mouse, keys, click, free, point); break;
                 case DevTool.Depot: DepotTool(mouse, click, free, point); break;
                 case DevTool.Hangar: HangarTool(click, free, point); break;
+                case DevTool.FlyingSchool: FlyingSchoolTool(click, free, point); break;
                 case DevTool.Stand:
                 case DevTool.DeIcing: StandTool(mouse, keys, click, free, point); break;
                 case DevTool.Bridge: BridgeTool(click, free, point); break;
@@ -1092,6 +1102,8 @@ namespace AirCity.Dev
             var net = airport.Taxiways;
             if(airsideTerrain?.Preview!=null)
             {linePreview.Show(airport,airsideTerrain.Preview,game!=null?game.valley:null);return;}
+            if (road && (roadProblem != null || roadBuildSettings.bend != 0f))
+            {linePreview.Hide();return;}
             linePreview.Show(airport, net.Node(chainNode).position, LinePoint(net,lineSnap), NewWidth,
                 road && surface == PavementSurface.Grass ? PavementSurface.Asphalt : surface,
                 false, road ? RoadClass.Service : RoadClass.None, game!=null);
@@ -1104,10 +1116,13 @@ namespace AirCity.Dev
             if (keys.xKey.wasPressedThisFrame) SetTool(tool == DevTool.Delete ? DevTool.Select : DevTool.Delete);
             if (keys.escapeKey.wasPressedThisFrame && !DevGui.GateDesignerOpen)
             {
+                var toolbar = GetComponent<DevToolbar>();
+                if (toolbar != null && toolbar.CancelSchoolPurchase()) return;
                 if (tool==DevTool.Baggage) GetComponent<DevBaggageControls>()?.Cancel();
                 else if (bridgeStart != null) bridgeStart = headNear = null;
                 else if (dragging != null) DropRunway();
-                else if (chainNode >= 0) chainNode = -1;
+                else if (tool == DevTool.Street && RoadDrawing) EndStreet();
+                else if (chainNode >= 0) { chainNode = -1; ResetRoadDrag(); }
                 else if (apronCorners.Count > 0 || apronDrag) SetTool(tool);
                 else if (tool != DevTool.Select) SetTool(DevTool.Select);
                 else selection = Pick.None;
@@ -1118,8 +1133,10 @@ namespace AirCity.Dev
             {
                 if (tool==DevTool.Baggage && !DevGui.PointerOverHud) GetComponent<DevBaggageControls>()?.Cancel();
                 if (!DevGui.PointerOverHud && (tool == DevTool.DeicingStorage || tool == DevTool.DeicingParking ||
-                    tool == DevTool.DeicingOutsideAccess || tool == DevTool.Depot || tool == DevTool.Hangar)) SetTool(DevTool.Select);
+                    tool == DevTool.DeicingOutsideAccess || tool == DevTool.Depot || tool == DevTool.Hangar || tool == DevTool.FlyingSchool)) SetTool(DevTool.Select);
                 chainNode = -1;
+                if (tool == DevTool.Street) EndStreet();
+                ResetRoadDrag();
                 DropRunway();
                 bridgeStart = headNear = null;
             }
@@ -1351,9 +1368,12 @@ namespace AirCity.Dev
             roadProblem = null;
             lineSnapShown = free;
             if (!free) return;
-            lineSnap = SnapLine(net, Geo.XZ(airport.transform.InverseTransformPoint(point)), road, Keyboard.current.shiftKey.isPressed, point);
-            if(game!=null && lineSnap.node<0 && lineSnap.edge==null && lineSnap.runway==null && lineSnap.what==null)
-                lineSnap.p=new Vector2(Mathf.Round(lineSnap.p.x),Mathf.Round(lineSnap.p.y));
+            if (!road || !roadEndpointPress.HasValue)
+            {
+                lineSnap = SnapLine(net, Geo.XZ(airport.transform.InverseTransformPoint(point)), road, Keyboard.current.shiftKey.isPressed, point);
+                if(game!=null && lineSnap.node<0 && lineSnap.edge==null && lineSnap.runway==null && lineSnap.what==null)
+                    lineSnap.p=new Vector2(Mathf.Round(lineSnap.p.x),Mathf.Round(lineSnap.p.y));
+            }
             if (chainNode >= 0 && !(road&&game!=null))
             {
                 var across = net.StandAcross(net.At(chainNode), lineSnap.p, NewWidth, road);
@@ -1401,7 +1421,9 @@ namespace AirCity.Dev
             if (chainNode >= 0 && chainNode != node)
             {
                 net.Connect(chainNode,node,NewWidth,road && surface==PavementSurface.Grass?PavementSurface.Asphalt:surface,
-                    false,road?RoadClass.Service:RoadClass.None);
+                    false,road?RoadClass.Service:RoadClass.None,
+                    alignment: road && roadBuildSettings.bend != 0f
+                        ? roadBuildSettings.Shape(net.Node(chainNode).position, net.Node(node).position) : default);
                 net.Rebuild();
             }
             chainNode = node;
@@ -2182,7 +2204,7 @@ namespace AirCity.Dev
             placeFree = keys.ctrlKey.isPressed || keys.leftCommandKey.isPressed || keys.rightCommandKey.isPressed ||
                 tool == DevTool.DeIcing && placementHeadingSet;
             if (!free) return;
-            if (net.TryPickStand(p, out var existing))
+            if (net.TryPickStand(p, out var existing) && !existing.Owned)
             {
                 hover = new Pick { kind = Kind.Stand, stand = existing, apron = -1 };
                 if (click)
@@ -2423,6 +2445,16 @@ namespace AirCity.Dev
         {
             float reach = SnapReach(world);
             var none = new LineSnap { p = q, node = -1 };
+            if (road && undergroundTunnel.edge is TaxiwayEdge tunnel)
+            {
+                int node = undergroundTunnelNode;
+                var path = net.Path(tunnel);
+                var at = node >= 0 ? net.At(node) : path.Horizontal(path.ClosestParameter(q));
+                var name = node >= 0 ? JoinName(net, node, true) : "the tunnel";
+                if (chainNode >= 0)
+                    name += LevelHint(world.y, airport.transform.TransformPoint(net.Node(chainNode).position).y);
+                return new LineSnap { p = at, node = node, edge = node >= 0 ? null : tunnel, what = name };
+            }
             if (road && Mathf.Abs(roadElevation)<3f)
             {
                 if (TrySnapDeicingRoadPort(q, Mathf.Max(reach * 1.5f, 4f), out var port, out var portName))
@@ -2502,10 +2534,11 @@ namespace AirCity.Dev
             string Name(string name,float height)=>chain==null||!across?name:name+LevelHint(height,chain.position.y+origin.y);
             foreach (var n in net.nodes)
             {
-                bool layer=!across||SnapRoadLayer(n.position.y+origin.y,qWorld);
                 if(layers&&!road&&Mathf.Abs(n.position.y-target)>3f)continue;
-                float d = Vector2.Distance(Geo.XZ(n.position), q);
+                var nodePoint = Geo.XZ(n.position);
+                float d = Vector2.Distance(nodePoint, q);
                 if (d > Mathf.Max(reach, n.runway != null ? Mathf.Max(n.runway.HalfWidthTotal, widest) : widest) + (across ? AcrossParallax : 0f)) continue;
+                bool layer=!across||SnapRoadLayer(n.position.y+origin.y,level,nodePoint+Geo.XZ(origin));
                 bool same = n.runway != null && !road;
                 float pavement = n.runway != null ? n.runway.HalfWidthTotal : 0f,roadPavement=0f;
                 foreach (var e in net.EdgesAt(n.id))
@@ -2530,9 +2563,11 @@ namespace AirCity.Dev
             bestD = float.MaxValue;
             foreach (var e in net.edges)
             {
-                var path=net.Path(e);float t=path.ClosestParameter(q);float h=path.Height(t)+origin.y;bool layer=!across||SnapRoadLayer(h,qWorld);
+                var path=net.Path(e);float t=path.ClosestParameter(q);float h=path.Height(t)+origin.y;
                 if(layers&&!road&&Mathf.Abs(path.Height(t)-target)>3f)continue;var c=path.Horizontal(t);
                 float d = Vector2.Distance(c, q),rank;
+                if (across && d > Mathf.Max(reach, widest + AcrossParallax)) continue;
+                bool layer=!across||SnapRoadLayer(h,level,c+Geo.XZ(origin));
                 if(layer){if(d > (e.IsRoad == road ? Mathf.Max(reach, e.width * 0.5f) : e.width * 0.5f))continue;rank=d;}
                 else
                 {
@@ -2581,15 +2616,23 @@ namespace AirCity.Dev
             var ray = cam.ScreenPointToRay(screen);
             var underground=game!=null?game.GetComponent<AirCity.World.UndergroundRoadView>():null;
             bool undergroundEditing=underground!=null&&underground.Visible&&(tool==DevTool.Street||tool==DevTool.Road||tool==DevTool.Select||tool==DevTool.Delete);
+            undergroundTunnel = Pick.None;
+            undergroundTunnelNode = -1;
+            roadRay = ray;
+            if (undergroundEditing)
+            {
+                roadRayGround = float.PositiveInfinity;
+                if (PickUndergroundTunnel(ray, out point)) return true;
+            }
             RaycastHit hit=default;
             bool terrain=game!=null&&game.valley.Terrain!=null&&game.valley.Terrain.GetComponent<TerrainCollider>().Raycast(ray,out hit,20000);
             bool clipped=terrain&&game.valley.BuiltSurfaces!=null&&game.valley.BuiltSurfaces.Contains(Geo.XZ(hit.point));
             float maximum=terrain&&!undergroundEditing&&!clipped?hit.distance:float.PositiveInfinity;
-            roadRay=ray;roadRayGround=maximum;
+            roadRayGround = maximum;
             if(PickRoadLevel(ray,maximum,out point))return true;
             if(undergroundEditing)
             {
-                var editingPlane=new Plane(Vector3.up,Vector3.up*(underground.Height-2.5f));
+                var editingPlane = new Plane(Vector3.up, Vector3.up * (underground.Height - UndergroundRoadView.Headroom));
                 if(editingPlane.Raycast(ray,out float distance)){point=ray.GetPoint(distance);return true;}
             }
             if(terrain)
@@ -2597,6 +2640,10 @@ namespace AirCity.Dev
                 point=hit.point;
                 if((tool==DevTool.Street||tool==DevTool.Road)&&(Mathf.Abs(roadElevation)>.01f||game.State.world.IsWater(Geo.XZ(hit.point))))
                 {
+                    var at = Geo.XZ(point);
+                    if (roadBuildSettings.mode == RoadBuildMode.Automatic && !game.State.world.IsWater(at) &&
+                        RoadTargetHeight(at) < point.y - RoadConstructionPlan.AtGrade)
+                        return true;
                     // Intersect the raised construction surface, keeping the elevated endpoint beneath the cursor
                     // (over water the ray meets the bed, but the road goes over the surface).
                     for(int i=0;i<5;i++)
@@ -2643,6 +2690,16 @@ namespace AirCity.Dev
         {
             var local = airport.transform.InverseTransformPoint(world);
             var p = Geo.XZ(local);
+            if (undergroundTunnel.publicRoad is PublicRoadSegment streetTunnel)
+            {
+                var path = Streets.network.Path(streetTunnel);
+                return Piece(undergroundTunnel, path, path.ClosestParameter(Geo.XZ(world)));
+            }
+            if (undergroundTunnel.edge is TaxiwayEdge serviceTunnel)
+            {
+                var path = airport.Taxiways.Path(serviceTunnel);
+                return Piece(undergroundTunnel, path, path.ClosestParameter(p));
+            }
             float slack = Mathf.Max(2f, MetresPerPixel(world) * 6f);
             var roads = Streets.network;
             var publicPoint = game != null ? world : local;
@@ -2650,14 +2707,14 @@ namespace AirCity.Dev
             {
                 var path=roads.Path(section);float t=path.ClosestParameter(Geo.XZ(publicPoint));
                 if(Mathf.Abs(path.Height(t)-publicPoint.y)<3f&&path.DistanceTo(Geo.XZ(publicPoint))<section.Type.FullWidth*.5f+slack)
-                    return new Pick {kind=Kind.PublicRoad,publicRoad=section,apron=-1};
+                    return Piece(new Pick {kind=Kind.PublicRoad,publicRoad=section,apron=-1},path,t);
             }
             foreach(var edge in airport.Taxiways.edges)
             {
                 if(!edge.IsRoad||edge.structure==RoadStructure.Ground)continue;
                 var path=airport.Taxiways.Path(edge);float t=path.ClosestParameter(p);
                 if(Mathf.Abs(path.Height(t)-local.y)<3f&&path.DistanceTo(p)<edge.width*.5f+slack)
-                    return new Pick {kind=Kind.Edge,edge=edge,apron=-1};
+                    return Piece(new Pick {kind=Kind.Edge,edge=edge,apron=-1},path,t);
             }
             if(local.y<airport.PavementElevationAt(p)-3f)return Pick.None;
             foreach (var bay in airport.Deicing.ParkingBays)
@@ -2671,18 +2728,45 @@ namespace AirCity.Dev
             if (hall!=null) return new Pick { kind=Kind.BaggageHall,baggageHall=hall,apron=-1 };
             foreach (var hangar in airport.Hangars)
                 if (Geo.Inside(hangar.Pad,p)) return new Pick { kind=Kind.Hangar,hangar=hangar,apron=-1 };
+            // A school's flight line belongs to the school: its tie-downs are not picked as separate stands.
+            if (airport.TryPickFlyingSchool(p, out var schoolAt)) return new Pick { kind=Kind.FlyingSchool,school=schoolAt,apron=-1 };
             if (airport.TryPickDepot(p, out var d, 2f)) return new Pick { kind = Kind.Depot, depot = d, apron = -1 };
             if (airport.TryPickRunway(local, out var r)) return new Pick { kind = Kind.Runway, runway = r, apron = -1 };
             foreach(var edge in airport.Taxiways.edges)
             {
                 var path=airport.Taxiways.Path(edge);float t=path.ClosestParameter(p);
                 if(Mathf.Abs(path.Height(t)-local.y)<3f&&path.DistanceTo(p)<edge.width*.5f+slack)
-                    return new Pick {kind=Kind.Edge,edge=edge,apron=-1};
+                    return Piece(new Pick {kind=Kind.Edge,edge=edge,apron=-1},path,t);
             }
             if (airport.Taxiways.TryPickStand(p, out var st)) return new Pick { kind = Kind.Stand, stand = st, apron = -1 };
             if (airport.TryPickTerminal(p, out var term)) return new Pick { kind = Kind.Terminal, terminal = term, apron = -1 };
             if (airport.TryPickApron(p, out int i)) return new Pick { kind = Kind.Apron, apron = i };
             return Pick.None;
+        }
+
+        /// <summary>With the Delete tool a section is taken a piece at a time (PublicRoadNetwork.DeletePiece), however long
+        /// it was when laid; Shift takes the whole section (a taxiway's or service road's whole run).</summary>
+        Pick Piece(Pick pick, Alignment3D path, float t)
+        {
+            var keys = Keyboard.current;
+            if (tool != DevTool.Delete || keys != null && keys.shiftKey.isPressed) return pick;
+            float length = path.Length;
+            var (from, to) = PublicRoadNetwork.DeletePiece(length, path.DistanceAtParameter(t));
+            if (from > .5f || to < length - .5f) { pick.from = from; pick.to = to; }
+            return pick;
+        }
+
+        /// <summary>The public roads' layout (bends, junction cuts), for outlining sections as they are drawn.</summary>
+        PublicRoadGeometry streetLayout;
+        (PublicRoadNetwork network, int nodes, int segments) streetLayoutOf;
+        PublicRoadGeometry StreetLayout()
+        {
+            var network = Streets.network;
+            var key = (network, network.nodes.Count, network.segments.Count);
+            if (streetLayout != null && key == streetLayoutOf) return streetLayout;
+            streetLayout?.DestroyMeshes();
+            streetLayout = PublicRoadGeometry.Layout(network); streetLayoutOf = key;
+            return streetLayout;
         }
 
         bool Valid(in Pick p) => p.kind switch
@@ -2699,6 +2783,7 @@ namespace AirCity.Dev
             Kind.Stand => airport.Taxiways.stands.Contains(p.stand),
             Kind.Terminal => airport.terminals.Contains(p.terminal),
             Kind.Hangar => p.hangar != null && p.hangar.isActiveAndEnabled,
+            Kind.FlyingSchool => p.school != null && p.school.isActiveAndEnabled,
             _ => true,
         };
 
@@ -2718,6 +2803,7 @@ namespace AirCity.Dev
                 case Kind.Stand: return p.stand.Name;
                 case Kind.Terminal: return $"Terminal {airport.terminals.IndexOf(p.terminal) + 1}";
                 case Kind.Hangar: return p.hangar.BayName;
+                case Kind.FlyingSchool: return p.school.name;
                 default: return null;
             }
         }
@@ -2728,7 +2814,9 @@ namespace AirCity.Dev
             switch (p.kind)
             {
                 case Kind.PublicRoad:
-                    var roads=Streets.network.Clone();roads.RemoveSegment(p.publicRoad.id);Streets.network=roads;Streets.Rebuild();
+                    var roads=Streets.network.Clone();
+                    if(p.to>p.from)roads.RemovePart(p.publicRoad.id,p.from,p.to);else roads.RemoveSegment(p.publicRoad.id);
+                    Streets.network=roads;Streets.Rebuild();
                     break;
                 case Kind.Runway:
                     airport.RemoveRunway(p.runway);
@@ -2744,7 +2832,20 @@ namespace AirCity.Dev
                     break;
                 case Kind.Edge:
                     var net = airport.Taxiways;
-                    net.RemoveEdges(wholeRun ? net.Run(p.edge, _ => true).Select(x => x.edge) : new[] { p.edge });
+                    if (!wholeRun && p.to > p.from)
+                    {
+                        // a piece of a long section: split it off at both ends, then remove just that
+                        var whole = net.Path(p.edge);
+                        int a = p.edge.a, b = p.edge.b;
+                        bool tail = p.to < whole.Length - .5f, head = p.from > .5f;
+                        Vector3 at0 = whole.AtDistance(p.from), at1 = whole.AtDistance(p.to);
+                        int n1 = tail ? net.SplitEdge(p.edge, at1) : b;
+                        var left = tail ? net.edges.Find(e => e.a == a && e.b == n1) : p.edge;
+                        int n0 = head && left != null ? net.SplitEdge(left, at0) : a;
+                        var piece = net.edges.Find(e => e.a == n0 && e.b == n1);
+                        if (piece != null) net.RemoveEdges(new[] { piece });
+                    }
+                    else net.RemoveEdges(wholeRun ? net.Run(p.edge, _ => true).Select(x => x.edge) : new[] { p.edge });
                     net.Rebuild();
                     break;
                 case Kind.Depot:
@@ -2754,6 +2855,9 @@ namespace AirCity.Dev
                     if (!p.hangar.CanDemolish) { hangarProblem = "End all bay leases before demolishing this hangar."; game?.SetMessage(hangarProblem); return; }
                     airport.RemoveHangar(p.hangar);
                     game?.SharedConstructionChanged();
+                    break;
+                case Kind.FlyingSchool:
+                    if (!AirCity.Game.FlyingSchoolConstruction.TryDemolish(game, airport, p.school, out schoolProblem)) { game?.SetMessage(schoolProblem); return; }
                     break;
                 case Kind.Apron:
                     airport.RemoveApron(p.apron);
@@ -2810,6 +2914,7 @@ namespace AirCity.Dev
             DrawDeicingObjectPreview(pointing);
             DrawDepotPreview(pointing, point);
             DrawHangarPreview(pointing, point);
+            DrawFlyingSchoolPreview(pointing, point);
             var baggageBuild=GetComponent<DevBaggageControls>();
             if (tool==DevTool.Baggage && pointing && baggageBuild!=null)
             {
@@ -2911,6 +3016,20 @@ namespace AirCity.Dev
                                 loop.Clear();loop.Add(airport.transform.TransformPoint(edge.a));loop.Add(airport.transform.TransformPoint(edge.b));
                                 outlines.Line(cam,loop,colour,RoadProblem!=null?3f:1.5f,false,true);
                             }
+                        else if (tool == DevTool.Road)
+                        {
+                            var start = airport.Taxiways.Node(chainNode).position;
+                            var end = LinePoint(airport.Taxiways, lineSnap);
+                            var path = new Alignment3D(start, end, roadBuildSettings.Shape(start, end));
+                            int stations = Mathf.Clamp(Mathf.CeilToInt(path.Length / 4f), 1, 160);
+                            for (int side = -1; side <= 1; side += 2)
+                            {
+                                loop.Clear();
+                                for (int i = 0; i <= stations; i++)
+                                    loop.Add(airport.transform.TransformPoint(path.Offset(path.Length * i / stations, side * NewWidth * .5f)));
+                                outlines.Line(cam, loop, colour, 1.5f, false, true);
+                            }
+                        }
                         else
                         {
                             loop.Clear();foreach(var v in Strip(from,lineSnap.p,NewWidth*.5f))loop.Add(airport.transform.TransformPoint(Geo.X0Z(v)));
@@ -2918,12 +3037,15 @@ namespace AirCity.Dev
                         }
                     }
                 }
-                Marker(lineSnap.p, lineSnap.what != null, RoadProblem != null, point);
+                if (tool == DevTool.Road)
+                    DrawRoadEndpoint(AirsideEndpoint, lineSnap.what != null, RoadProblem != null);
+                else Marker(lineSnap.p, lineSnap.what != null, RoadProblem != null, point);
                 if (lineSnap.hangarFrontage != null) DrawHangarTaxiwayGuide(lineSnap.hangarFrontage);
             }
             if (tool == DevTool.Runway && pointing && runwayCursorShown)
                 Marker(runwayCursor, false, RunwayProblem != null, point);
             DrawStreetMarker(point);
+            DrawRoadCurveGuide();
             DrawRoadLevelGuide();
             outlines.End();
         }
@@ -3155,10 +3277,22 @@ namespace AirCity.Dev
                 case Kind.Edge:
                     var path=p.kind==Kind.PublicRoad?Streets.network.Path(p.publicRoad):airport.Taxiways.Path(p.edge);
                     float half=p.kind==Kind.PublicRoad?p.publicRoad.Type.FullWidth*.5f:p.edge.width*.5f;
-                    int count=Mathf.Max(1,Mathf.CeilToInt(path.Length/4f));
+                    float from=p.to>p.from?p.from:0f,to=p.to>p.from?p.to:path.Length;
+                    // a public road is outlined as it is drawn: round its bends, not straight to the corner
+                    if(p.kind==Kind.PublicRoad && StreetLayout().SectionOutline(p.publicRoad,from,to,half,loop))
+                    {
+                        if(game==null)for(int i=0;i<loop.Count;i++)loop[i]=airport.transform.TransformPoint(loop[i]);
+                        return true;
+                    }
+                    if(p.kind==Kind.Edge && airport.SectionOutline(p.edge,from,to,half,loop))
+                    {
+                        for(int i=0;i<loop.Count;i++)loop[i]=airport.transform.TransformPoint(loop[i]);
+                        return true;
+                    }
+                    int count=Mathf.Max(1,Mathf.CeilToInt((to-from)/4f));
                     for(int side=-1;side<=1;side+=2)for(int i=0;i<=count;i++)
                     {
-                        var point=path.Offset(path.Length*(side<0?i:count-i)/count,side*half);
+                        var point=path.Offset(Mathf.Lerp(from,to,(side<0?i:count-i)/(float)count),side*half);
                         if(p.kind==Kind.Edge)point=airport.transform.TransformPoint(point);
                         else if(game==null)point=airport.transform.TransformPoint(point);
                         loop.Add(point);
@@ -3169,6 +3303,9 @@ namespace AirCity.Dev
                     break;
                 case Kind.Hangar:
                     c = p.hangar.Pad;
+                    break;
+                case Kind.FlyingSchool:
+                    c = SchoolOutline(p.school.Origin, p.school.Heading, p.school.Lane);
                     break;
                 case Kind.BaggageHall:
                     var site=p.baggageHall.PaintArea;

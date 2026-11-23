@@ -18,6 +18,8 @@ gotchas, and `README.md` / `ArtSource/README.md` are the human-facing guides.
 | [systems/hangars.md](systems/hangars.md) | rentable hangars: taxiway connections, aircraft entry/exit, leases, doors, Career rent and persistence |
 | [assets/SmallHangar.md](assets/SmallHangar.md) | generated steel hangar geometry, sliding doors, LODs and visual review |
 | [systems/visitor-centre.md](systems/visitor-centre.md) | visitor centre placement, parking, public-road driveway, site protection and persistence |
+| [systems/flying-school.md](systems/flying-school.md) | flying school: flight line of owned tie-downs, clubhouse and driveway, instructors, aircraft, students, lessons, fees and persistence |
+| [assets/FlyingSchool.md](assets/FlyingSchool.md) | generated clubhouse, site, windsock, night lighting, LODs and visual review |
 | [assets/VisitorCentre.md](assets/VisitorCentre.md) | generated pavilion, glazing, parking furnishings, LODs and visual review |
 | [systems/built-surfaces.md](systems/built-surfaces.md) | pavement ownership, persistent terrain foundations, vegetation clearance and terrain shader clipping |
 | [systems/public-roads.md](systems/public-roads.md) | separate 3D road graph, terminal entrances, lane turns, signals, road geometry, bridge/ramp kit and career drawing |
@@ -30,11 +32,11 @@ gotchas, and `README.md` / `ArtSource/README.md` are the human-facing guides.
 | [systems/terminal-baggage.md](systems/terminal-baggage.md) | abstract terminal check-in/reclaim, timed underground/covered links, queue limits and connection controls |
 | [systems/maintenance.md](systems/maintenance.md) | depots, snow ploughs, mowers, tugs and push-back, teams, jobs and dispatch, turning round, keeping clear, the ploughing / mowing pass pattern |
 | [systems/deicing.md](systems/deicing.md) | deicing pads, spray trucks, tank storage, fluid deliveries and aircraft service holds |
-| [systems/traffic.md](systems/traffic.md) | flights: taxi route planning, holds and clearances, takeoffs, landings, go-arounds, the wind, the sandbox's traffic controls |
+| [systems/traffic.md](systems/traffic.md) | flights: taxi route planning, holds and clearances, takeoffs, landings, go-arounds, circuits and touch-and-goes, the wind, the sandbox's traffic controls |
 | [taxi-todo.md](taxi-todo.md) | what's left in ground traffic: the jams the soak test still finds, ideas, tuning |
 | [roads-todo.md](roads-todo.md) | road construction handoff: shared curves/profiles, bridges, tunnels, underpasses and local rebuilds; future upgrades and traffic |
 | [systems/dev-tools.md](systems/dev-tools.md) | batch commands, tests, captures, the sandbox controls |
-| [assets/Cessna172.md](assets/Cessna172.md), [assets/Narrowbody.md](assets/Narrowbody.md), [assets/Widebody.md](assets/Widebody.md), [assets/DoubleDeck.md](assets/DoubleDeck.md), [assets/Quadjet.md](assets/Quadjet.md), [assets/Turboprop.md](assets/Turboprop.md), [assets/Trijet.md](assets/Trijet.md), [assets/Supersonic.md](assets/Supersonic.md) | one aircraft type |
+| [assets/LowWingPiston.md](assets/LowWingPiston.md), [assets/Cessna172.md](assets/Cessna172.md), [assets/LightJet.md](assets/LightJet.md), [assets/ExecutiveJet.md](assets/ExecutiveJet.md), [assets/FlagshipJet.md](assets/FlagshipJet.md), [assets/Narrowbody.md](assets/Narrowbody.md), [assets/Widebody.md](assets/Widebody.md), [assets/DoubleDeck.md](assets/DoubleDeck.md), [assets/Quadjet.md](assets/Quadjet.md), [assets/Turboprop.md](assets/Turboprop.md), [assets/Trijet.md](assets/Trijet.md), [assets/Supersonic.md](assets/Supersonic.md) | one aircraft type |
 | [assets/SnowPlough.md](assets/SnowPlough.md), [assets/Mower.md](assets/Mower.md), [assets/Tugs.md](assets/Tugs.md), [assets/Depot.md](assets/Depot.md), [assets/ControlTowers.md](assets/ControlTowers.md), [assets/JetBridge.md](assets/JetBridge.md) | one vehicle / building |
 | [assets/BaggageEquipment.md](assets/BaggageEquipment.md) | baggage tractor, covered cart, belt loader, bag props, mechanical posing and the standalone review scene |
 | [assets/BaggageDepot.md](assets/BaggageDepot.md) | Small/Medium/Large depot shells, shared drive-through positions, roof inspection and equipment upgrades |
@@ -117,7 +119,7 @@ into separate career and sandbox tool paths. See [the shared session](systems/ne
 
 | Area | Status |
 |---|---|
-| Aircraft | Done: seven Starling types, one per size code A–F (A4 light single, B50 turboprop, C180 narrowbody, D250 trijet, E350 widebody, F450 quadjet, F550 double-deck), with liveries, lights, LODs |
+| Aircraft | Twelve Starling types across codes A–F, including the A2 and A4 trainers and the A6, B8 and B12 private jets, with liveries, lights and LODs |
 | Airfield | Done: four surfaces, runway rules, ICAO markings and lights, taxiway graph and routing, service roads, mown verges, wear, rain, snow, grass |
 | Stands | Started 2026-10-24: parking stands (codes A–F, 90/60/45/30°, push-back or taxi-out, grass for A/B) and drive-through de-icing bays, snapped onto taxiways with automatic paint; next: hangars, jet bridges, aircraft parking at stands |
 | Maintenance | Done: several depots (vehicles parked inside, roller doors), plough teams in echelon, mowers (strips and verges), taxiway runs turned on the pavement, automatic dispatch to the nearest team, keeping clear of aircraft and each other, night lights |

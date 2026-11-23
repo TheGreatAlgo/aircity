@@ -12,13 +12,15 @@ namespace AirCity.Game
     public struct RoadBuildSettings : IEquatable<RoadBuildSettings>
     {
         public RoadBuildMode mode;
+        public RoadBridgeDesign bridgeDesign;
+        public TunnelPortalStyle tunnelPortalStyle;
         public float bend;
         public bool smooth;
         internal bool legacyPrice;
         public static RoadBuildSettings Default=>new RoadBuildSettings {mode=RoadBuildMode.Automatic,smooth=true};
-        public bool Equals(RoadBuildSettings other)=>mode==other.mode&&bend==other.bend&&smooth==other.smooth&&legacyPrice==other.legacyPrice;
+        public bool Equals(RoadBuildSettings other)=>mode==other.mode&&bridgeDesign==other.bridgeDesign&&tunnelPortalStyle==other.tunnelPortalStyle&&bend==other.bend&&smooth==other.smooth&&legacyPrice==other.legacyPrice;
         public override bool Equals(object other)=>other is RoadBuildSettings settings&&Equals(settings);
-        public override int GetHashCode()=>HashCode.Combine(mode,bend,smooth,legacyPrice);
+        public override int GetHashCode()=>HashCode.Combine(mode,bridgeDesign,tunnelPortalStyle,bend,smooth,legacyPrice);
         public AlignmentShape Shape(Vector3 a,Vector3 b,float? initialGrade=null,float? finalGrade=null)
         {
             var delta=Alignment3D.XZ(b-a);float grade=(b.y-a.y)/Mathf.Max(.001f,delta.magnitude);
@@ -52,7 +54,7 @@ namespace AirCity.Game
         {
             plan=null;problem="Choose a valid road start and end.";
             var start=network?.Node(from);
-            if(state==null || start==null || !Finite(end) || !Enum.IsDefined(typeof(PublicRoadStyle),style) || !Enum.IsDefined(typeof(RoadBuildMode),settings.mode) || !ValleyWorld.Finite(settings.bend))return false;
+            if(state==null || start==null || !Finite(end) || !Enum.IsDefined(typeof(PublicRoadStyle),style) || !Enum.IsDefined(typeof(RoadBuildMode),settings.mode) || !Enum.IsDefined(typeof(TunnelPortalStyle),settings.tunnelPortalStyle) || !ValleyWorld.Finite(settings.bend))return false;
             if(endNode>=0){var snappedNode=network.Node(endNode);if(snappedNode==null)return false;end=snappedNode.position;}
             else if(endSegment>=0)
             {var edge=network.Segment(endSegment);if(edge==null)return false;var path=network.Path(edge);end=path.Position(path.ClosestParameter(Alignment3D.XZ(end)));}
@@ -69,19 +71,19 @@ namespace AirCity.Game
             }
             bool endLevel=false;
             var shape=settings.Shape(start.position,end,GradeAt(from,true,out bool startLevel),endNode>=0?GradeAt(endNode,false,out endLevel):null);
-            var startOutward = VisitorCentreConstruction.DrivewayOutward(state, start);
-            var endOutward = VisitorCentreConstruction.DrivewayOutward(state, network.Node(endNode));
+            var startOutward = VisitorCentreConstruction.DrivewayOutward(state, start, airport);
+            var endOutward = VisitorCentreConstruction.DrivewayOutward(state, network.Node(endNode), airport);
             if ((startOutward ?? endOutward) is Vector2 outward)
             {
                 bool leavesDriveway = startOutward.HasValue;
                 int entrance = leavesDriveway ? from : endNode;
                 if (network.At(entrance).Any())
-                { problem = "Join the visitor centre driveway outside the car park."; return false; }
+                { problem = "Join the driveway outside the car park."; return false; }
                 var mouth = Geo.XZ(leavesDriveway ? start.position : end);
                 var lead = Geo.XZ(leavesDriveway ? end : start.position) - mouth;
                 float forward = Vector2.Dot(lead, outward);
                 if (forward < 6f || Mathf.Abs(Geo.Cross(lead, outward)) > forward)
-                { problem = "Approach the visitor centre from outside the driveway opening."; return false; }
+                { problem = "Approach the car park from outside its driveway opening."; return false; }
                 // Match the parking aisle at its mouth, then bend into the requested connection.
                 style = PublicRoadStyle.AirportAccess;
                 shape.curved = Mathf.Abs(Geo.Cross(lead, outward)) > .001f;
@@ -129,11 +131,11 @@ namespace AirCity.Game
             float half=RoadTypes.Of(style).FullWidth*.5f;double earthwork=0;
             var clearance=airport!=null?new AirportClearance(airport):null;
             int samples=Mathf.Max(1,Mathf.CeilToInt(alignment.Length/4f));
-            var points=new Vector3[samples+1];var gaps=new float[samples];var waters=new float[samples];var covered=new bool[samples];var banks=new float[samples];
+            var points=new Vector3[samples+1];var gaps=new float[samples];var waters=new float[samples];var covered=new bool[samples];var banks=new float[samples];var retaining=new bool[samples];
             for(int i=0;i<=samples;i++)points[i]=alignment.AtDistance(alignment.Length*i/samples);
             for(int i=0;i<samples;i++)
             {
-                var mid=(points[i]+points[i+1])*.5f;var at=Alignment3D.XZ(mid);
+                var mid=alignment.AtDistance(alignment.Length*(i+.5f)/samples);var at=Alignment3D.XZ(mid);
                 gaps[i]=state.world!=null?mid.y-state.world.Height(at):0f;
                 waters[i]=float.NaN;covered[i]=true;banks[i]=gaps[i];
                 // a stretch is over water when its centre or either edge is (a shore met at an angle wets an edge first),
@@ -143,9 +145,14 @@ namespace AirCity.Game
                     var p=alignment.Offset(alignment.Length*(i+.5f)/samples,side*half);
                     OverWater(state.world,Alignment3D.XZ(p),p.y,ref waters[i],ref covered[i]);banks[i]=Mathf.Min(banks[i],p.y-state.world.Height(Alignment3D.XZ(p)));
                 }
+                if (state.world != null && float.IsNaN(waters[i]))
+                    retaining[i] = RetainedRoadSample(state.world, alignment, alignment.Length * (i + .5f) / samples, half, Vector3.zero);
             }
             var types=state.world!=null?Structures(settings.mode,gaps,waters,covered,banks,bridgeWater):Enumerable.Repeat(settings.mode==RoadBuildMode.Bridge?RoadStructure.Elevated:
                 settings.mode==RoadBuildMode.Tunnel?RoadStructure.Tunnel:RoadStructure.Ground,samples).ToArray();
+            ExtendTunnelApproaches(types, banks);
+            var naturalSections = retaining.Any(x => x) && types.Contains(RoadStructure.Tunnel) ? (RoadStructure[])types.Clone() : types;
+            ApplyRetainedRoads(settings.mode, types, gaps, retaining);
             for(int i=0;i<samples&&settings.mode==RoadBuildMode.Automatic;i++)bored|=types[i]==RoadStructure.Tunnel&&waters[i]<0f&&!covered[i];
             // a deck too low over the water, whatever is refused first: TryCreate may lift it
             if(state.world!=null&&(settings.mode==RoadBuildMode.Automatic||settings.mode==RoadBuildMode.Bridge))low=LowDeck.Of(state.world,alignment,types,half,Vector3.zero);
@@ -165,7 +172,7 @@ namespace AirCity.Game
             var min=Alignment3D.XZ(points[0]);var max=min;
             for(int i=0;i<samples;i++)
             {
-                var mid=(points[i]+points[i+1])*.5f;
+                var mid=alignment.AtDistance(alignment.Length*(i+.5f)/samples);
                 problem=VisitorCentreConstruction.OverlapProblem(state,VisitorCentreConstruction.Strip(
                     Alignment3D.XZ(points[i]),Alignment3D.XZ(points[i+1]),half),true);
                 if(problem!=null)return false;
@@ -182,14 +189,20 @@ namespace AirCity.Game
                         if(types[i]==RoadStructure.Ground && water){problem=GroundOnWater;return false;}
                         if(types[i]==RoadStructure.Elevated && water && p.y<state.world.WaterSurfaceAt(at)+WaterClearance-WaterTolerance)
                         {problem=LowOverWater(WaterShortfall(RoadStructure.Elevated));return false;}
-                        if(types[i]==RoadStructure.Elevated && !water && p.y<h-HillsideTolerance)
+                        if(types[i]==RoadStructure.Elevated && !water && !retaining[i] && p.y<h-HillsideTolerance)
                         {problem=IntoHillside(settings.mode==RoadBuildMode.Bridge&&Structures(RoadBuildMode.Automatic,gaps,waters,covered,banks)[i]==RoadStructure.Ground);return false;}
                         if(types[i]==RoadStructure.Tunnel && water && p.y+RoadStructureBuilder.TunnelClearance+RoadStructureBuilder.TunnelCover>h)
                         {problem=ShallowUnderWater(WaterShortfall(RoadStructure.Tunnel));return false;}
-                        if(types[i]==RoadStructure.Ground && !settings.legacyPrice)earthwork+=Mathf.Max(0,Mathf.Abs(p.y-h)-.35f)*unit*(half*2)/3f;
+                        if(types[i]==RoadStructure.Ground && !settings.legacyPrice && (!retaining[i] || h<=p.y+1.25f))earthwork+=Mathf.Max(0,Mathf.Abs(p.y-h)-.35f)*unit*(half*2)/3f;
                     }
                 }
                 if(clearance!=null && !clearance.Clear(mid,half,types[i],out problem))return false;
+            }
+            if (state.world != null && types.Contains(RoadStructure.Tunnel) &&
+                TunnelApproachTooLong(state.world, alignment, naturalSections, half + RoadStructureBuilder.WallThickness, Vector3.zero))
+            {
+                problem = TunnelApproachProblem;
+                return false;
             }
             // A short section remains a real section (including water crossings); no smoothing may silently turn
             // a small bridge or covered bore into a ground road. Junctions remain at continuous position/grade.
@@ -212,8 +225,11 @@ namespace AirCity.Game
             foreach(var edge in proposed.segments)if(newIds.Contains(edge.id))
             {
                 var path=proposed.Path(edge);edge.structure=Kind(path.Position(.5f));candidate.made.Add(edge.id);
+                if(edge.structure==RoadStructure.Tunnel)edge.tunnelPortalStyle=settings.tunnelPortalStyle;
                 cost+=path.Length*RoadTypes.Of(style).pricePerMetre*(edge.structure==RoadStructure.Elevated?3.5f:edge.structure==RoadStructure.Tunnel?5f:1f);
             }
+            if(settings.bridgeDesign!=RoadBridgeDesign.Automatic&&proposed.segments.Any(e=>newIds.Contains(e.id)&&e.structure==RoadStructure.Elevated))
+                PublicRoadGeometry.Layout(proposed).SetBridgeDesign(newIds,settings.bridgeDesign);
             candidate.Price=Mathf.CeilToInt((float)(cost+earthwork*RunwayTerrainPlan.EarthworkPrice));
             candidate.EndNode=node;candidate.Draft=proposed;candidate.draftSignature=Signature(proposed);
             candidate.Bounds=Rect.MinMaxRect(min.x-3,min.y-3,max.x+3,max.y+3);
@@ -228,7 +244,7 @@ namespace AirCity.Game
         /// <summary>A deck within this of WaterClearance still passes: a road at a bank 1 m above the water, joined level
         /// across it, must not be refused for centimetres of pavement profile.</summary>
         internal const float WaterTolerance=.15f;
-        internal const string GroundOnWater="Ground roads cannot cross water: use Auto or Bridge to bridge it, or Tunnel to pass beneath it.";
+        internal const string GroundOnWater="Raise the road to cross the water or lower it to pass beneath.";
         internal static string LowOverWater(float shortfall)=>
             $"The deck must clear the water by {WaterClearance:0} m and is {Mathf.Max(.1f,shortfall):0.0} m too low: raise the road over the water "+
             "(Page Up, or a higher point there), or start the climb further back from the bank.";
@@ -241,7 +257,7 @@ namespace AirCity.Game
         /// <summary>Why a bridge stretch cuts into the ground beside it. Automatic sections help only where Bridge mode
         /// keeps a near-ground stretch as bridge (`automaticHelps`: Automatic would make it ground road).</summary>
         internal static string IntoHillside(bool automaticHelps)=>automaticHelps?
-            "The bridge deck intersects the hillside. Raise it or use Automatic sections.":
+            "The bridge deck intersects the hillside. Raise it or lower the road into the hill.":
             "The bridge deck cuts into the slope beside it: raise the road there (Page Up, or a higher point there), or keep it further from the slope.";
 
         /// <summary>
@@ -283,7 +299,17 @@ namespace AirCity.Game
                 for(int k=i;k<j;k++)kinds[k]=kind;
                 i=j;
             }
-            if(mode==RoadBuildMode.Automatic){ShoreAbutments(kinds,Wet,bank??gaps);return kinds;}
+            if(mode==RoadBuildMode.Automatic)
+            {
+                // A cliff met at an angle reaches one edge before it reaches the centreline.
+                // Transition through a cutting or tunnel approach as soon as the deck runs into solid ground.
+                if (bank != null)
+                    for (int i = 0; i < n; i++)
+                        if (!Wet(i) && kinds[i] == RoadStructure.Elevated && bank[i] < -HillsideTolerance)
+                            kinds[i] = bank[i] < -AtGrade ? RoadStructure.Tunnel : RoadStructure.Ground;
+                ShoreAbutments(kinds,Wet,bank??gaps);
+                return kinds;
+            }
             var keep=mode==RoadBuildMode.Bridge?RoadStructure.Elevated:RoadStructure.Tunnel;
             for(int i=0;i<n;)
             {
@@ -297,6 +323,63 @@ namespace AirCity.Game
             ShoreAbutments(kinds,Wet,bank??gaps);
             return kinds;
         }
+        internal static bool RetainedRoadSample(ValleyWorld world, Alignment3D path, float station, float halfWidth, Vector3 origin) =>
+            RoadStructureBuilder.UphillSide(path.Offset(station, -halfWidth) + origin,
+                path.Offset(station, halfWidth) + origin, world.Height, world.BridgeWaterAt) != 0;
+
+        internal static void ApplyRetainedRoads(RoadBuildMode mode, RoadStructure[] kinds, float[] gaps, bool[] retaining)
+        {
+            if (mode != RoadBuildMode.Automatic && mode != RoadBuildMode.Bridge) return;
+            for (int i = 0; i < kinds.Length; i++)
+                if (retaining[i])
+                    kinds[i] = gaps[i] > AtGrade || mode == RoadBuildMode.Bridge && kinds[i] == RoadStructure.Elevated
+                        ? RoadStructure.Elevated : RoadStructure.Ground;
+        }
+
+        // A ground road next to a bore needs to meet the bank across its width. A centreline
+        // at grade on the flank of a hill can otherwise put the ground roadbed into solid rock.
+        internal static void ExtendTunnelApproaches(RoadStructure[] kinds, IReadOnlyList<float> banks)
+        {
+            for (int i = 0; i < kinds.Length; i++)
+            {
+                if (kinds[i] != RoadStructure.Tunnel) continue;
+                for (int j = i - 1; j >= 0 && kinds[j] == RoadStructure.Ground && banks[j] < -AtGrade; j--)
+                    kinds[j] = RoadStructure.Tunnel;
+                for (int j = i + 1; j < kinds.Length && kinds[j] == RoadStructure.Ground && banks[j] < -AtGrade; j++)
+                    kinds[j] = RoadStructure.Tunnel;
+            }
+        }
+
+        internal const string TunnelApproachProblem =
+            "This tunnel needs a long exposed entrance along the slope. Cross the hillside more directly or lower the road.";
+
+        internal static bool TunnelApproachTooLong(ValleyWorld world, Alignment3D path, IReadOnlyList<RoadStructure> kinds,
+            float halfWidth, Vector3 origin)
+        {
+            if (!kinds.Contains(RoadStructure.Tunnel)) return false;
+            const float cover = RoadStructureBuilder.TunnelClearance + RoadStructureBuilder.TunnelCover;
+            float limit = Mathf.Max(24f, halfWidth * 2.4f);
+            int count = Mathf.CeilToInt(path.Length / RoadStructureBuilder.WallStep);
+            float step = path.Length / count, skewCut = 0f;
+            for (int i = 0; i < count; i++)
+            {
+                float station = (i + .5f) * step;
+                int sample = Mathf.Min(kinds.Count - 1, (int)(station / path.Length * kinds.Count));
+                if (kinds[sample] != RoadStructure.Tunnel) { skewCut = 0f; continue; }
+                float CoverAt(float offset)
+                {
+                    var point = path.Offset(station, offset) + origin;
+                    return world.Height(Alignment3D.XZ(point)) - point.y;
+                }
+                float left = CoverAt(-halfWidth), right = CoverAt(halfWidth);
+                bool diagonal = Mathf.Max(left, right) >= cover && Mathf.Min(left, right) < cover &&
+                    Mathf.Abs(left - right) > cover;
+                skewCut = diagonal ? skewCut + step : 0f;
+                if (skewCut > limit) return true;
+            }
+            return false;
+        }
+
         /// <summary>How many 4 m stretches of bank a crossing's structure reaches back from the water: its abutment or
         /// portal stands about 10 m inland, so the ground ramp's earthworks never regrade the water's edge.</summary>
         public const int ShoreStretches=3;
@@ -441,7 +524,8 @@ namespace AirCity.Game
                 this.airport=airport;runways=airport.Runways.ToArray();var net=airport.Taxiways;
                 taxiways=net.edges.Where(e=>!e.IsRoad).Select(e=>(net.At(e.a),net.At(e.b),e.width*.5f,net.Node(e.a).position.y,net.Node(e.b).position.y)).ToArray();
                 terminals=airport.terminals.Select(t=>t.Outline()).Concat(airport.Depots.Select(d=>d.Corners.ToList()))
-                    .Concat(airport.HangarBuildings.Select(h=>h.BuildingPad.ToList())).ToArray();
+                    .Concat(airport.HangarBuildings.Select(h=>h.BuildingPad.ToList()))
+                    .Concat(airport.FlyingSchools.Select(s=>s.Block.ToList())).ToArray();
                 foreach (var hangar in airport.HangarBuildings)
                     if (HangarConnection.Approach(hangar, out var approach)) hangarApproaches.Add(approach);
             }
@@ -473,7 +557,7 @@ namespace AirCity.Game
             void Add(int value){unchecked{hash^=(uint)value;hash*=1099511628211UL;}}
             void Float(float value)=>Add(BitConverter.SingleToInt32Bits(value));
             foreach(var n in graph.nodes){Add(n.id);Float(n.position.x);Float(n.position.y);Float(n.position.z);Add((int)n.control);Add(n.outsideConnection?1:0);Add(n.controlChosen?1:0);Add(n.terminalEntrance?.GetHashCode()??0);}
-            foreach(var e in graph.segments){Add(e.id);Add(e.a);Add(e.b);Add((int)e.style);Add((int)e.structure);Add(e.alignment.GetHashCode());}
+            foreach(var e in graph.segments){Add(e.id);Add(e.a);Add(e.b);Add((int)e.style);Add((int)e.structure);Add((int)e.bridgeDesign);Add((int)e.tunnelPortalStyle);Add(e.alignment.GetHashCode());}
             return hash;
         }
         static bool Finite(Vector3 p)=>ValleyWorld.Finite(p.x)&&ValleyWorld.Finite(p.y)&&ValleyWorld.Finite(p.z);

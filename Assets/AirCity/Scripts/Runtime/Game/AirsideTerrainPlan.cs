@@ -14,6 +14,7 @@ namespace AirCity.Game
     public sealed class AirsideTerrainPlan
     {
         public const float MaximumTaxiwayGrade=.15f, MaximumRoadGrade=.20f;
+        const float MaximumCutFill = 60f;
         public Vector3 End { get; private set; }
         public Rect Bounds { get; private set; }
         public float Earthwork { get; private set; }
@@ -33,13 +34,16 @@ namespace AirCity.Game
         Stand stand;
         public Stand PlacedStand { get; private set; }
         public TaxiwayDraft Preview { get; private set; }
+        internal bool UsesDifferentBridgeDesign(RoadBridgeDesign requested)=>
+            Preview!=null&&newRoadIds.Any(id=>Preview.bridgeDesigns.TryGetValue(id,out var actual)&&actual!=requested);
         (int id,Vector3 position,Runway runway)[] sourceNodes;
-        (int id,int a,int b,float width,PavementSurface surface,RoadClass road,RoadStructure structure,AlignmentShape alignment)[] sourceEdges;
+        (int id,int a,int b,float width,PavementSurface surface,RoadClass road,RoadStructure structure,RoadBridgeDesign design,TunnelPortalStyle portalStyle,AlignmentShape alignment)[] sourceEdges;
         TaxiwayNetwork.GraphSnapshot graph;
         readonly List<int> newRoadIds=new List<int>();
         readonly Dictionary<int,float> terrainProbes=new Dictionary<int,float>();
         static (int id,Vector3 position,Runway runway)[] Nodes(TaxiwayNetwork net)=>net.nodes.Select(n=>(n.id,n.position,n.runway)).ToArray();
-        static (int id,int a,int b,float width,PavementSurface surface,RoadClass road,RoadStructure structure,AlignmentShape alignment)[] Edges(TaxiwayNetwork net)=>net.edges.Select(e=>(e.id,e.a,e.b,e.width,e.surface,e.road,e.structure,e.alignment)).ToArray();
+        static (int id,int a,int b,float width,PavementSurface surface,RoadClass road,RoadStructure structure,RoadBridgeDesign design,TunnelPortalStyle portalStyle,AlignmentShape alignment)[] Edges(TaxiwayNetwork net)=>
+            net.edges.Select(e=>(e.id,e.a,e.b,e.width,e.surface,e.road,e.structure,e.bridgeDesign,e.tunnelPortalStyle,e.alignment)).ToArray();
         List<ForestTree> sourceTrees;
         int sourceTreeCount;
         readonly List<Vector2> treePositions=new List<Vector2>();
@@ -149,7 +153,7 @@ namespace AirCity.Game
             plan=null;problem="Choose a longer stretch of dry ground.";low=null;proposal=null;bored=false;
             var world=state?.world;var net=airport!=null?airport.Taxiways:null;var start=net?.Node(from);
             if(world?.heights==null || start==null || !ValleyWorld.Finite(width) || width<1f || !ValleyWorld.Finite(end.x) || !ValleyWorld.Finite(end.y) || !ValleyWorld.Finite(end.z))return false;
-            var hangarPads=airport.Hangars.Select(h=>h.Pad).ToArray();
+            var hangarPads=airport.Hangars.Select(h=>h.Pad).Concat(airport.FlyingSchools.Select(s=>s.Block)).ToArray();
             if(endNode>=0) { if(net.Node(endNode)==null)return false; end=net.Node(endNode).position; }
             else if(endEdge!=null)
             {
@@ -189,7 +193,7 @@ namespace AirCity.Game
             // The same structure rule as public streets (RoadConstructionPlan.Structures), from the level above the
             // ground at each 4 m stretch: ramps where a bridge or tunnel meets a surface road are ground road.
             int stretches=Mathf.Max(1,Mathf.CeilToInt(length/4f));var gaps=new float[stretches];var waters=new float[stretches];
-            var covered=new bool[stretches];var banks=new float[stretches];
+            var covered=new bool[stretches];var banks=new float[stretches];var retaining=new bool[stretches];
             for(int i=0;i<stretches;i++)
             {
                 var local=alignment.AtDistance(length*(i+.5f)/stretches);var at=Geo.XZ(local)+Geo.XZ(airport.transform.position);float y=local.y+airport.transform.position.y;
@@ -204,8 +208,16 @@ namespace AirCity.Game
                     var beside=Geo.XZ(alignment.Offset(length*(i+.5f)/stretches,side*(width*.5f+world.Spacing*.6f)))+Geo.XZ(airport.transform.position);
                     if(world.IsWater(beside)){float above=floor-world.WaterSurfaceAt(beside);waters[i]=float.IsNaN(waters[i])?above:Mathf.Min(waters[i],above);covered[i]&=above>=0f;}
                 }
+                if (road != RoadClass.None && settings.HasValue && float.IsNaN(waters[i]))
+                    retaining[i] = RoadConstructionPlan.RetainedRoadSample(world, alignment, length * (i + .5f) / stretches,
+                        width * .5f + TaxiwayBuilder.StructureVerge, airport.transform.position);
             }
             var kinds=RoadConstructionPlan.Structures(options.mode,gaps,waters,covered,banks,bridgeWater);
+            if (road != RoadClass.None && settings.HasValue)
+                RoadConstructionPlan.ExtendTunnelApproaches(kinds, banks);
+            var naturalSections = retaining.Any(x => x) && kinds.Contains(RoadStructure.Tunnel) ? (RoadStructure[])kinds.Clone() : kinds;
+            if (road != RoadClass.None && settings.HasValue)
+                RoadConstructionPlan.ApplyRetainedRoads(options.mode, kinds, gaps, retaining);
             if(road!=RoadClass.None&&settings.HasValue&&(options.mode==RoadBuildMode.Automatic||options.mode==RoadBuildMode.Bridge))
             {
                 low=RoadConstructionPlan.LowDeck.Of(world,alignment,kinds,width*.5f,airport.transform.position);proposal=alignment;
@@ -274,7 +286,8 @@ namespace AirCity.Game
                         return worst;
                     }
                     var foundations=airport.terminals.Select(t=>(IList<Vector2>)t.Outline()).Concat(airport.Depots.Select(d=>(IList<Vector2>)d.Corners))
-                        .Concat(airport.Hangars.Select(h=>(IList<Vector2>)h.Pad)).ToArray();
+                        .Concat(airport.Hangars.Select(h=>(IList<Vector2>)h.Pad))
+                        .Concat(airport.FlyingSchools.Select(s=>(IList<Vector2>)s.Block)).ToArray();
                     for(int i=0;i<samples;i++)
                     {
                         var local=alignment.AtDistance(length*(i+.5f)/samples);var at=Geo.XZ(local)+Geo.XZ(origin3);var type=Kind(local);
@@ -291,7 +304,7 @@ namespace AirCity.Game
                             if(type==RoadStructure.Ground&&water){problem=RoadConstructionPlan.GroundOnWater;return false;}
                             if(type==RoadStructure.Elevated&&water&&floor<world.WaterSurfaceAt(point)+RoadConstructionPlan.WaterClearance-RoadConstructionPlan.WaterTolerance)
                             {problem=RoadConstructionPlan.LowOverWater(WaterShortfall(RoadStructure.Elevated));return false;}
-                            if(type==RoadStructure.Elevated&&!water&&floor<h-RoadConstructionPlan.HillsideTolerance)
+                            if(type==RoadStructure.Elevated&&!water&&!retaining[i]&&floor<h-RoadConstructionPlan.HillsideTolerance)
                             {
                                 problem=RoadConstructionPlan.IntoHillside(options.mode==RoadBuildMode.Bridge&&
                                     RoadConstructionPlan.Structures(RoadBuildMode.Automatic,gaps,waters,covered,banks)[RoadConstructionPlan.Sample(alignment,stretches,local)]==RoadStructure.Ground);
@@ -310,9 +323,22 @@ namespace AirCity.Game
                         var previousIds=new HashSet<int>(draft.edges.Select(e=>e.id));draft.SplitEdge(edge,cut);newIds.Remove(edge.id);
                         foreach(var child in draft.edges)if(!previousIds.Contains(child.id))newIds.Add(child.id);
                     }
+                    if (kinds.Contains(RoadStructure.Tunnel) && RoadConstructionPlan.TunnelApproachTooLong(world, alignment, naturalSections,
+                        width * .5f + TaxiwayBuilder.StructureVerge + RoadStructureBuilder.WallThickness, origin))
+                    {
+                        problem = RoadConstructionPlan.TunnelApproachProblem;
+                        return false;
+                    }
                     made=draft.edges.Where(e=>newIds.Contains(e.id)).ToList();candidate.newRoadIds.AddRange(newIds);double cost=0;
                     foreach(var edge in made)
-                    {edge.structure=Kind(draft.Path(edge).Position(.5f));cost+=draft.Path(edge).Length*12f*(edge.structure==RoadStructure.Elevated?3.5f:edge.structure==RoadStructure.Tunnel?5f:1f);}
+                    {
+                        var path = draft.Path(edge);
+                        edge.structure = Kind(path.Position(.5f));
+                        if (edge.structure == RoadStructure.Tunnel) edge.tunnelPortalStyle = options.tunnelPortalStyle;
+                        cost += path.Length * 12f * (edge.structure == RoadStructure.Elevated ? 3.5f : edge.structure == RoadStructure.Tunnel ? 5f : 1f);
+                    }
+                    if(options.bridgeDesign!=RoadBridgeDesign.Automatic&&made.Any(e=>e.structure==RoadStructure.Elevated))
+                        new TaxiwayBuilder(draft,airport.Runways).SetBridgeDesign(newIds,options.bridgeDesign);
                     candidate.ConstructionPrice=Mathf.CeilToInt((float)cost);
                 }
                 if(made.Count==0){problem="This section is already connected.";return false;}
@@ -327,6 +353,8 @@ namespace AirCity.Game
                     int ia=list[i],ib=list[i+1],ic=list[i+2],owner=pavement.mesh.owners[ia];
                     if(owner<0 || !builder.owners[owner].edges.Any(e=>affected.Contains(e.id)) || builder.owners[owner].edges.All(e=>e.structure!=RoadStructure.Ground))continue;
                     var a=pavement.mesh.positions[ia]+origin;var b=pavement.mesh.positions[ib]+origin;var c=pavement.mesh.positions[ic]+origin;
+                    var normal=Vector3.Cross(b-a,c-a);
+                    if(Mathf.Abs(normal.y)<.0001f)continue;
                     var outline=new[]{Geo.XZ(a-origin),Geo.XZ(b-origin),Geo.XZ(c-origin)};
                     if(hangarPads.Any(pad=>Geo.Overlap(outline,pad)))
                     {problem="The pavement or junction would overlap an aircraft hangar.";return false;}
@@ -334,8 +362,6 @@ namespace AirCity.Game
                     problem=VisitorCentreConstruction.OverlapProblem(state,visitorOutline);
                     if(problem!=null)return false;
                     candidate.visitorFootprints.Add(visitorOutline);
-                    var normal=Vector3.Cross(b-a,c-a);
-                    if(Mathf.Abs(normal.y)<.0001f)continue;
                     if(new Vector2(normal.x,normal.z).magnitude/Mathf.Abs(normal.y)>limit+.001f)
                     {problem="The bend would be too steep. Give the slope a longer, gentler approach.";return false;}
                     triangles.Add(new Triangle(a,b,c));
@@ -343,7 +369,19 @@ namespace AirCity.Game
             }
             finally { UnityEngine.Object.DestroyImmediate(draft.gameObject); }
             plan=candidate;
-            bool valid=triangles.Count>0?PrepareGround(state,candidate,triangles,ground,out problem):PrepareStructures(state,candidate,alignment,ground,out problem);
+            bool PreserveTerrain(Vector2 point)
+            {
+                var local = point - Geo.XZ(origin);
+                if (alignment.DistanceTo(local) >= width * .5f + world.Spacing * 3f) return false;
+                var along = alignment.Position(alignment.ClosestParameter(local));
+                int index = RoadConstructionPlan.Sample(alignment, stretches, along);
+                return kinds[index] == RoadStructure.Tunnel || retaining[index];
+            }
+            System.Predicate<Vector2> preserve = road != RoadClass.None && settings.HasValue &&
+                (kinds.Contains(RoadStructure.Tunnel) || retaining.Any(x => x)) ? PreserveTerrain : null;
+            bool valid = triangles.Count > 0
+                ? PrepareGround(state, candidate, triangles, ground, out problem, road: road != RoadClass.None, preserve: preserve)
+                : PrepareStructures(state, candidate, alignment, ground, out problem);
             if(!valid)return false;
             var localBounds=alignment.Bounds(width+20);
             var area=new Rect(localBounds.position+Geo.XZ(origin),localBounds.size);
@@ -393,7 +431,7 @@ namespace AirCity.Game
         }
 
         static bool PrepareGround(CareerState state,AirsideTerrainPlan candidate,List<Triangle> triangles,
-            IEnumerable<GroundCoverInstance> ground,out string problem,BuiltSurfaceMap protection=null)
+            IEnumerable<GroundCoverInstance> ground,out string problem,BuiltSurfaceMap protection=null,bool road=false,System.Predicate<Vector2> preserve=null)
         {
             problem=null;
             var world=candidate.world;var airport=candidate.airport;var origin=airport.transform.position;
@@ -442,19 +480,21 @@ namespace AirCity.Game
             {
                 var p=new Vector2((key%ValleyWorld.Resolution)*world.Spacing-ValleyWorld.Size*.5f,
                     (key/ValleyWorld.Resolution)*world.Spacing-ValleyWorld.Size*.5f);
+                if (preserve?.Invoke(p) == true) continue;
                 if(world.IsWater(p) && triangles.Any(t=>t.Distance(p)<world.Spacing*.6f))
                 {problem=NearWater;return false;}
             }
-            const float feather=30f;
+            float feather=road?18f:30f;
             candidate.Bounds=Rect.MinMaxRect(minX-world.Spacing-feather,minZ-world.Spacing-feather,maxX+world.Spacing+feather,maxZ+world.Spacing+feather);
             var roads=state.RoadNetwork();
             var roadSpans=roads.segments.Where(e=>e.structure==RoadStructure.Ground).Select(e=>(
-                a:roads.Node(e.a).position,b:roads.Node(e.b).position,half:e.Width*.5f)).ToArray();
+                a:roads.Node(e.a).position,b:roads.Node(e.b).position,half:e.Type.FullWidth*.5f)).ToArray();
             var protectedAreas=new List<IList<Vector2>>();
             foreach(var terminal in airport.terminals)protectedAreas.Add(terminal.Outline());
             foreach(var stand in airport.Taxiways.Layouts())protectedAreas.Add(stand.Pad);
             foreach(var depot in airport.Depots)protectedAreas.Add(depot.Corners);
             foreach(var hangar in airport.Hangars)protectedAreas.Add(hangar.Pad);
+            foreach(var school in airport.FlyingSchools)protectedAreas.Add(school.Block);
             int sampleX0=Grid(candidate.Bounds.xMin,world),sampleX1=Grid(candidate.Bounds.xMax,world),sampleZ0=Grid(candidate.Bounds.yMin,world),sampleZ1=Grid(candidate.Bounds.yMax,world);
             int columns=sampleX1-sampleX0+1;
             using var queryTriangles=new NativeArray<Triangle>(triangles.ToArray(),Allocator.TempJob);
@@ -464,20 +504,33 @@ namespace AirCity.Game
             {
                 int index=z*ValleyWorld.Resolution+x;
                 var p=new Vector2(x*world.Spacing-ValleyWorld.Size*.5f,z*world.Spacing-ValleyWorld.Size*.5f);
+                if (preserve?.Invoke(p) == true) continue;
                 float old=world.heights[index],next=old;
                 if(caps.TryGetValue(index,out float cap))next=cap;
                 else
                 {
                     var formation=nearest[(z-sampleZ0)*columns+x-sampleX0];float best=formation.x,target=formation.y;
                     if(best>=feather+world.Spacing)continue;
-                    float weight=1f-Mathf.SmoothStep(0f,1f,Mathf.Clamp01((best-world.Spacing)/feather));
-                    next=Mathf.Lerp(old,target,weight);
+                    if (road)
+                    {
+                        // Let the road meet steep slopes quickly beyond the heightfield corners it needs for support.
+                        float run = Mathf.Max(0f, best - world.Spacing * .4f);
+                        float blend = 1f - Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(world.Spacing, feather + world.Spacing, best));
+                        blend *= 1f - Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(MaximumCutFill / 3f, MaximumCutFill, Mathf.Abs(target - old)));
+                        next = Mathf.Lerp(old, PublicRoadGeometry.FitRoadbed(old, target, run), blend);
+                    }
+                    else
+                    {
+                        float weight=1f-Mathf.SmoothStep(0f,1f,Mathf.Clamp01((best-world.Spacing)/feather));
+                        next=Mathf.Lerp(old,target,weight);
+                    }
                 }
                 if(protection!=null && protection.Formation.Length>0)next=Mathf.Min(next,protection.Formation[index]);
+                if(road)next=world.RetainShore(p,old,next);
                 if(Mathf.Abs(next-old)<.002f)next=old;
                 candidate.indices.Add(index);candidate.before.Add(old);candidate.after.Add(next);
                 if(next==old)continue;
-                if(!state.BuildableBounds.Contains(p) || next<1f || next>ValleyWorld.HeightRange-1f || Mathf.Abs(next-old)>60f)
+                if(!state.BuildableBounds.Contains(p) || next<1f || next>ValleyWorld.HeightRange-1f || Mathf.Abs(next-old)>MaximumCutFill)
                 {problem="This placement needs too much cut and fill. Choose gentler ground.";return false;}
                 if(Mathf.Abs(next-old)>.15f)
                 {
@@ -492,10 +545,8 @@ namespace AirCity.Game
                 {
                     var q=Geo.ClosestOnSegment(p,Geo.XZ(span.a),Geo.XZ(span.b),out float t);float distance=Vector2.Distance(p,q);
                     if(distance>=PublicRoadGeometry.EarthworkReach)continue;
-                    float formation=Mathf.Lerp(span.a.y,span.b.y,t)+.125f;
-                    float run=Mathf.Max(0f,distance-Mathf.Max(span.half+4f,world.Spacing*1.35f));
-                    float eased=run*Mathf.SmoothStep(0f,1f,Mathf.Clamp01(run/12f));
-                    if(next>formation+eased*.7f+.08f || next<formation-eased*.5f-.08f ||
+                    float formation=Mathf.Lerp(span.a.y,span.b.y,t);
+                    if(Mathf.Abs(next-PublicRoadGeometry.Roadbed(next,formation,distance,span.half,world.Spacing))>.08f ||
                         caps.ContainsKey(index) && distance<span.half+world.Spacing)
                     {problem="This earthwork would affect a public road. Leave room for its roadbed.";return false;}
                 }
@@ -515,7 +566,7 @@ namespace AirCity.Game
             candidate.Bounds=Rect.MinMaxRect(min.x-candidate.width-10,min.y-candidate.width-10,max.x+candidate.width+10,max.y+candidate.width+10);
             using var footprint=new BuiltSurfaceMap();
             foreach(var t in candidate.Preview.ownership)
-                if(candidate.Bounds.Overlaps(Rect.MinMaxRect(Mathf.Min(t.a.x,t.b.x,t.c.x)+origin.x,Mathf.Min(t.a.z,t.b.z,t.c.z)+origin.z,Mathf.Max(t.a.x,t.b.x,t.c.x)+origin.x,Mathf.Max(t.a.z,t.b.z,t.c.z)+origin.z)))
+                if(t.OwnsGround && candidate.Bounds.Overlaps(Rect.MinMaxRect(Mathf.Min(t.a.x,t.b.x,t.c.x)+origin.x,Mathf.Min(t.a.z,t.b.z,t.c.z)+origin.z,Mathf.Max(t.a.x,t.b.x,t.c.x)+origin.x,Mathf.Max(t.a.z,t.b.z,t.c.z)+origin.z)))
                     footprint.AddTriangle(new BuiltSurfaceMap.Triangle(t.a+origin,t.b+origin,t.c+origin));
             foreach(int index in ForestQuery.Candidates(candidate.world,candidate.Bounds))
             {var tree=candidate.world.trees[index];if(!tree.removed&&footprint.Contains(tree.position,3)){candidate.treesToClear.Add(index);candidate.treePositions.Add(tree.position);}}

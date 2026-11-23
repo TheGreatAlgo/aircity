@@ -180,7 +180,11 @@ outline that folded or left holes at shallow angles and on short sections):
   sections at least 2.5 widths, arms 15° apart) for overlapping strips, holes and folds;
   `RoadJunctionReview.FromCommandLine` (Editor/Airfield) captures the awkward layouts top-down to
   `Captures/RoadJunctions`.
-- **Paint** (paved roads): white edge lines 0.3 m in, white centre dashes (3 m dash, 6 m gap). Where a road meets
+- **Paint** (paved roads): white edge lines 0.3 m in, white centre dashes (3 m dash, 6 m gap). Dashes are laid out
+  in stretches that run through a bend, from the middle of the road before it to the middle of the road after it
+  (`RoadStretch`, `PaintBuilder.Dashes` with a stretch): a whole number of dashes with the gaps evened out and half
+  a gap at each end, so the rhythm carries through every bend and join instead of restarting at each. A road that
+  ends at a junction or dead end belongs whole to the stretch through its other end. Where a road meets
   a taxiway (`GiveWayAt`), the approach lane gets a double dashed give-way line and a give-way triangle pointing at
   the driver. Before a runway, a solid stop line at the holding distance. Taxiway centrelines never connect across
   a road arm.

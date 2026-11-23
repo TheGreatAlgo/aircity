@@ -26,7 +26,7 @@ namespace AirCity.World
 
         /// <summary>Every result is a convex combination of the same four saved/road-graded source samples.</summary>
         public static float[,] Resample(float[,] source, RectInt sourceBounds, RectInt target, int renderResolution,
-            float divisor = 1f, BuiltSurfaceMap surfaces = null)
+            float divisor = 1f, BuiltSurfaceMap surfaces = null, ValleyWorld world = null)
         {
             if (source == null || source.GetLength(0) != sourceBounds.height || source.GetLength(1) != sourceBounds.width)
                 throw new ArgumentException("The source heights must match their source-grid rectangle.");
@@ -34,10 +34,26 @@ namespace AirCity.World
                 throw new ArgumentException("Terrain refinement requires a whole source-grid subdivision and a positive height range.");
             surfaces?.Build();
             var flat=new float[source.Length];Buffer.BlockCopy(source,0,flat,0,flat.Length*sizeof(float));
+            if (surfaces != null && surfaces.Formation.Length > 0)
+            {
+                var limits = surfaces.Formation;
+                for (int z = 0; z < sourceBounds.height; z++)
+                for (int x = 0; x < sourceBounds.width; x++)
+                {
+                    int gx = x + sourceBounds.x, gz = z + sourceBounds.y;
+                    float ceiling = limits[gz * ValleyWorld.Resolution + gx];
+                    if (float.IsPositiveInfinity(ceiling)) continue;
+                    int index = z * sourceBounds.width + x;
+                    float original = flat[index];
+                    // Keep the soil supporting the pavement after edits, while preserving the wet bed and dry bank.
+                    float formed = Mathf.Clamp(original, ceiling - .035f, ceiling);
+                    var point = new Vector2(gx, gz) * (ValleyWorld.Size / (ValleyWorld.Resolution-1)) - Vector2.one * (ValleyWorld.Size*.5f);
+                    flat[index] = world != null ? world.RetainShore(point, original, formed) : formed;
+                }
+            }
             using var input=new NativeArray<float>(flat,Allocator.TempJob);
             using var output=new NativeArray<float>(target.width*target.height,Allocator.TempJob);
-            using var empty=new NativeArray<float>(0,Allocator.TempJob);
-            new ResampleJob {source=input,result=output,limits=surfaces!=null?surfaces.Formation:empty,
+            new ResampleJob {source=input,result=output,
                 sourceBounds=sourceBounds,target=target,scale=(ValleyWorld.Resolution-1f)/(renderResolution-1f),divisor=divisor}
                 .Schedule(output.Length,256).Complete();
             var result=new float[target.height,target.width];var heights=output.ToArray();
@@ -45,18 +61,11 @@ namespace AirCity.World
         }
         [BurstCompile]struct ResampleJob:IJobParallelFor
         {
-            [ReadOnly]public NativeArray<float> source,limits;
+            [ReadOnly]public NativeArray<float> source;
             [WriteOnly]public NativeArray<float> result;
             public RectInt sourceBounds,target;
             public float scale,divisor;
-            float Sample(int x,int z)
-            {
-                float height=source[z*sourceBounds.width+x];
-                if(limits.Length==0)return height;
-                float ceiling=limits[(z+sourceBounds.y)*ValleyWorld.Resolution+x+sourceBounds.x];
-                // Geometry owns a persistent soil formation, independent of subsequent earthwork stamps.
-                return float.IsPositiveInfinity(ceiling)?height:Mathf.Clamp(height,ceiling-.035f,ceiling);
-            }
+            float Sample(int x,int z)=>source[z*sourceBounds.width+x];
             public void Execute(int i)
             {
                 float px=(i%target.width+target.x)*scale,pz=(i/target.width+target.y)*scale;

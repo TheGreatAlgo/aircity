@@ -118,7 +118,7 @@ namespace AirCity.Dev
         {
             get
             {
-                var stands = Airport.Taxiways.stands.FindAll(s => !s.DeIcing);
+                var stands = Airport.Taxiways.stands.FindAll(s => !s.DeIcing && !s.Owned);
                 return stands.Count == 0 ? null : stands[(standIndex % stands.Count + stands.Count) % stands.Count];
             }
         }

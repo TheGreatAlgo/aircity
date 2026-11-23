@@ -435,6 +435,7 @@ namespace AirCity.Vehicles
         {
             foreach (var depot in airport.GetComponentsInChildren<BaggageDepot>()) obstacles.AddRange(depot.SolidBoxes());
             foreach (var hangar in airport.Hangars) obstacles.Add(hangar.BuildingBox);
+            foreach (var school in airport.FlyingSchools) obstacles.Add(school.BuildingBox);
             if (stationOwner != null)
                 foreach (var parking in StandEquipmentLayout.All(airport))
                     if (parking.Valid && parking.station != stationOwner)

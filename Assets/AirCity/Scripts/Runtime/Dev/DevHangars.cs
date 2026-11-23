@@ -142,11 +142,21 @@ namespace AirCity.Dev
     public partial class DevToolbar
     {
         const string HangarFocus = "hangar-lease-";
+        enum HangarPage { Overview, Aircraft, Building }
+        static readonly AirfieldWorkspaceGui.Tab[] HangarTabs =
+        {
+            new AirfieldWorkspaceGui.Tab("Overview", "overview"),
+            new AirfieldWorkspaceGui.Tab("Aircraft", "stand"),
+            new AirfieldWorkspaceGui.Tab("Building", "hangar")
+        };
         SmallHangar hangarSubject;
         string hangarTenant = "Local aircraft owner", hangarRegistration = "AC-001", hangarMessage;
         int hangarTypeIndex;
         bool hangarCapturedKeyboard;
         int aircraftHangarIndex;
+        HangarPage hangarPage = HangarPage.Aircraft;
+        Vector2 hangarScroll;
+        Rect hangarBody;
 
         void AircraftHangar(AirCity.Aircraft.Aircraft aircraft)
         {
@@ -188,19 +198,70 @@ namespace AirCity.Dev
             Buttons(B("Cancel",()=>airfield.SetTool(DevTool.Select),hint:"Esc"));
         }
 
-        void HangarInspector(SmallHangar hangar)
+        void DrawHangarWorkspace(SmallHangar hangar, Rect panel)
         {
             if (hangarSubject != hangar)
             {
-                hangarSubject = hangar; hangarMessage = null; hangarTypeIndex = 0;
+                hangarSubject = hangar; hangarMessage = null; hangarTypeIndex = 0; hangarScroll = Vector2.zero;
+                GUI.FocusControl(null);
                 hangarTenant = hangar.Size == HangarSize.Airline ? "Airline operator" : "Local aircraft owner";
                 int serial = 1;
                 while (airfield.airport.Hangars.Any(h=>h.Occupied && h.Registration=="AC-"+serial.ToString("000"))) serial++;
                 hangarRegistration = "AC-" + serial.ToString("000");
             }
-            Title(hangar.BuildingRoot.name);
+            var layout = new AirfieldWorkspaceGui.Layout(panel);
+            hangarBody = layout.Body;
+            AirfieldWorkspaceGui.Frame(layout, hangar.Spec.Name, hangar.BuildingRoot.name, "hangar", () =>
+            {
+                GUI.FocusControl(null);
+                airfield.SelectHangar(null);
+            });
+            AirfieldWorkspaceGui.Navigation(layout, HangarTabs, (int)hangarPage, next =>
+            {
+                GUI.FocusControl(null);
+                hangarPage = (HangarPage)next;
+                hangarScroll = Vector2.zero;
+            });
+
+            string access = hangar.AccessProblem;
+            Btn? action = null;
+            DrawWorkspaceRows(layout.Body, ref hangarScroll, () =>
+            {
+                switch (hangarPage)
+                {
+                    case HangarPage.Overview: HangarOverview(hangar, access); break;
+                    case HangarPage.Aircraft: action = HangarAircraft(hangar, access); break;
+                    case HangarPage.Building: action = HangarBuilding(hangar); break;
+                }
+            });
+
+            var footer = layout.Footer;
+            var button = new Rect(footer.xMax - U(158), footer.y + U(9), U(144), U(32));
+            if (action is Btn chosen && DevGui.PrimaryButton(button, chosen.label, chosen.tip, chosen.enabled))
+                chosen.act();
+            string status = hangarMessage ?? airfield.HangarProblem ?? access ?? "Taxiway connected";
+            float end = action.HasValue ? button.x - U(8) : footer.xMax - Pad;
+            GUI.Label(new Rect(footer.x + Pad, footer.y + U(4), end - footer.x - Pad, footer.height - U(8)),
+                new GUIContent(status, status), Wrapped);
+        }
+
+        void HangarOverview(SmallHangar hangar, string access)
+        {
+            Section("STORAGE");
+            var bays = hangar.Bays.ToArray();
+            PropText("Storage", $"{bays.Count(bay => bay.Occupied)} / {bays.Length} occupied");
+            PropText("Rent", $"${hangar.Spec.Rent:N0} / 30 days per bay");
+            PropText("Earned", $"${hangar.RentEarned:N0}");
+            if (airfield.game == null || airfield.game.Sandbox) Note("Sandbox. Finances are paused.");
+            Section("TAXIWAY ACCESS");
+            if (access != null) Danger(access);
+            else Note("Taxiway connected. Paved approach ready.");
+        }
+
+        Btn? HangarAircraft(SmallHangar hangar, string access)
+        {
+            Section("RESIDENT AIRCRAFT");
             var bays = hangar.Bays.OrderBy(bay => bay.BayNumber).ToArray();
-            PropText("Storage",$"{bays.Count(bay => bay.Occupied)} / {bays.Length} occupied");
             if (bays.Length > 1)
             {
                 int index = Array.IndexOf(bays, hangar);
@@ -208,12 +269,6 @@ namespace AirCity.Dev
                     () => airfield.SelectHangar(bays[index - 1]), () => airfield.SelectHangar(bays[index + 1]),
                     "Select a parking spot and its lease", index > 0, index < bays.Length - 1);
             }
-            PropText("Rent",$"${hangar.Spec.Rent:N0} / 30 days");
-            PropText("Earned",$"${hangar.RentEarned:N0}");
-            var access = hangar.AccessProblem;
-            if (access != null) Danger(access); else Note("Taxiway connected · paved approach ready");
-            if (airfield.game == null || airfield.game.Sandbox) Note("Sandbox · finances are paused.");
-            Section("RESIDENT AIRCRAFT");
             if (hangar.Occupied)
             {
                 PropText("Tenant",hangar.TenantName);
@@ -221,41 +276,45 @@ namespace AirCity.Dev
                 PropText("Tail",hangar.Registration);
                 var flight=hangar.ResidentAircraft!=null ? airfield.airport.Traffic.FlightOf(hangar.ResidentAircraft) : null;
                 PropText("Location",flight!=null ? flight.Status : hangar.ResidentInBay ? "Stored in bay" : hangar.ResidentPresent ? "Outside on airport" : "Off airport");
-                if (hangar.ResidentPresent)
-                    Buttons(B(hangar.ResidentInBay ? "Taxi to stand" : "Taxi into hangar",()=>
-                    {
-                        bool moved=hangar.ResidentInBay ? hangar.TaxiToStand(out hangarMessage) : hangar.TaxiIntoHangar(out hangarMessage);
-                        if (moved) HangarChanged();
-                    },"Use the connected taxiways; aircraft are pushed out nose-in and taxi at walking pace through the doorway",enabled:!hangar.ResidentTravelling && access==null));
                 Buttons(B("End lease",()=> { hangar.EndLease(); HangarChanged(); },"Return the resident to its bay before ending the lease",enabled:hangar.CanEndLease,danger:true));
-            }
-            else
-            {
-                var types = airfield.airport.aircraftTypes.Where(hangar.CanStore).Distinct().ToArray();
-                if (types.Length == 0) Note("No compatible aircraft are available.");
-                else
+                if (!hangar.ResidentPresent) return null;
+                return B(hangar.ResidentInBay ? "Taxi to stand" : "Taxi into hangar", () =>
                 {
-                    hangarTypeIndex = (hangarTypeIndex % types.Length + types.Length) % types.Length;
-                    var type = types[hangarTypeIndex];
-                    string typeAccess = access ?? hangar.AccessFor(type);
-                    if (access == null && typeAccess != null) Danger(typeAccess);
-                    PropStepper("Aircraft",type.TypeName,()=>hangarTypeIndex--,()=>hangarTypeIndex++,"Choose the resident aircraft type",types.Length>1,types.Length>1);
-                    HangarText("Tenant","tenant",()=>hangarTenant,v=>hangarTenant=v,48);
-                    HangarText("Tail","tail",()=>hangarRegistration,v=>hangarRegistration=v,10);
-                    Buttons(B("Start lease",()=>
-                    {
-                        if (hangar.TryLease(type,hangarTenant,hangarRegistration,out hangarMessage)) HangarChanged();
-                    },"Reserve this bay for the named operator's aircraft",enabled:typeAccess==null));
-                }
+                    bool moved = hangar.ResidentInBay ? hangar.TaxiToStand(out hangarMessage) : hangar.TaxiIntoHangar(out hangarMessage);
+                    if (moved) HangarChanged();
+                }, "Use the connected taxiways. Aircraft taxi at walking pace through the doorway.",
+                    enabled: !hangar.ResidentTravelling && access == null);
             }
-            if (hangarMessage != null) Danger(hangarMessage);
-            if (airfield.HangarProblem != null) Danger(airfield.HangarProblem);
+
+            var types = airfield.airport.aircraftTypes.Where(hangar.CanStore).Distinct().ToArray();
+            if (types.Length == 0)
+            {
+                Note("No compatible aircraft are available.");
+                return null;
+            }
+            hangarTypeIndex = (hangarTypeIndex % types.Length + types.Length) % types.Length;
+            var type = types[hangarTypeIndex];
+            string typeAccess = access ?? hangar.AccessFor(type);
+            PropStepper("Aircraft", type.TypeName, () => hangarTypeIndex--, () => hangarTypeIndex++, "Choose the resident aircraft type",
+                types.Length > 1, types.Length > 1);
+            HangarText("Tenant", "tenant", () => hangarTenant, v => hangarTenant = v, 48);
+            HangarText("Tail", "tail", () => hangarRegistration, v => hangarRegistration = v, 10);
+            if (access == null && typeAccess != null) Danger(typeAccess);
+            return B("Start lease", () =>
+            {
+                if (hangar.TryLease(type, hangarTenant, hangarRegistration, out hangarMessage)) HangarChanged();
+            }, "Reserve this bay for the named operator's aircraft", enabled: typeAccess == null);
+        }
+
+        Btn HangarBuilding(SmallHangar hangar)
+        {
             Section("BUILDING");
             string door = hangar.Size == HangarSize.Small ? "doors" : "door";
-            Buttons(B((hangar.DoorsOpen ? "Close " : "Open ") + door, () => { hangar.SetDoorsOpen(!hangar.DoorsOpen); HangarChanged(); },
-                "The doorway stays clear while an aircraft is moving", enabled: !hangar.DoorsOpen || hangar.CanCloseDoors));
+            PropText(hangar.Size == HangarSize.Small ? "Doors" : "Door", hangar.DoorsOpen ? "Open" : "Closed");
             Buttons(B("Build another",()=> { airfield.SetHangarSize(hangar.Size); airfield.SetTool(DevTool.Hangar); },"Place another hangar of this size"));
             Buttons(B("Demolish hangar",()=>airfield.DeleteSelection(),"End every bay lease before demolition",enabled:hangar.CanDemolish,danger:true));
+            return B((hangar.DoorsOpen ? "Close " : "Open ") + door, () => { hangar.SetDoorsOpen(!hangar.DoorsOpen); HangarChanged(); },
+                "The doorway stays clear while an aircraft is moving", enabled: !hangar.DoorsOpen || hangar.CanCloseDoors);
         }
 
         void HangarChanged()
@@ -280,8 +339,9 @@ namespace AirCity.Dev
         {
             var focused = GUI.GetNameOfFocusedControl();
             bool ours = focused != null && focused.StartsWith(HangarFocus,StringComparison.Ordinal);
-            bool showing = airfield?.Tool == DevTool.Select && airfield.SelectedHangar != null && !airfield.SelectedHangar.Occupied;
-            if (ours && (!showing || Event.current.type == EventType.MouseDown && !DevGui.PointerOverHud ||
+            bool showing = hangarPage == HangarPage.Aircraft && !DeicingManagementOpen &&
+                Subject() is SmallHangar hangar && !hangar.Occupied;
+            if (ours && (!showing || Event.current.type == EventType.MouseDown && !hangarBody.Contains(Event.current.mousePosition) ||
                 Event.current.type == EventType.KeyDown && (Event.current.keyCode == KeyCode.Return || Event.current.keyCode == KeyCode.Escape)))
             { GUI.FocusControl(null); ours = false; }
             if (ours) { DevGui.KeyboardCaptured = true; hangarCapturedKeyboard = true; }

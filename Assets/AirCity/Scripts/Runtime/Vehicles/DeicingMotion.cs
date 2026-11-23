@@ -494,6 +494,7 @@ namespace AirCity.Vehicles
         {
             var boxes = new List<Box>();
             foreach (var hangar in airport.Hangars) boxes.Add(hangar.BuildingBox);
+            foreach (var school in airport.FlyingSchools) boxes.Add(school.BuildingBox);
             var assets = Resources.Load<DeicingAssets>("DeicingAssets");
             if (assets != null && assets.tankType != null)
                 foreach (var area in airport.Deicing.WorkAreas)

@@ -181,7 +181,7 @@ namespace AirCity.Dev
             var stood = new List<Aircraft.Aircraft>();
             foreach (var a in Aircraft.Aircraft.All)
             {
-                if (a == null || a.type == null || SmallHangar.OfResident(a)!=null || traffic.FlightOf(a) != null || a.Moving || a.transform.position.y > 1f) continue;
+                if (a == null || a.type == null || SmallHangar.OfResident(a)!=null || FlyingSchool.OfTrainer(a)!=null || traffic.FlightOf(a) != null || a.Moving || a.transform.position.y > 1f) continue;
                 if (!parkedSince.ContainsKey(a)) parkedSince[a] = now;
                 stood.Add(a);
             }

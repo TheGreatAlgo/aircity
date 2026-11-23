@@ -117,6 +117,7 @@ namespace AirCity.EditorTools.World
                 profile.markings = CopyMaterial("PublicRoadMarkings", AirfieldSetup.Material("Paint"));
                 AssetDatabase.CreateAsset(profile, path);
             }
+            if (profile.medianGrass == null) { profile.medianGrass = MedianGrassMaterial(); EditorUtility.SetDirty(profile); }
             return profile;
         }
 
@@ -135,6 +136,22 @@ namespace AirCity.EditorTools.World
             if (mat != null) return mat;
             mat = new Material(Shader.Find(unlit ? "Universal Render Pipeline/Unlit" : "Universal Render Pipeline/Lit")) { name = name };
             mat.SetColor("_BaseColor", color); mat.SetFloat("_Smoothness", .25f); AssetDatabase.CreateAsset(mat, path); return mat;
+        }
+
+        /// <summary>The grass on raised medians: the airfield's grass surface (texture, clumps and dry patches), a
+        /// little darker and lusher than mown airfield grass. An older plain-green material is upgraded in place.</summary>
+        public static Material MedianGrassMaterial()
+        {
+            string path = Root + "/Roads/Materials/MedianGrass.mat";
+            var grass = AirfieldSetup.Material("Grass");
+            var mat = AssetDatabase.LoadAssetAtPath<Material>(path);
+            if (grass == null) return mat != null ? mat : SolidMaterial("MedianGrass", new Color(.33f, .45f, .22f));
+            if (mat != null && mat.shader == grass.shader) return mat;
+            if (mat == null) { mat = new Material(grass) { name = "MedianGrass" }; AssetDatabase.CreateAsset(mat, path); }
+            else { mat.shader = grass.shader; mat.CopyPropertiesFromMaterial(grass); mat.name = "MedianGrass"; }
+            mat.SetColor("_Tint", new Color(.9f, .96f, .86f)); mat.SetFloat("_MacroStrength", .2f);
+            EditorUtility.SetDirty(mat);
+            return mat;
         }
 
         /// <summary>Kerbs and median barriers: light concrete (their meshes are two-sided).</summary>

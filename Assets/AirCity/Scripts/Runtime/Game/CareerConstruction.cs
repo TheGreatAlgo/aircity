@@ -162,6 +162,7 @@ namespace AirCity.Game
             foreach (var a in airport.aprons) if (TouchesFootprint(p, radius, a.outline)) return true;
             foreach (var t in airport.terminals) if (TouchesFootprint(p, radius, t.Outline())) return true;
             foreach (var h in airport.Hangars) if (TouchesFootprint(p, radius, h.Pad)) return true;
+            foreach (var school in airport.FlyingSchools) foreach (var site in school.Footprints(false)) if (TouchesFootprint(p, radius, site)) return true;
             foreach (var d in airport.Depots) if (Vector2.Distance(p, Geo.XZ(d.transform.localPosition)) < radius + 35f) return true;
             foreach (var d in airport.GetComponentsInChildren<AirCity.Vehicles.BaggageDepot>()) if (Vector2.Distance(p, d.PaintArea.centre) < radius + Mathf.Max(d.PaintArea.width, d.PaintArea.length)) return true;
             return false;

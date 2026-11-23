@@ -43,6 +43,8 @@ namespace AirCity.Airfield
         [Tooltip("Keep the surrounding natural ground instead of drawing mown grass bands.")]
         public bool naturalEdges;
         public RoadStructure structure;
+        public RoadBridgeDesign bridgeDesign;
+        public TunnelPortalStyle tunnelPortalStyle;
         public AlignmentShape alignment;
         [Tooltip("Grass length (cm) on the verges either side (paved taxiways). Grows; the mowers cut it.")]
         [Min(0f)] public float vergeGrass = RunwayRules.CutGrass;
@@ -62,7 +64,7 @@ namespace AirCity.Airfield
         internal TaxiwayEdge CopyState(int id, int a, int b) => new TaxiwayEdge
         {
             id = id, a = a, b = b, width = width, surface = surface, lit = lit, wear = wear, snow = snow, grass = grass,
-            road = road, naturalEdges = naturalEdges, vergeGrass = vergeGrass,structure=structure,alignment=alignment,
+            road = road, naturalEdges = naturalEdges, vergeGrass = vergeGrass,structure=structure,bridgeDesign=bridgeDesign,tunnelPortalStyle=tunnelPortalStyle,alignment=alignment,
         };
     }
 
@@ -173,7 +175,7 @@ namespace AirCity.Airfield
             foreach(var e in data.edges)
             {
                 if(!oldEdges.TryGetValue(e.id,out var edge))edge=e.CopyState(e.id,e.a,e.b);
-                else{edge.a=e.a;edge.b=e.b;edge.width=e.width;edge.surface=e.surface;edge.lit=e.lit;edge.road=e.road;edge.naturalEdges=e.naturalEdges;edge.structure=e.structure;edge.alignment=e.alignment;}
+                else{edge.a=e.a;edge.b=e.b;edge.width=e.width;edge.surface=e.surface;edge.lit=e.lit;edge.road=e.road;edge.naturalEdges=e.naturalEdges;edge.structure=e.structure;edge.bridgeDesign=e.bridgeDesign;edge.tunnelPortalStyle=e.tunnelPortalStyle;edge.alignment=e.alignment;}
                 edges.Add(edge);
             }
             nextId=data.next;paths.Clear();
@@ -299,7 +301,9 @@ namespace AirCity.Airfield
                     existing.surface = surface;
                     existing.road = road;
                     existing.naturalEdges = naturalEdges;
-                    existing.structure=structure;existing.alignment=path.Slice(stops[i].t,stops[i+1].t);
+                    existing.structure=structure;if(structure!=RoadStructure.Elevated)existing.bridgeDesign=RoadBridgeDesign.Automatic;
+                    if(structure!=RoadStructure.Tunnel)existing.tunnelPortalStyle=TunnelPortalStyle.Rectangular;
+                    existing.alignment=path.Slice(stops[i].t,stops[i+1].t);
                     existing.lit = lit && surface.IsPaved() && road == RoadClass.None;
                     made.Add(existing);
                     continue;
@@ -583,7 +587,8 @@ namespace AirCity.Airfield
             stand.id = nextId++;
             stand.heading = Mathf.Repeat(stand.heading, 360f);
             int number = 1;
-            while (stands.Exists(x => x.kind == stand.kind && x.number == number)) number++;
+            // a facility's own tie-downs are numbered apart (T1, T2, ...), so public stand numbers stay as they are
+            while (stands.Exists(x => x.kind == stand.kind && x.Owned == stand.Owned && x.number == number)) number++;
             stand.number = number;
             stands.Add(stand);
             return stand;
@@ -678,12 +683,15 @@ namespace AirCity.Airfield
         /// <summary>Does a stand's pad stay clear of every other stand's (sharing an edge is fine), off the runways
         /// (pavement and shoulders), off the roads (touching one is fine: RoadAccess) and, for a parking stand, off
         /// every taxiway but those along its front line (StandAcross)?</summary>
-        public bool Fits(StandLayout layout)
+        public bool Fits(StandLayout layout) => Fits(layout, null);
+
+        /// <summary>Fits, leaving out the stands and buildings of one facility (its Stand.owner id) being re-placed.</summary>
+        public bool Fits(StandLayout layout, string exceptOwner)
         {
             if (layout == null) return false;
             foreach (var st in stands)
             {
-                if (st == layout.stand) continue;
+                if (st == layout.stand || (!string.IsNullOrEmpty(exceptOwner) && st.owner == exceptOwner)) continue;
                 var other = Layout(st);
                 if (other != null && layout.Overlaps(other)) return false;
             }
@@ -697,6 +705,12 @@ namespace AirCity.Airfield
             {
                 foreach (var hangar in airport.Hangars)
                     if (layout.Overlaps(hangar.Pad)) return false;
+                foreach (var school in airport.FlyingSchools)
+                {
+                    if (school.SiteId == exceptOwner || school.SiteId == layout.stand.owner) continue;
+                    foreach (var site in school.Footprints(false))
+                        if (layout.Overlaps(site)) return false;
+                }
                 foreach (var r in airport.Runways)
                 {
                     var a = Geo.XZ(r.start);
@@ -1302,24 +1316,50 @@ namespace AirCity.Airfield
         }
 
         ulong structureTerrainSignature;
+        readonly Dictionary<int,RoadBridgeDesign> visibleBridgeDesigns=new Dictionary<int,RoadBridgeDesign>();
+        internal RoadBridgeDesign BridgeDesignFor(int id)=>visibleBridgeDesigns.TryGetValue(id,out var design)?design:RoadBridgeDesign.Piers;
         ulong StructureTerrainSignature()
         {
             ulong hash=1469598103934665603UL;
             var terrain=Airport?.TerrainHeight;
-            foreach(var edge in edges)if(edge.structure!=RoadStructure.Ground)
+            var water=Airport?.BridgeWaterHeight;
+            var tunnelNodes = edges.Where(e => e.structure == RoadStructure.Tunnel).SelectMany(e => new[] { e.a, e.b }).ToHashSet();
+            var structureNodes = edges.Where(e => e.structure != RoadStructure.Ground).SelectMany(e => new[] { e.a, e.b }).ToHashSet();
+            foreach (var edge in edges)
             {
-                var path=Path(edge);int count=Mathf.Max(1,Mathf.CeilToInt(path.Length/4f));
-                for(int i=0;i<=count;i++)for(int side=-1;side<=1;side++)
+                bool bridge = edge.structure == RoadStructure.Elevated;
+                bool connector = edge.IsRoad && edge.structure == RoadStructure.Ground && structureNodes.Contains(edge.a) &&
+                    structureNodes.Contains(edge.b) && Path(edge).Length <= RoadStructureBuilder.ShortStructureGap;
+                if (!bridge && edge.structure == RoadStructure.Ground &&
+                    (!edge.IsRoad || !connector && !tunnelNodes.Contains(edge.a) && !tunnelNodes.Contains(edge.b) &&
+                        !RoadStructureBuilder.RetainsBank(Path(edge), edge.width * .5f + TaxiwayBuilder.StructureVerge,
+                            terrain ?? (_ => 0f), water))) continue;
+                var path = Path(edge);
+                float width = edge.width + 2f * (bridge ? 4f : TaxiwayBuilder.StructureVerge + RoadStructureBuilder.WallThickness);
+                int count = Mathf.Max(1, Mathf.CeilToInt(path.Length / (connector ? RoadStructureBuilder.WallStep :
+                    bridge ? 4f : 2f * RoadStructureBuilder.WallStep)));
+                int across = bridge ? 2 : Mathf.Max(2, Mathf.CeilToInt(width / (2f * RoadStructureBuilder.WallStep)));
+                for (int i = 0; i <= count; i++)
+                for (int j = 0; j <= across; j++)
                 {
-                    var p=Geo.XZ(path.Offset(path.Length*i/count,side*edge.width*.5f));
-                    unchecked{hash^=(uint)BitConverter.SingleToInt32Bits(terrain?.Invoke(p)??0f);hash*=1099511628211UL;}
+                    var point = Geo.XZ(path.Offset(path.Length * i / count, (j / (float)across - .5f) * width));
+                    unchecked
+                    {
+                        hash ^= (uint)BitConverter.SingleToInt32Bits(terrain?.Invoke(point) ?? 0f);
+                        hash *= 1099511628211UL;
+                        if (water != null)
+                        {
+                            hash ^= (uint)BitConverter.SingleToInt32Bits(water(point) ?? float.NegativeInfinity);
+                            hash *= 1099511628211UL;
+                        }
+                    }
                 }
             }
             return hash;
         }
         public void RefreshStructures()
         {
-            if(edges.Any(e=>e.structure!=RoadStructure.Ground)&&StructureTerrainSignature()!=structureTerrainSignature)Rebuild();
+            if (edges.Any(e => e.IsRoad) && StructureTerrainSignature() != structureTerrainSignature) Rebuild();
         }
 
         public void Rebuild()
@@ -1359,8 +1399,9 @@ namespace AirCity.Airfield
                 builder.Warp(surface.mesh,layouts);builder.Warp(paint.mesh,layouts,true);builder.Warp(lights.glows,layouts,true);
                 builder.Warp(lights.fixtures,layouts,false,true);builder.Warp(verges.mesh,layouts);
             }
-            var ownership=AirfieldRoadGeometry.Ownership(surface.mesh,builder.owners);
-            var structures=AirfieldRoadGeometry.Structures(airport,this,builder,ownership);GroundOwnership=ownership;
+            visibleBridgeDesigns.Clear();
+            var structures = AirfieldRoadGeometry.Build(airport, this, builder, surface.mesh, out var ownership, visibleBridgeDesigns);
+            GroundOwnership=ownership;
             structurePart??=new AirfieldPart(transform,"Road structures");
             if(structureMaterial==null)structureMaterial=RoadStructureBuilder.Material(null);
             structurePart.Set(structures.Create("Airside bridges and tunnels",structurePart.Target),structureMaterial);

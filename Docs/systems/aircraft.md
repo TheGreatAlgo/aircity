@@ -7,7 +7,10 @@ as an `AircraftType` ScriptableObject. Gameplay reads dimensions, wheels, servic
 from that asset only, never from mesh positions or per-model constants. One prefab per type carries the runtime
 components (picking/outline, livery, lights, ground motion, control surfaces, cargo doors, spinners). The scale target is ~100
 aircraft of mixed types, mostly zoomed out, so the far LOD is 2 draw calls, every material is shared, and light
-glows run on the GPU. Eight types exist: `Cessna172` (see `Docs/assets/Cessna172.md`), `Turboprop`
+glows run on the GPU. Twelve types exist: `LowWingPiston` (see `Docs/assets/LowWingPiston.md`),
+`Cessna172` (`Docs/assets/Cessna172.md`), `LightJet`
+(`Docs/assets/LightJet.md`), `ExecutiveJet` (`Docs/assets/ExecutiveJet.md`),
+`FlagshipJet` (`Docs/assets/FlagshipJet.md`), `Turboprop`
 (`Docs/assets/Turboprop.md`), `Narrowbody` (`Docs/assets/Narrowbody.md`), `Supersonic` (`Docs/assets/Supersonic.md`,
 the only type with afterburners), `Trijet` (`Docs/assets/Trijet.md`), `Widebody` (`Docs/assets/Widebody.md`),
 `DoubleDeck` (`Docs/assets/DoubleDeck.md`) and `Quadjet` (`Docs/assets/Quadjet.md`). Liveries are documented in `Docs/systems/liveries.md`; this doc covers only how they
@@ -25,7 +28,11 @@ and its seat count, so the letter painted at a stand's entrance tells straight a
 
 | Model (internal, `AircraftType.model`) | `Designator` | `TypeName` | `displayName` (its kind) |
 |---|---|---|---|
+| `LowWingPiston` | A2 | Starling A2 | Low-wing trainer |
 | `Cessna172` | A4 | Starling A4 | Light single |
+| `LightJet` | A6 | Starling A6 | Compact private jet |
+| `ExecutiveJet` | B8 | Starling B8 | Executive twinjet |
+| `FlagshipJet` | B12 | Starling B12 | Flagship private jet |
 | `Turboprop` | B50 | Starling B50 | Regional turboprop |
 | `Narrowbody` | C180 | Starling C180 | Narrowbody twinjet |
 | `Supersonic` | D100 | Starling D100 | Supersonic airliner |
@@ -44,8 +51,8 @@ instead of real ones. `AircraftTypeTests.Designator_IsSizeCodeAndSeats_AndNoReal
 
 ## Cargo doors
 
-All 12 cargo service points across the five aircraft have generated openings, lined recesses and solid painted
-door panels. `Common/cargo_doors.py` cuts panels from the baked skin during stage 2, interpolating the existing
+Cargo doors have generated openings, lined recesses and solid painted panels. `Common/cargo_doors.py`
+cuts panels from the baked skin during stage 2, interpolating the existing
 UVs and normals so liveries continue across each closed hatch. `model.CARGO_HINGES` selects the hinge, angle and
 duration; the existing `POINTS` define the opening dimensions. Stage 1 still bakes the closed skin. Regenerate
 with `finish.py --model <Model>`; rerun stage 1 first only when its cache is absent or the base geometry changes.

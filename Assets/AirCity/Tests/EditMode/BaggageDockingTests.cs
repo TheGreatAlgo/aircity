@@ -46,7 +46,7 @@ namespace AirCity.Tests
             Assert.That(plan.Clear(penetration, loader), Is.False, "The docking exception must not permit the nose to pass the sill.");
         }
 
-        [TestCase("Cessna172")] [TestCase("Narrowbody")] [TestCase("Widebody")] [TestCase("DoubleDeck")] [TestCase("Quadjet")]
+        [TestCase("LowWingPiston")] [TestCase("Cessna172")] [TestCase("Narrowbody")] [TestCase("Widebody")] [TestCase("DoubleDeck")] [TestCase("Quadjet")]
         [TestCase("Turboprop")] [TestCase("Trijet")] [TestCase("Supersonic")]
         public void Aircraft_HaveGeneratedClearancePartsAndUsableHoldDepth(string model)
         {

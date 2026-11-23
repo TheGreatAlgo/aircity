@@ -6,6 +6,7 @@ namespace AirCity.World
     /// <summary>Temporary editing cutaway. It changes rendering and picking only, never terrain, saves or routing.</summary>
     public sealed class UndergroundRoadView : MonoBehaviour
     {
+        public const float Headroom = 2.5f;
         public bool Visible {get;private set;}
         public float Height {get;private set;}
         readonly List<(Behaviour item,bool enabled)> hidden=new List<(Behaviour,bool)>();
@@ -29,7 +30,9 @@ namespace AirCity.World
             {
                 floor=GameObject.CreatePrimitive(PrimitiveType.Plane);floor.name="Underground construction grid";
                 floor.hideFlags=HideFlags.DontSave;floor.transform.SetParent(transform,false);
-                Destroy(floor.GetComponent<Collider>());
+                var collider = floor.GetComponent<Collider>();
+                collider.enabled = false;
+                Release(collider);
                 floorMaterial=new Material(Resources.Load<Shader>("UndergroundFloor")){hideFlags=HideFlags.DontSave};
                 floor.GetComponent<Renderer>().sharedMaterial=floorMaterial;
                 floor.transform.localScale=new Vector3(ValleyWorld.Size/10f,1,ValleyWorld.Size/10f);
@@ -55,7 +58,12 @@ namespace AirCity.World
             foreach(var item in hidden)if(item.item!=null)item.item.enabled=item.enabled;hidden.Clear();
             foreach(var item in renderers)if(item.item!=null)item.item.enabled=item.enabled;renderers.Clear();
         }
-        void OnDestroy(){if(floor!=null)Destroy(floor);if(floorMaterial!=null)Destroy(floorMaterial);}
+        static void Release(Object item)
+        {
+            if (item == null) return;
+            if (Application.isPlaying) Destroy(item); else DestroyImmediate(item);
+        }
+        void OnDestroy(){Release(floor);Release(floorMaterial);}
         void OnDisable(){Restore();Visible=false;Shader.SetGlobalFloat("_AirCityUndergroundCut",0);}
     }
 }

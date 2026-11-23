@@ -12,6 +12,7 @@ using Stopwatch = System.Diagnostics.Stopwatch;
 namespace AirCity.Tests.Aircraft
 {
     /// <summary>Runs once per aircraft type: every type must satisfy the same livery and LOD contract.</summary>
+    [TestFixture("LowWingPiston")]
     [TestFixture("Cessna172")]
     [TestFixture("Narrowbody")]
     [TestFixture("Widebody")]
@@ -20,6 +21,9 @@ namespace AirCity.Tests.Aircraft
     [TestFixture("Turboprop")]
     [TestFixture("Trijet")]
     [TestFixture("Supersonic")]
+    [TestFixture("LightJet")]
+    [TestFixture("ExecutiveJet")]
+    [TestFixture("FlagshipJet")]
     public class AircraftLiveryTests
     {
         readonly string model;
@@ -96,8 +100,8 @@ namespace AirCity.Tests.Aircraft
         [Test]
         public void BodyTexture_MatchesGeneratorReference()
         {
-            // the generator composed ClassicBlue in numpy; the C# compositor must agree
-            var tex = AircraftLiveryCompositor.GetBodyTexture(profile, Example("ClassicBlue"));
+            // The generator composes the first example as the default paint.
+            var tex = AircraftLiveryCompositor.GetBodyTexture(profile, Example(profile.examples[0].name));
             var a = Pixels(tex);
             var b = Pixels(profile.defaultBody);
             Assert.AreEqual(b.Length, a.Length);

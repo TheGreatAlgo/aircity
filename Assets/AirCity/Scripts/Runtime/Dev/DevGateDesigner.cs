@@ -42,6 +42,7 @@ namespace AirCity.Dev
         Vector2 scroll;
         int tab, bridgeIndex, headIndex, presetIndex;
         int terminalIndex;
+        bool terminalWorkspace;
         bool pause = true, pausedByUs;
         float previousSpeed;
         string presetName = "My gate";
@@ -78,7 +79,7 @@ namespace AirCity.Dev
                 Try(() => saved = store.List());
             }
             Stand = stand != null && airport.Taxiways.stands.Contains(stand) ? stand :
-                airport.Taxiways.stands.FirstOrDefault(x => !x.DeIcing && x.exit == StandExit.PushBack);
+                airport.Taxiways.stands.FirstOrDefault(x => !x.DeIcing && !x.Owned && x.exit == StandExit.PushBack);
             Aircraft = DefaultAircraft();
             bridgeIndex = headIndex = 0; tab = 0; buildTarget = 0; drafts.Clear();
             NewBridgeMode = Stand == null || Stand.bridges.Count == 0;
@@ -97,6 +98,7 @@ namespace AirCity.Dev
             if (pausedByUs && Session != null) { if (Session.Paused) Session.Paused = previousSessionPause; }
             else if (pausedByUs && Airport != null && Mathf.Approximately(Airport.timeScale, 0f)) Airport.timeScale = previousSpeed;
             pausedByUs = false;
+            terminalWorkspace = false;
             IsOpen = false; DevGui.GateDesignerOpen = false; DevGui.KeyboardCaptured = false;
         }
 
@@ -118,24 +120,28 @@ namespace AirCity.Dev
         public void SelectAircraft(AircraftType type) { Aircraft = type; preview.Dispose(); drafts.Clear(); }
         public void BeginBridgePlacement(DevAirfieldTool airfield)
         {
+            terminalWorkspace = false;
             tool = airfield; tab = 0; buildTarget = 0; NewBridgeMode = true; scroll = Vector2.zero;
             handles.Clear(); drafts.Clear();
             tool.SetTool(DevTool.Bridge); tool.SetPlacingHead(false); tool.SetBridgeDesign(BridgeDraft);
         }
         public void BeginStandPlacement(DevAirfieldTool airfield)
         {
+            terminalWorkspace = false;
             tool = airfield; tab = 0; buildTarget = 3; scroll = Vector2.zero; handles.Clear(); drafts.Clear();
             tool.SetTool(DevTool.Stand);
         }
         public void FocusBridge(DevAirfieldTool airfield, Stand stand, JetBridge bridge)
         {
             if (stand == null || !stand.bridges.Contains(bridge)) return;
+            terminalWorkspace = false;
             bool changeAircraft = Stand != stand || Aircraft == null;
             tool = airfield; Stand = stand; if (changeAircraft) Aircraft = DefaultAircraft(); bridgeIndex = stand.bridges.IndexOf(bridge);
             NewBridgeMode = false; buildTarget = tab = 0; scroll = Vector2.zero; drafts.Clear(); handles.Clear();
         }
         public void FocusParking(DevAirfieldTool airfield, Stand stand)
         {
+            terminalWorkspace = false;
             bool changeAircraft = Stand != stand || Aircraft == null;
             tool = airfield; Stand = stand; if (changeAircraft) Aircraft = DefaultAircraft(); buildTarget = 3; tab = 0;
             scroll = Vector2.zero; drafts.Clear(); handles.Clear(); preview.Dispose();
@@ -210,7 +216,9 @@ namespace AirCity.Dev
         public void SelectTerminal(Terminal terminal)
         {
             if (Airport == null || !Airport.terminals.Contains(terminal)) return;
+            terminalWorkspace = true;
             terminalIndex = Airport.terminals.IndexOf(terminal); buildTarget = 2; tab = 0;
+            exteriorPage = 0; facadeFace = -1; Message = null;
             scroll = Vector2.zero; drafts.Clear(); preview.Dispose(); SetPreview(false);
         }
 

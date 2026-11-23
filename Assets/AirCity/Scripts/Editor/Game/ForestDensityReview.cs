@@ -257,7 +257,7 @@ namespace AirCity.EditorTools.Game
         }
 
         // A mapped, reasonably gentle interior forest patch. This depends on geography, never on the candidate scatter.
-        static Vector2 ForestTarget(ValleyWorld world)
+        internal static Vector2 ForestTarget(ValleyWorld world)
         {
             Vector2 best = Vector2.zero; float bestScore = float.NegativeInfinity;
             for (int z = 48; z < ValleyWorld.Resolution - 48; z += 8)

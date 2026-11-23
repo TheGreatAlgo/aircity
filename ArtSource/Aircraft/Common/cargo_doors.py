@@ -1,4 +1,4 @@
-"""Cut cargo hatches from the baked skin, retaining every interpolated UV and shading normal.
+"""Cut hinged doors from the baked skin, retaining every interpolated UV and shading normal.
 
 This runs in stage 2: the closed skin remains the stage-1 bake surface, so a door carries exactly the
 same paint as its surround. Door definitions come from the model's gameplay points and CARGO_HINGES.
@@ -40,6 +40,17 @@ def definitions(model):
                         holdDepth=depth, hold=hold, holdSideMin=side_min, holdSideMax=side_max, holdHeight=h,
                         holdFloorStart=max(0,abs(x)-half_width) if hold else .05))
     return out
+
+
+def airstair_definition(model):
+    if not hasattr(model, "AIRSTAIR"):
+        return None
+    point, angle, seconds = model.AIRSTAIR
+    _, _, pos, _, size = next(p for p in model.POINTS if p[:2] == ("PassengerDoor", point))
+    x, y, z = pos
+    return dict(point=point, transform="Airstair_" + point, pivot=(x + .012, y, z),
+                openAngle=angle, seconds=seconds, position=pos, size=size, sign=1,
+                holdDepth=.76, hold=None, airstair=True)
 
 
 def _clip(poly, axis, value, greater):
@@ -130,7 +141,7 @@ def _face(points, material, layers, tag="cargo_liner"):
 
 
 def build(model, body):
-    """Return separately hinged doors; leave actual holes, jambs and recessed hold liners in Body."""
+    """Return separately hinged doors and leave the openings and their liners in Body."""
     layers, records = _read(body.data)
     materials = list(body.data.materials)
     for name in ("Metal", "DarkMetal", "Dark"):
@@ -138,7 +149,11 @@ def build(model, body):
             materials.append(bpy.data.materials[name])
     metal, dark_metal, dark = (materials.index(bpy.data.materials[n]) for n in ("Metal", "DarkMetal", "Dark"))
     doors = []
-    for definition in definitions(model):
+    openings = definitions(model)
+    airstair = airstair_definition(model)
+    if airstair:
+        openings.append(airstair)
+    for definition in openings:
         x, y, z = definition["position"]
         w, h = definition["size"]
         sign = definition["sign"]
@@ -169,7 +184,7 @@ def build(model, body):
             if inside:
                 panel.append((inside, mat, face_tag))
         if not panel:
-            raise ValueError(f"{model.NAME}: cargo point {definition['point']} did not intersect the skin")
+            raise ValueError(f"{model.NAME}: door {definition['point']} did not intersect the skin")
 
         # Find the opening's actual polygon boundary, including vertices on the curved fuselage.
         edges = {}
@@ -199,12 +214,14 @@ def build(model, body):
             p[1] = centre[1] + (p[1] - centre[1]) * (1 - 2*gap/w)
             p[2] = centre[2] + (p[2] - centre[2]) * (1 - 2*gap/h)
             return p
+        inner_material = dark_metal if definition.get("airstair") else metal
+        inner_tag = "airstair_inner" if definition.get("airstair") else "cargo_inner"
         for poly, mat, face_tag in panel:
             outer = [v.copy() for v in poly]
             for v in outer:
                 v[:3] = inset(v[:3])
             door_records.append((outer, mat, face_tag))
-            door_records.append(_face([v[:3] + inward*thickness for v in outer[::-1]], metal, layers, "cargo_inner"))
+            door_records.append(_face([v[:3] + inward*thickness for v in outer[::-1]], inner_material, layers, inner_tag))
         for a, b in edges.values():
             ai, bi = inset(a), inset(b)
             door_records.append(_face([bi, ai, ai + inward*thickness, bi + inward*thickness], dark_metal, layers, "cargo_edge"))
@@ -238,6 +255,10 @@ def build(model, body):
                 room_face([[out_x, station-.018, z+.004], [back_x, station-.018, z+.004],
                            [back_x, station+.018, z+.004], [out_x, station+.018, z+.004]], metal)
         pivot = np.array(definition["pivot"])
+        if definition.get("airstair"):
+            by_name = {material.name: i for i, material in enumerate(materials)}
+            for face, material in model.parts.airstair_faces(pivot, definition["openAngle"]):
+                door_records.append(_face(face, by_name[material], layers, "airstair_tread"))
         for poly, _, _ in door_records:
             for v in poly:
                 v[:3] -= pivot
@@ -248,7 +269,7 @@ def build(model, body):
         door.location = pivot
         doors.append(door)
         records = remaining
-        print("CARGO DOOR", model.NAME, definition["point"], "faces", len(panel), "boundary", len(edges))
+        print("DOOR", model.NAME, definition["point"], "faces", len(panel), "boundary", len(edges))
     body.data = _write("Body", records, materials, layers)
     bpy.context.view_layer.update()
     return doors

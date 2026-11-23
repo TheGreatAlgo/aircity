@@ -8,7 +8,7 @@ here = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0,os.path.join(here,"Common"))
 import cargo_doors
 
-for name in ("Cessna172","Narrowbody","Widebody","DoubleDeck","Quadjet","Turboprop","Trijet","Supersonic"):
+for name in ("LowWingPiston","Cessna172","Narrowbody","Widebody","DoubleDeck","Quadjet","Turboprop","Trijet","Supersonic"):
     folder = os.path.join(here,name); sys.path.insert(0,folder)
     for module in ("parts","model"): sys.modules.pop(module,None)
     model = importlib.import_module("model")

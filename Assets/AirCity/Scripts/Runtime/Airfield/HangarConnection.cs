@@ -121,6 +121,8 @@ namespace AirCity.Airfield
                 var park = door - axis * (spec.Depth*.5f) + axis * centre.z + across * centre.x;
                 var stand = new Stand { code = SizeCodes.Of(code), surface = PavementSurface.Concrete, exit = StandExit.PushBack,
                     position = Geo.X0Z(entry), heading = Mathf.Repeat(heading+180f,360f), lane = edge.width };
+                // The hangar stop already centers this aircraft. Use it directly on a wider taxiway too.
+                if (type != null) stand.serviceConfigurations.Add(new StandServiceConfiguration { aircraft = type, stopOffset = 0f });
                 stand.Frame(along,edge.width);
                 layout = new StandLayout { stand = stand, edge = edge, entry = entry, along = along, axis = nose, nose = nose,
                     side = nose, halfWidth = edge.width*.5f, clearance = edge.width*.5f, sin = sin,

@@ -15,22 +15,70 @@ namespace AirCity.World
     {
         /// <summary>Maximum terrain extent of country-road cuts and filled embankments. Local terrain updates include it.</summary>
         public const float EarthworkReach = 192f;
+        public readonly struct GroundLimit
+        {
+            readonly Vector2 direction;
+            readonly float station;
+            readonly bool tunnel;
+
+            internal GroundLimit(Vector2 direction, float station, bool tunnel)
+            {
+                this.direction = direction;
+                this.station = station;
+                this.tunnel = tunnel;
+            }
+
+            internal bool AllowsGrading(Vector2 point, bool nearRoad)
+            {
+                const float spacing = ValleyWorld.Size / (ValleyWorld.Resolution - 1);
+                float past = Vector2.Dot(direction, point) - station;
+                return tunnel ? past <= .001f && (nearRoad || past < -2f * spacing) : nearRoad || past <= 0f;
+            }
+
+            internal bool AllowsFoundation(Vector2 point) => !tunnel || Vector2.Dot(direction, point) <= station + .001f;
+
+            public override int GetHashCode() => HashCode.Combine(direction, station, tunnel);
+        }
+
         public readonly struct Link
         {
             public readonly Vector2 a, b;
             public readonly float heightA, heightB, halfWidth;
             public readonly RoadStructure structure;
-            public Link(Vector3 a, Vector3 b, float halfWidth, RoadStructure structure)
-            { this.a = PublicRoadNetwork.XZ(a); this.b = PublicRoadNetwork.XZ(b); heightA = a.y; heightB = b.y; this.halfWidth = halfWidth; this.structure = structure; }
+            readonly GroundLimit startLimit,endLimit;
+            internal readonly bool retainsBank;
+            public Link(Vector3 a, Vector3 b, float halfWidth, RoadStructure structure,GroundLimit startLimit=default,
+                GroundLimit endLimit=default,bool retainsBank=false)
+            {
+                this.a=PublicRoadNetwork.XZ(a);this.b=PublicRoadNetwork.XZ(b);heightA=a.y;heightB=b.y;this.halfWidth=halfWidth;this.structure=structure;
+                this.startLimit=startLimit;this.endLimit=endLimit;this.retainsBank=retainsBank;
+            }
+            internal bool FormsGroundAt(Vector2 point,float distance)
+            {
+                const float spacing=ValleyWorld.Size/(ValleyWorld.Resolution-1);
+                bool nearRoad = distance < halfWidth + spacing;
+                return startLimit.AllowsGrading(point, nearRoad) && endLimit.AllowsGrading(point, nearRoad);
+            }
+            internal bool AllowsFoundation(Vector2 point) => startLimit.AllowsFoundation(point) && endLimit.AllowsFoundation(point);
         }
         sealed class Arm
         {
             public PublicRoadSegment edge;
             public Vector2 direction;
+            public Vector2 joinRight;
+            public float joinCrown;
             public float halfWidth, length, cut, need;
+            /// <summary>Junctions: how traffic arriving along this road is controlled, where its lines stop (metres from
+            /// the node: the stop line, or the junction's edge where it has none) and whether a crosswalk is painted.</summary>
+            public ApproachControl control;
+            public float stop;
+            public bool crossing;
             /// <summary>Junctions: the kerb from this arm's left mouth corner round to the next arm's right one.</summary>
             public List<Vector2> kerb;
         }
+        /// <summary>How a road's traffic arriving at a junction is controlled, as on North American roads: nothing (the
+        /// road straight through a priority junction: no stop line), a stop sign's stop line (the side road), or signals.</summary>
+        enum ApproachControl { None, Stop, Signal }
         sealed class Junction
         {
             public PublicRoadNode node;
@@ -62,16 +110,27 @@ namespace AirCity.World
         readonly Dictionary<int, Junction> junctions = new Dictionary<int, Junction>();
         readonly PublicRoadProfile rural, airport;
         readonly Func<Vector2,float> groundHeight;
+        readonly Func<Vector2,float,float,float> retainShore;
+        readonly Func<Vector2,float?> waterHeight;
+        readonly PublicRoadGeometry structureContext;
+        readonly bool hasStructures;
         readonly MeshData surface = new MeshData(), shoulder = new MeshData();
         readonly PaintBuilder paint = new PaintBuilder();
-        readonly LandscapeMesh concrete = new LandscapeMesh(), kerbs = new LandscapeMesh(), verges = new LandscapeMesh();
+        readonly LandscapeMesh concrete = new LandscapeMesh(), kerbs = new LandscapeMesh();
+        /// <summary>The grass on raised medians: a surface mesh like the pavement's, drawn with the airfield's grass.</summary>
+        readonly MeshData verges = new MeshData();
         Rect[] roadbedBounds;
         readonly Dictionary<int, float> groundCeilings = new Dictionary<int, float>();
         readonly Dictionary<int, float> groundFloors = new Dictionary<int, float>();
+        readonly Dictionary<int, PublicRoadSegment> portalLining = new Dictionary<int, PublicRoadSegment>();
+        readonly Dictionary<int, bool> retainingBanks = new Dictionary<int, bool>();
 
-        public PublicRoadGeometry(PublicRoadNetwork graph, PublicRoadProfile rural, PublicRoadProfile airport, Func<Vector2, float> groundHeight, ISet<int> segmentIds=null, ISet<int> junctionIds=null, PublicRoadGeometry projectionContext=null,bool generateMeshes=true)
+        public PublicRoadGeometry(PublicRoadNetwork graph, PublicRoadProfile rural, PublicRoadProfile airport, Func<Vector2, float> groundHeight, ISet<int> segmentIds=null, ISet<int> junctionIds=null, PublicRoadGeometry projectionContext=null,bool generateMeshes=true,
+            Func<Vector2,float,float,float> retainShore=null,Func<Vector2,float?> waterHeight=null,PublicRoadGeometry structureContext=null)
         {
-            this.graph = graph; this.rural = rural; this.airport = airport;this.groundHeight=groundHeight;
+            this.graph = graph; this.rural = rural; this.airport = airport;this.groundHeight=groundHeight;this.retainShore=retainShore;
+            this.waterHeight=waterHeight;this.structureContext=structureContext;
+            hasStructures=graph.segments.Any(edge=>edge.structure!=RoadStructure.Ground);
             foreach (var node in graph.nodes)
             {
                 var joint = new Junction { node = node };
@@ -96,7 +155,16 @@ namespace AirCity.World
             // laid out once every node's needs are known: each end of a section gets its share (JunctionShape.Reach)
             foreach (var joint in junctions.Values)
             {
-                if (joint.arms.Count == 2 && StraightOn(joint)) { }
+                if (joint.arms.Count == 2 && StraightOn(joint))
+                {
+                    // Both segments terminate on one cross-section, including nearly straight joins.
+                    var first = joint.arms[0];
+                    var second = joint.arms[1];
+                    var across = Right((first.direction - second.direction).normalized);
+                    first.joinRight = first.edge.a == joint.node.id ? across : -across;
+                    second.joinRight = second.edge.a == joint.node.id ? -across : across;
+                    first.joinCrown = second.joinCrown = (Crown(first.edge) + Crown(second.edge)) * .5f;
+                }
                 else if (joint.arms.Count == 2 && TryCurve(joint)) joint.IsCurve = true;
                 else if (joint.arms.Count >= 2) Shape(joint);
             }
@@ -108,45 +176,96 @@ namespace AirCity.World
                 float start = ArmAt(edge.a, edge.id).cut, end = length - ArmAt(edge.b, edge.id).cut;
                 if (length > .01f && end > start)
                 {
-                    int count=path.shape.curved||path.shape.smooth?Mathf.Max(1,Mathf.CeilToInt((end-start)/8f)):1;
-                    for(int i=0;i<count;i++)
-                    {
-                        var p=Alignment3D.XZ(path.AtDistance(Mathf.Lerp(start,end,i/(float)count)));
-                        var q=Alignment3D.XZ(path.AtDistance(Mathf.Lerp(start,end,(i+1f)/count)));
-                        links.Add(new Link(World(p,Elevation(edge,p)),World(q,Elevation(edge,q)),Width(edge)*.5f+ShoulderWidth(edge),edge.structure));
-                    }
+                    AddLinks(links,edge,path,start,end);
                 }
-                int first = surface.Count, firstShoulder = shoulder.Count;
-                BuildSegment(edge, groundHeight);
-                if (edge.structure == RoadStructure.Ground) RememberGround(first, firstShoulder);
+                int first = surface.Count, firstShoulder = shoulder.Count, firstCut = groundTriangles.Count;
+                var lining = PortalLining(edge);
+                BuildSegment(edge, lining);
+                if (edge.structure == RoadStructure.Ground && lining == null) RememberGround(first, firstShoulder, firstCut, RetainsBank(edge));
             }
             foreach (var junction in junctions.Values)
             {
                 if(junctionIds!=null && !junctionIds.Contains(junction.node.id))continue;
-                int first = surface.Count, firstShoulder = shoulder.Count;
+                int first = surface.Count, firstShoulder = shoulder.Count, firstCut = groundTriangles.Count;
                 if (junction.IsJunction) BuildJunction(junction);
                 else if (junction.IsCurve) BuildCurve(junction);
-                if (junction.arms.Any(a => a.edge.structure == RoadStructure.Ground)) RememberGround(first, firstShoulder);
+                if (junction.arms.Any(a => a.edge.structure == RoadStructure.Ground))
+                    RememberGround(first, firstShoulder, firstCut, junction.arms.Any(a => RetainsBank(a.edge)));
             }
             roadbedBounds = links.Where(l => l.structure == RoadStructure.Ground).Select(l => Rect.MinMaxRect(Mathf.Min(l.a.x, l.b.x) - EarthworkReach,
                 Mathf.Min(l.a.y, l.b.y) - EarthworkReach, Mathf.Max(l.a.x, l.b.x) + EarthworkReach, Mathf.Max(l.a.y, l.b.y) + EarthworkReach)).ToArray();
             if(!generateMeshes)return;
             ProjectPaintOntoPavement(projectionContext);
-            for(int i=0;i<surface.Count;i++)surface.uv1[i]=new Vector4((float)AirfieldKind.Road,-1f);
+            // the kind, and world-mapped texture (-1); z and w are the lanes for tyre wear (LaneVertex)
+            for(int i=0;i<surface.Count;i++)surface.uv1[i]=new Vector4((float)AirfieldKind.Road,-1f,surface.uv1[i].z,surface.uv1[i].w);
+            for(int i=0;i<verges.Count;i++)verges.uv1[i]=new Vector4((float)AirfieldKind.Ground,0f);
             pavement = surface.Apply(null, "Public road pavement"); pavement.RecalculateNormals();
             shoulders = shoulder.Apply(null, "Public road shoulders"); shoulders.RecalculateNormals();
             markings = paint.mesh.Apply(null, "Public road lane markings", true, 4);
             structures = concrete.Create("Public road bridge structures");
             kerbMesh = kerbs.Create("Public road kerbs");
-            medianGrass = verges.Create("Public road median grass");
+            medianGrass = verges.Apply(null, "Public road median grass");
+        }
+
+        /// <summary>A network's layout only (bends, junction cuts, stop lines), with no meshes: for tools that outline
+        /// roads as they are drawn (SectionOutline).</summary>
+        public static PublicRoadGeometry Layout(PublicRoadNetwork graph) =>
+            Compose(graph, null, null, _ => 0f, Array.Empty<PublicRoadGeometry>());
+
+        /// <summary>
+        /// The outline of a section as it is drawn, `half` metres either side of its centreline, between two
+        /// distances along it (from its node a): up one side and back down the other. A bend belongs half to each of
+        /// its two sections, so an outline that reaches a bend carries on round it to the middle of the arc instead
+        /// of running straight to the corner; at a junction it stops at the junction's edge.
+        /// </summary>
+        public bool SectionOutline(PublicRoadSegment edge, float from, float to, float half, List<Vector3> loop)
+        {
+            if (!junctions.TryGetValue(edge.a, out var ja) || !junctions.TryGetValue(edge.b, out var jb)) return false;
+            Arm aa = ja.arms.Find(x => x.edge.id == edge.id), ab = jb.arms.Find(x => x.edge.id == edge.id);
+            if (aa == null || ab == null) return false;
+            var path = graph.Path(edge);
+            float length = path.Length;
+            var centre = new List<(Vector3 p, Vector2 right)>();
+            // the half of a bend's arc on this section's side, in the direction a to b
+            void HalfArc(Junction j, Arm arm, bool leaving)
+            {
+                if (!j.IsCurve || j.arc == null || j.arc.Count < 2) return;
+                var along = Geo.Along(j.arc);
+                float total = along[along.Length - 1];
+                bool first = j.arms[0] == arm;       // the arc starts at arms[0]'s cut
+                var points = first ? Geo.Slice(j.arc, along, 0f, total * .5f) : Geo.Slice(j.arc, along, total * .5f, total);
+                if (first == leaving) points.Reverse();   // leaving the bend: from the arc's middle to this section's cut
+                for (int k = 0; k < points.Count; k++)
+                {
+                    var d = points[Mathf.Min(k + 1, points.Count - 1)] - points[Mathf.Max(k - 1, 0)];
+                    if (d.sqrMagnitude > 1e-8f) centre.Add((World(points[k], j.node.position.y), Right(d.normalized)));
+                }
+            }
+            if (from <= .01f) HalfArc(ja, aa, true);
+            float s0 = Mathf.Max(from, aa.cut), s1 = Mathf.Min(to, length - ab.cut);
+            if (s1 - s0 > .01f)
+            {
+                int count = Mathf.Max(1, Mathf.CeilToInt((s1 - s0) / 4f));
+                for (int i = 0; i <= count; i++)
+                {
+                    float s = Mathf.Lerp(s0, s1, i / (float)count);
+                    var c = SectionPoint(path, aa, ab, s, 0f);
+                    centre.Add((c, Alignment3D.XZ(SectionPoint(path, aa, ab, s, 1f) - c)));
+                }
+            }
+            if (to >= length - .01f) HalfArc(jb, ab, false);
+            if (centre.Count < 2) return false;
+            for (int i = 0; i < centre.Count; i++) loop.Add(centre[i].p - World(centre[i].right, 0f) * half);
+            for (int i = centre.Count - 1; i >= 0; i--) loop.Add(centre[i].p + World(centre[i].right, 0f) * half);
+            return true;
         }
 
         // A composed logical view reuses CPU formations and triangle footprints. Full combined meshes are made
         // lazily for exports/diagnostics; the game renders the independently cached sections directly.
         internal static PublicRoadGeometry Compose(PublicRoadNetwork graph,PublicRoadProfile rural,PublicRoadProfile airport,
-            Func<Vector2,float> height,IReadOnlyList<PublicRoadGeometry> parts)
+            Func<Vector2,float> height,IReadOnlyList<PublicRoadGeometry> parts,Func<Vector2,float,float,float> retainShore=null,Func<Vector2,float?> waterHeight=null)
         {
-            var empty=new HashSet<int>();var result=new PublicRoadGeometry(graph,rural,airport,height,empty,empty,null,false) {pieces=parts};
+            var empty=new HashSet<int>();var result=new PublicRoadGeometry(graph,rural,airport,height,empty,empty,null,false,retainShore,waterHeight) {pieces=parts};
             foreach(var part in parts)
             {
                 result.links.AddRange(part.links);result.groundTriangles.AddRange(part.groundTriangles);result.piers.AddRange(part.piers);
@@ -191,6 +310,15 @@ namespace AirCity.World
         RoadType TypeOf(PublicRoadSegment edge) => edge.Type;
         Arm ArmAt(int node, int edge) => junctions[node].arms.Find(a => a.edge.id == edge);
 
+        static Vector3 SectionPoint(Alignment3D path, Arm start, Arm end, float station, float offset)
+        {
+            if (station <= .0001f && start.joinRight != Vector2.zero)
+                return path.start + World(start.joinRight * offset, 0f);
+            if (station >= path.Length - .0001f && end.joinRight != Vector2.zero)
+                return path.end + World(end.joinRight * offset, 0f);
+            return path.Offset(station, offset, start.cut, end.cut);
+        }
+
         /// <summary>Junctions where a section is too short for the roads that meet it (their strips would overlap).</summary>
         public IEnumerable<PublicRoadNode> MisfitJunctions => junctions.Values.Where(j => j.IsJunction && !j.fits).Select(j => j.node);
 
@@ -214,12 +342,12 @@ namespace AirCity.World
             float alpha = Vector2.Angle(a0.direction, a1.direction) * Mathf.Deg2Rad;
             if (alpha < 25f * Mathf.Deg2Rad) return false;
             float radius = CurveRadius(a0.edge.style), tanHalf = Mathf.Tan(alpha * .5f);
-            float cut = radius / tanHalf, room = Mathf.Min(Reach(j, a0), Reach(j, a1));
+            float cut = radius / tanHalf, room = Mathf.Min(BendReach(j, a0), BendReach(j, a1));
             if (cut > room) { cut = room; radius = cut * tanHalf; }
             if (radius < a0.halfWidth * 1.25f) return false;
             Geo.Fillet(j.p, a0.direction, a1.direction, radius, out var centre);
             j.arc = new List<Vector2>();
-            Geo.Arc(j.arc, centre, j.p + a0.direction * cut, j.p + a1.direction * cut, 2f);
+            Geo.Arc(j.arc, centre, j.p + a0.direction * cut, j.p + a1.direction * cut, Geo.ArcStep(radius));
             a0.cut = a1.cut = cut;
             return true;
         }
@@ -232,6 +360,19 @@ namespace AirCity.World
             return JunctionShape.Reach(a.length, a.need, there);
         }
 
+        /// <summary>How far along an arm a bend may reach. A section that ends in a dead end or at a car park's mouth
+        /// has nothing to share with at its far end: the bend takes it all but a short straight, so the stub in
+        /// front of a car park doesn't squeeze the bend tight.</summary>
+        float BendReach(Junction j, Arm a)
+        {
+            int other = a.edge.a == j.node.id ? a.edge.b : a.edge.a;
+            if (junctions.TryGetValue(other, out var far) && far.arms.Count == 1) return a.length - Mathf.Min(DeadEndStraight, a.length * .25f);
+            return Reach(j, a);
+        }
+
+        /// <summary>The straight kept between a bend and a dead end (or a car park's mouth) on a short section.</summary>
+        const float DeadEndStraight = 4f;
+
         /// <summary>Lay out a junction with JunctionShape: the arms' cuts, kerbs and outline.</summary>
         void Shape(Junction j)
         {
@@ -243,6 +384,40 @@ namespace AirCity.World
                 j.arms[i].cut = shape[i].cut;
                 j.arms[i].kerb = new List<Vector2>(shape[i].kerb);
             }
+            foreach (var arm in j.arms) Control(j, arm);
+        }
+
+        /// <summary>
+        /// An arm's control, crosswalk and stop line. Signals stop every road arriving; at a priority junction the
+        /// road straight through has no stop line and the roads joining it stop. Crosswalks are marked on roads with
+        /// sidewalks wherever traffic is stopped. The stop line is 1 m back from the junction's edge, or 1.4 m behind
+        /// the crosswalk (kept short of the section's middle).
+        /// </summary>
+        void Control(Junction j, Arm arm)
+        {
+            var t = arm.edge.Type;
+            bool lights = j.node.control == JunctionControl.TrafficLights, real = j.arms.Count >= 3;
+            bool arrives = (arm.edge.b == j.node.id ? t.forward : t.backward) > 0;
+            arm.control = !real || !arrives ? ApproachControl.None : lights ? ApproachControl.Signal
+                : j.node.control == JunctionControl.Priority && PublicRoadSignals.Group(graph, j.node.id, arm.edge.id) == 1 ? ApproachControl.Stop
+                : ApproachControl.None;
+            arm.crossing = real && t.edge == RoadEdge.Kerb && (lights || arm.control == ApproachControl.Stop);
+            arm.stop = arm.cut;
+            if (arm.control == ApproachControl.None && !arm.crossing) return;
+            arm.stop = arm.cut + (arm.crossing ? CrosswalkStart + CrosswalkLength + 1.4f : 1f);
+            if (arm.stop + 8f > arm.length * .5f) arm.stop = Mathf.Max(arm.cut + .5f, arm.length * .5f - 8f);
+        }
+
+        /// <summary>A crosswalk's bars: this far past the junction's edge, and this long along the road.</summary>
+        const float CrosswalkStart = .6f, CrosswalkLength = 3f;
+
+        /// <summary>Whether a road's traffic stops at a node (a stop line or a crosswalk there): its lines are solid on
+        /// the approach.</summary>
+        bool StopsAt(int node, PublicRoadSegment edge)
+        {
+            if (!junctions.TryGetValue(node, out var j) || !j.IsJunction) return false;
+            var arm = j.arms.Find(a => a.edge.id == edge.id);
+            return arm != null && (arm.control != ApproachControl.None || arm.crossing);
         }
         static Vector3 World(Vector2 p, float y) => new Vector3(p.x, y, p.y);
         static Vector2 Left(Vector2 p) => new Vector2(-p.y, p.x);
@@ -279,34 +454,71 @@ namespace AirCity.World
             return profile.Height(p);
         }
 
-        void BuildSegment(PublicRoadSegment edge, Func<Vector2, float> groundHeight)
+        void BuildSegment(PublicRoadSegment edge, PublicRoadSegment lining)
         {
             var start = graph.Node(edge.a).position; var end = graph.Node(edge.b).position;
             var a = PublicRoadNetwork.XZ(start); var b = PublicRoadNetwork.XZ(end);
             var path=graph.Path(edge);var delta = b - a; float length = path.Length;
             if (length < .01f) return;
             var axis = delta.normalized; var right = Right(axis);
-            float s0 = ArmAt(edge.a, edge.id).cut, s1 = length - ArmAt(edge.b, edge.id).cut;
+            var startArm = ArmAt(edge.a, edge.id);
+            var endArm = ArmAt(edge.b, edge.id);
+            float s0 = startArm.cut, s1 = length - endArm.cut;
+            Vector3 Point(float s, float x) => SectionPoint(path, startArm, endArm, s, x);
             float half = Width(edge) * .5f, verge = ShoulderWidth(edge);
+            float crown = Crown(edge);
+            Vector3 At(float s, float x, float extra = 0f)
+            {
+                var point = Point(s, x);
+                var p = Alignment3D.XZ(point);
+                Arm join = s <= .0001f ? startArm : s >= length - .0001f ? endArm : null;
+                bool atJoin = join != null && join.joinRight != Vector2.zero;
+                float crossfall = (atJoin ? join.joinCrown : crown) * Mathf.Clamp01(1f - Mathf.Abs(x) / half);
+                return World(p, (atJoin ? point.y : Elevation(edge, p)) + .18f + crossfall + extra);
+            }
             bool kerbed = edge.Type.edge == RoadEdge.Kerb;
+            bool retainsBank = lining == null && RetainsBank(edge);
             bool roundA=RoundEnd(edge.a,edge),roundB=RoundEnd(edge.b,edge);
             float radius=Mathf.Min(3f,half*.55f,(s1-s0)*.2f);
             if(roundA)s0+=radius;if(roundB)s1-=radius;
-            var endA=roundA?BuildEnd(edge,edge.a,-Alignment3D.XZ(path.Tangent(0)).normalized,half,verge,radius):null;
-            var endB=roundB?BuildEnd(edge,edge.b,Alignment3D.XZ(path.Tangent(1)).normalized,half,verge,radius):null;
+            var endA=roundA?BuildEnd(edge,edge.a,-Alignment3D.XZ(path.Tangent(0)).normalized,half,verge,radius,retainsBank):null;
+            var endB=roundB?BuildEnd(edge,edge.b,Alignment3D.XZ(path.Tangent(1)).normalized,half,verge,radius,retainsBank):null;
             int steps = Mathf.Max(1, Mathf.CeilToInt((s1 - s0) / 5f));
             float[] xs = { -half, 0f, half };
+            // lane and centre lines stop at the stop lines (beyond them is the crosswalk and junction)
+            PaintSpan(edge, out _, out _, out float stopA, out float stopB);
+            bool stopsA = StopsAt(edge.a, edge), stopsB = StopsAt(edge.b, edge);
+            // traffic brakes and waits on the last 45 m before a stop line: more rubber and oil there
+            float Braking(float s)
+            {
+                float d = Mathf.Min(stopsA ? s - stopA : float.MaxValue, stopsB ? stopB - s : float.MaxValue);
+                return 1f - Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(4f, 45f, d));
+            }
             // a bridge or tunnel carries the road on concrete: its own cross-sections, no gravel or sidewalk laid on soil
-            var piece = edge.structure != RoadStructure.Ground && s1 > s0 ? Piece(edge, verge) : null;
+            bool groundShoulder = edge.structure == RoadStructure.Ground && lining == null && !retainsBank;
+            bool sealShoulder = groundShoulder && (MeetsTunnel(edge, edge.a) || MeetsTunnel(edge, edge.b));
+            var piece = !groundShoulder && s1 > s0 ? Piece(edge, verge) : null;
+            if (piece != null) piece.retainsBank = retainsBank;
+            if (piece != null && lining != null)
+            {
+                piece.structure = RoadStructure.Tunnel;
+                piece.portalStyle = lining.tunnelPortalStyle;
+            }
             for (int step = 0; step < steps; step++)
             {
-                float sa = Mathf.Lerp(s0, s1, step / (float)steps), sb = Mathf.Lerp(s0, s1, (step + 1f) / steps);
-                Vector3 At(float s, float x, float extra = 0f) {
-                    var p = Alignment3D.XZ(path.Offset(s,x,ArmAt(edge.a,edge.id).cut,ArmAt(edge.b,edge.id).cut));
-                    float crossfall = Crown(edge) * Mathf.Clamp01(1f - Mathf.Abs(x) / half);
-                    return World(p, Elevation(edge, p) + .18f + crossfall + extra);
+                float sa = Mathf.Lerp(s0, s1, step / (float)steps);
+                float sb = step + 1 == steps ? s1 : Mathf.Lerp(s0, s1, (step + 1f) / steps);
+                for (int col = 0; col < 2; col++)
+                {
+                    int i = surface.Count;
+                    Vector3 pa = At(sa, xs[col]), pb = At(sb, xs[col]), pd = At(sa, xs[col + 1]);
+                    Quad(surface, pa, pb, At(sb, xs[col + 1]), pd);
+                    for (int k = i; k < surface.Count; k++)
+                    {
+                        var p = surface.positions[k];
+                        LaneVertex(k, edge, half, p == pa || p == pb ? xs[col] : xs[col + 1], Braking(p == pa || p == pd ? sa : sb));
+                    }
                 }
-                for (int col = 0; col < 2; col++) Quad(surface, At(sa, xs[col]), At(sb, xs[col]), At(sb, xs[col + 1]), At(sa, xs[col + 1]));
                 if (piece != null)
                 {
                     if (step == 0) piece.Add(At(sa, -half), At(sa, half));
@@ -319,49 +531,135 @@ namespace AirCity.World
                     {
                         // a kerb face up to the sidewalk, the sidewalk level at kerb height
                         float back = inner + KerbWidth * side;
-                        Quad(kerbs, At(sa, inner, KerbHeight), At(sb, inner, KerbHeight), At(sb, inner), At(sa, inner));
-                        Quad(kerbs, At(sa, inner, KerbHeight), At(sb, inner, KerbHeight), At(sb, back, KerbHeight), At(sa, back, KerbHeight));
-                        if (piece == null) Quad(shoulder, At(sa, back, KerbHeight), At(sb, back, KerbHeight), At(sb, outer, KerbHeight), At(sa, outer, KerbHeight));
+                        Kerb(At(sa, inner, KerbHeight), At(sb, inner, KerbHeight), At(sb, back, KerbHeight), At(sa, back, KerbHeight),
+                            groundShoulder || retainsBank, retainsBank);
+                        if (groundShoulder) GroundShoulder(At(sa, back, KerbHeight), At(sb, back, KerbHeight), At(sb, outer, KerbHeight), At(sa, outer, KerbHeight), seal: sealShoulder);
                     }
-                    else if (piece == null) Quad(shoulder, At(sa, inner, -.035f), At(sb, inner, -.035f), At(sb, outer, -.09f), At(sa, outer, -.09f));
+                    else if (groundShoulder) GroundShoulder(At(sa, inner, -.035f), At(sb, inner, -.035f), At(sb, outer, -.09f), At(sa, outer, -.09f), pavementStep: .035f, seal: sealShoulder);
                 }
             }
             paint.frame = RunwayFrame.Along(a, axis);
             int first = paint.mesh.Count;
-            // lane and centre lines stop at the stop lines (beyond them is the crosswalk and junction)
-            float stopA = Mathf.Max(s0, StopLine(edge.a, edge.id)), stopB = Mathf.Min(s1, length - StopLine(edge.b, edge.id));
-            if (stopB < stopA) stopA = stopB = (s0 + s1) * .5f;
-            Markings(edge, half, s0, s1, stopA, stopB, IsJunctionAt(edge.a), IsJunctionAt(edge.b),
-                (x,f,t)=>
-                {
-                    int count=Mathf.Max(1,Mathf.CeilToInt((t-f)/2f));var points=new List<Vector2>(count+1);
-                    for(int i=0;i<=count;i++)points.Add(Alignment3D.XZ(path.Offset(Mathf.Lerp(f,t,i/(float)count),x,ArmAt(edge.a,edge.id).cut,ArmAt(edge.b,edge.id).cut)));return points;
-                });
+            List<Vector2> LineAt(float x,float f,float t)
+            {
+                int count=Mathf.Max(1,Mathf.CeilToInt((t-f)/2f));var points=new List<Vector2>(count+1);
+                for(int i=0;i<=count;i++)points.Add(Alignment3D.XZ(Point(Mathf.Lerp(f,t,i/(float)count),x)));return points;
+            }
+            Markings(edge, half, s0, s1, stopA, stopB, stopsA, stopsB, LineAt,
+                (x, f, t, gap, color, lanes) => SectionDashes(edge, x, f, t, gap, color, lanes, LineAt));
             Median(edge, s1 - s0, MedianInset(edge.a, edge), MedianInset(edge.b, edge),
                 (sa,sb,x0,x1,top)=>
                 {
                     sa+=s0;sb+=s0;
-                    MedianSlice(edge,Alignment3D.XZ(path.Offset(sa,x0)),Alignment3D.XZ(path.Offset(sa,x1)),Alignment3D.XZ(path.Offset(sb,x0)),Alignment3D.XZ(path.Offset(sb,x1)),
+                    MedianSlice(edge,Alignment3D.XZ(Point(sa,x0)),Alignment3D.XZ(Point(sa,x1)),Alignment3D.XZ(Point(sb,x0)),Alignment3D.XZ(Point(sb,x1)),
                         Elevation(edge,Alignment3D.XZ(path.AtDistance(sa)))+.18f,Elevation(edge,Alignment3D.XZ(path.AtDistance(sb)))+.18f,top);
                 });
+            LanePaint(first, p =>
+            {
+                if (!edge.alignment.curved) return (edge, Vector2.Dot(p - a, right));
+                float t = path.ClosestParameter(p);
+                return (edge, Vector2.Dot(p - Alignment3D.XZ(path.Position(t)), Right(Alignment3D.XZ(path.Tangent(t)).normalized)));
+            });
             DrapePaint(first, p => Elevation(edge, p) + Crown(edge) * Mathf.Clamp01(1f - path.DistanceTo(p) / half));
             if (piece == null) return;
-            bool onA = Onward(edge.a, edge) != null, onB = Onward(edge.b, edge) != null;
+            if (piece.structure == RoadStructure.Elevated)
+            {
+                piece.tunnelAtStart = TunnelNeighbor(edge, edge.a)?.tunnelPortalStyle;
+                piece.tunnelAtEnd = TunnelNeighbor(edge, edge.b)?.tunnelPortalStyle;
+            }
+            bool onA = ContinuesStructure(edge.a, 0), onB = ContinuesStructure(edge.b, piece.left.Count - 1);
+            bool ContinuesStructure(int node, int frame)
+            {
+                if (piece.structure != RoadStructure.Tunnel) return Onward(node, edge) != null;
+                var joint = junctions[node];
+                if (joint.IsJunction || joint.arms.Count != 2) return false;
+                var adjacent = joint.arms.First(a => a.edge != edge).edge;
+                return adjacent.structure == RoadStructure.Tunnel || PortalLining(adjacent) != null ||
+                    adjacent.structure == RoadStructure.Elevated && StraightOn(joint) &&
+                    RoadStructureBuilder.DeckNeedsLining(piece.left[frame], piece.right[frame], piece.verge, StructureGround, waterHeight);
+            }
             piece.capStart = !onA && !roundA; piece.abutStart = !onA && MeetsGround(edge.a, edge);
             piece.capEnd = !onB && !roundB; piece.abutEnd = !onB && MeetsGround(edge.b, edge);
             // a dead end: the parapets or walls go round the pavement's rounded end
             piece.endStart = endA; piece.endEnd = endB;
             piece.trimStart = roundA ? radius : 0f; piece.trimEnd = roundB ? radius : 0f;
             piece.run = RunOf(edge); piece.length = PieceLength(edge);
-            RoadStructureBuilder.Build(piece, DrawnGround, concrete, groundTriangles, (p, radius) => MaySupport(edge, p, radius), piers);
+            piece.bridge = BridgeFor(edge);
+            RoadStructureBuilder.Build(piece, StructureGround, concrete, groundTriangles, (p, radius) => MaySupport(edge, p, radius), piers, waterHeight);
         }
 
         // ------------------------------------------------------------------ bridges and tunnels
 
+        internal PublicRoadSegment TunnelNeighbor(PublicRoadSegment edge, int node)
+        {
+            if (!hasStructures || edge.structure == RoadStructure.Tunnel) return null;
+            if (structureContext != null) return structureContext.TunnelNeighbor(edge, node);
+            var joint = junctions[node];
+            if (joint.arms.Count != 2 || !StraightOn(joint)) return null;
+            var adjacent = joint.arms.First(a => a.edge != edge).edge;
+            return adjacent.structure == RoadStructure.Tunnel ? adjacent : PortalLining(adjacent);
+        }
+
+        internal bool MeetsTunnel(PublicRoadSegment edge, int node) => hasStructures && junctions[node].arms.Any(a =>
+            a.edge != edge && (a.edge.structure == RoadStructure.Tunnel || PortalLining(a.edge) != null));
+
+        // Carry concrete across short ground connectors and line ground approaches whose rock
+        // reaches the roof before the authored tunnel starts.
+        internal PublicRoadSegment PortalLining(PublicRoadSegment edge)
+        {
+            if (!hasStructures || edge.structure != RoadStructure.Ground) return null;
+            if (structureContext != null) return structureContext.PortalLining(edge);
+            if (portalLining.TryGetValue(edge.id, out var known)) return known;
+            var path = graph.Path(edge);
+            float half = Width(edge) * .5f + Mathf.Max(ShoulderWidth(edge), RoadStructureBuilder.ParapetWidth) + RoadStructureBuilder.WallThickness;
+            PublicRoadSegment Adjacent(int node)
+            {
+                var joint = junctions[node];
+                if (joint.arms.Count != 2 || !StraightOn(joint)) return null;
+                var adjacent = joint.arms.First(a => a.edge != edge).edge;
+                return adjacent.structure == RoadStructure.Ground ? null : adjacent;
+            }
+            var a = Adjacent(edge.a);
+            var b = Adjacent(edge.b);
+            if (a != null && b != null && RoadStructureBuilder.ShortDryApproach(path, half, waterHeight))
+                return portalLining[edge.id] = a.structure == RoadStructure.Tunnel ? a : b;
+            foreach (int node in new[] { edge.a, edge.b })
+            {
+                var adjacent = node == edge.a ? a : b;
+                if (adjacent?.structure != RoadStructure.Tunnel) continue;
+                for (int i = 0; i <= 3; i++)
+                {
+                    float offset = Mathf.Min(path.Length, i * 2f * RoadStructureBuilder.WallStep);
+                    float station = node == edge.a ? offset : path.Length - offset;
+                    Vector3 At(float side)
+                    {
+                        var point = path.Offset(station, side * half);
+                        point.y = Elevation(edge, Alignment3D.XZ(point)) + .18f;
+                        return point;
+                    }
+                    if (RoadStructureBuilder.TunnelCoverAt(At(-1f), At(1f), p => DrawnGround(Alignment3D.XZ(p))).roofed)
+                        return portalLining[edge.id] = adjacent;
+                }
+            }
+            return portalLining[edge.id] = null;
+        }
+
+        internal bool RetainsBank(PublicRoadSegment edge)
+        {
+            if (edge.structure == RoadStructure.Tunnel) return false;
+            if (structureContext != null) return structureContext.RetainsBank(edge);
+            if (!retainingBanks.TryGetValue(edge.id, out bool retainsBank))
+            {
+                float halfWidth = Width(edge) * .5f + Mathf.Max(ShoulderWidth(edge), RoadStructureBuilder.ParapetWidth);
+                retainingBanks[edge.id] = retainsBank = RoadStructureBuilder.RetainsBank(graph.Path(edge), halfWidth, groundHeight, waterHeight);
+            }
+            return retainsBank;
+        }
+
         StructurePiece Piece(PublicRoadSegment edge, float verge)
         {
             bool kerbed = edge.Type.edge == RoadEdge.Kerb;
-            return new StructurePiece { structure = edge.structure, verge = Mathf.Max(verge, RoadStructureBuilder.ParapetWidth), surface = .18f,
+            return new StructurePiece { structure = edge.structure, portalStyle = edge.tunnelPortalStyle, verge = Mathf.Max(verge, RoadStructureBuilder.ParapetWidth), surface = .18f,
                 stripFrom = kerbed ? KerbWidth : 0f, stripRise = kerbed ? KerbHeight : 0f };
         }
 
@@ -379,6 +677,154 @@ namespace AirCity.World
         /// <summary>A section's length between its nodes' cuts, as its run counts it.</summary>
         float PieceLength(PublicRoadSegment edge) => Mathf.Max(0f, graph.Path(edge).Length - ArmAt(edge.a, edge.id).cut - ArmAt(edge.b, edge.id).cut);
 
+        void AddLinks(List<Link> destination,PublicRoadSegment edge,Alignment3D path,float start,float end)
+        {
+            var limits=FormationLimits(edge);
+            int count=path.shape.curved||path.shape.smooth?Mathf.Max(1,Mathf.CeilToInt((end-start)/8f)):1;
+            float half=Width(edge)*.5f+ShoulderWidth(edge);
+            var p=Alignment3D.XZ(path.AtDistance(start));
+            for(int i=0;i<count;i++)
+            {
+                var q=Alignment3D.XZ(path.AtDistance(Mathf.Lerp(start,end,(i+1f)/count)));
+                destination.Add(new Link(World(p,Elevation(edge,p)),World(q,Elevation(edge,q)),half,edge.structure,limits.start,limits.end,
+                    retainsBank: RetainsBank(edge)));
+                p=q;
+            }
+        }
+
+        internal (GroundLimit start, GroundLimit end) FormationLimits(PublicRoadSegment edge)
+        {
+            if (!hasStructures || edge.structure != RoadStructure.Ground) return default;
+            if (structureContext != null) return structureContext.FormationLimits(edge);
+            var run = RunOf(edge);
+            return run.closed ? default : (AtStructure(run.startNode), AtStructure(run.endNode));
+
+            GroundLimit AtStructure(int node)
+            {
+                var joint = junctions[node];
+                if (joint.arms.Count != 2) return default;
+                var arm = joint.arms.Find(a => a.edge.structure != RoadStructure.Ground);
+                if (arm == null) return default;
+                bool tunnel = arm.edge.structure == RoadStructure.Tunnel;
+                // A bridge still needs the terrain sample beyond its abutment. A tunnel's ground
+                // approach ends at its mouth and keeps the slope on either side.
+                const float bridgeCollar = ValleyWorld.Size / (ValleyWorld.Resolution - 1) * 1.35f;
+                return new GroundLimit(arm.direction, Vector2.Dot(joint.p, arm.direction) + (tunnel ? 0f : bridgeCollar), tunnel);
+            }
+        }
+
+        // ------------------------------------------------------------------ dashes round bends
+
+        /// <summary>Where a section's lines are painted, in metres from its node a: `s0`..`s1` between its ends' cuts
+        /// (short of a dead end's rounding), `stopA`..`stopB` between its stop lines.</summary>
+        void PaintSpan(PublicRoadSegment edge, out float s0, out float s1, out float stopA, out float stopB)
+        {
+            float length = graph.Path(edge).Length, half = Width(edge) * .5f;
+            s0 = ArmAt(edge.a, edge.id).cut; s1 = length - ArmAt(edge.b, edge.id).cut;
+            float radius = Mathf.Min(3f, half * .55f, (s1 - s0) * .2f);
+            if (RoundEnd(edge.a, edge)) s0 += radius;
+            if (RoundEnd(edge.b, edge)) s1 -= radius;
+            stopA = Mathf.Max(s0, StopLine(edge.a, edge.id)); stopB = Mathf.Min(s1, length - StopLine(edge.b, edge.id));
+            if (stopB < stopA) stopA = stopB = (s0 + s1) * .5f;
+        }
+
+        /// <summary>The part of a section its dashed lines run along (Markings): the centre line and the lines between
+        /// lanes are both solid on the approach to a stop line. Empty where nothing is dashed.</summary>
+        (float from, float to) DashSpan(PublicRoadSegment edge)
+        {
+            PaintSpan(edge, out _, out _, out float stopA, out float stopB);
+            if (stopB - stopA < .5f) return (stopA, stopA);
+            float solid = Mathf.Min(SolidApproach, (stopB - stopA) / 3f);
+            float da = StopsAt(edge.a, edge) ? stopA + solid : stopA, db = StopsAt(edge.b, edge) ? stopB - solid : stopB;
+            return db - da > 1f ? (da, db) : (da, da);
+        }
+
+        /// <summary>
+        /// The two sections a road's dashed lines carry on between at a node, and the distance from one's cut to the
+        /// other's: either side of a bend or a plain join in the same road, or (the centre line only, not `lanes`) the
+        /// road straight through a junction where it has no stop line: a priority road past a side road.
+        /// </summary>
+        bool Through(Junction j, bool lanes, out Arm first, out Arm second, out float across)
+        {
+            first = second = null; across = 0f;
+            if (!j.IsJunction)
+            {
+                if (j.arms.Count != 2 || j.arms[0].edge.id == j.arms[1].edge.id || j.arms[0].edge.style != j.arms[1].edge.style) return false;
+                first = j.arms[0]; second = j.arms[1]; across = j.IsCurve ? ArcLength(j) : 0f;
+                return true;
+            }
+            if (lanes || j.arms.Count < 3) return false;
+            foreach (var a in j.arms)
+            {
+                var t = a.edge.Type;
+                if (t.OneWay || t.Divided || t.centre != CentreLine.Dashed || a.control != ApproachControl.None) continue;
+                foreach (var b in j.arms)
+                {
+                    if (b == a || b.edge.style != a.edge.style || b.control != ApproachControl.None) continue;
+                    if (Vector2.Dot(a.direction, b.direction) > -.9f) continue;
+                    first = a; second = b;
+                    across = Vector2.Distance(j.p + a.direction * a.cut, j.p + b.direction * b.cut);
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        /// <summary>Whether a section's dashed lines carry on past a node into another section (Through).</summary>
+        bool Continues(int node, PublicRoadSegment edge, bool lanes) =>
+            junctions.TryGetValue(node, out var j) && Through(j, lanes, out var first, out var second, out _) &&
+            (first.edge.id == edge.id || second.edge.id == edge.id);
+
+        /// <summary>
+        /// Dashes are laid out in stretches that run through a bend, or through a junction the road carries straight
+        /// on across (Through; PaintBuilder.Dashes): from the middle of the section before it, round the arc or across
+        /// the junction, to the middle of the section after it, or to that section's far end where its dashes stop
+        /// there (a stop line, a dead end). The sections and the bend or junction all paint their own part of the
+        /// same stretch, so the dashes keep their rhythm through it; the stretches meet in a gap in the middle of a
+        /// section. It depends only on the two sections and the nodes at their ends, like the bend's own shape, so a
+        /// change further along the road never moves these dashes (PublicRoadPreviewPartition).
+        /// `before`: the stretch's length up to the bend or junction, `arc`: its length through it.
+        /// </summary>
+        void DashStretch(Junction j, bool lanes, out float before, out float arc, out float total)
+        {
+            float Share(Arm arm)
+            {
+                var e = arm.edge; var (from, to) = DashSpan(e);
+                return Mathf.Max(0f, Continues(e.a, e, lanes) && Continues(e.b, e, lanes) ? (to - from) * .5f : to - from);
+            }
+            Through(j, lanes, out var first, out var second, out arc);
+            before = Share(first); total = before + arc + Share(second);
+        }
+
+        /// <summary>A section's dashes between `from` and `to` along it: its part of the stretch through each end
+        /// where the road carries on (DashStretch), or a stretch of its own.</summary>
+        void SectionDashes(PublicRoadSegment edge, float x, float from, float to, float gap, Color color, bool lanes,
+            Func<float, float, float, List<Vector2>> line)
+        {
+            bool onA = Continues(edge.a, edge, lanes), onB = Continues(edge.b, edge, lanes);
+            if (!onA && !onB) { paint.Dashes((a, b) => line(x, a, b), from, to, from, to, LineHalf, 3f, gap, color); return; }
+            float mid = onA && onB ? (from + to) * .5f : onA ? to : from;
+            foreach (bool atA in new[] { true, false })
+            {
+                if (!(atA ? onA : onB)) continue;
+                var j = junctions[atA ? edge.a : edge.b];
+                Through(j, lanes, out var firstArm, out _, out _);
+                bool first = firstArm.edge.id == edge.id;
+                DashStretch(j, lanes, out float before, out float arc, out float total);
+                float own = atA ? mid - from : to - mid;
+                // u runs along the stretch; d back along this section from its cut at the node
+                float Station(float u) { float d = first ? before - u : u - before - arc; return atA ? from + d : to - d; }
+                float u0 = first ? before - own : before + arc, u1 = first ? before : before + arc + own;
+                paint.Dashes((a, b) =>
+                {
+                    float sa = Station(a), sb = Station(b);
+                    var points = line(x, Mathf.Min(sa, sb), Mathf.Max(sa, sb));
+                    if (sa > sb) points.Reverse();
+                    return points;
+                }, u0, u1, 0f, total, LineHalf, 3f, gap, color);
+            }
+        }
+
         static float ArcLength(Junction j)
         {
             float total = 0f;
@@ -387,6 +833,79 @@ namespace AirCity.World
         }
 
         readonly Dictionary<int, RunSpan> edgeRuns = new Dictionary<int, RunSpan>(), bendRuns = new Dictionary<int, RunSpan>();
+        readonly Dictionary<int,RoadBridgeSpan> bridgeSpans = new Dictionary<int,RoadBridgeSpan>();
+        float StructureGround(Vector2 point) => structureContext != null ? structureContext.DrawnGround(point) : DrawnGround(point);
+
+        internal RoadSuspensionSpan SuspensionFor(PublicRoadSegment edge)=>BridgeFor(edge).suspension;
+
+        internal RoadBridgeSpan BridgeFor(PublicRoadSegment edge)
+        {
+            if(edge.structure!=RoadStructure.Elevated)return default;
+            if(structureContext!=null)return structureContext.BridgeFor(edge);
+            var run=RunOf(edge);
+            if(run.closed||run.total<RoadArchSpan.MinimumSpan)return default;
+            if(bridgeSpans.TryGetValue(run.firstEdge,out var known))return known;
+            var members=edgeRuns.Where(item=>item.Value.firstEdge==run.firstEdge).OrderBy(item=>item.Value.offset).ToArray();
+            var design=members.Select(item=>graph.Segment(item.Key).bridgeDesign).FirstOrDefault(d=>d!=RoadBridgeDesign.Automatic);
+            var sections=new List<RoadSuspensionSpan.Section>();
+            foreach(var item in members)
+            {
+                var member=graph.Segment(item.Key);var span=item.Value;var path=graph.Path(member);
+                float cutA=ArmAt(member.a,member.id).cut,cutB=ArmAt(member.b,member.id).cut;
+                float length=PieceLength(member),half=Width(member)*.5f+ShoulderWidth(member);
+                if(length<=.01f)continue;
+                int count=Mathf.CeilToInt(length/8f);
+                for(int i=0;i<=count;i++)
+                {
+                    float d=length*i/count;float s=cutA+d;
+                    var at=Alignment3D.XZ(path.Offset(s,0f,cutA,cutB));
+                    var tangent=Alignment3D.XZ(path.Tangent(path.ParameterAtDistance(s))).normalized;
+                    sections.Add(new RoadSuspensionSpan.Section{station=span.offset+(span.reversed?length-d:d),
+                        centre=World(at,Elevation(member,at)+.18f),across=World(Right(tangent)*(span.reversed?-1f:1f),0f),halfWidth=half});
+                }
+            }
+            var layout=RoadBridgeSpan.Plan(run,sections,design,DrawnGround,waterHeight,
+                (p,radius)=>MaySupport(graph.Segment(run.firstEdge),p,radius));
+            bridgeSpans.Add(run.firstEdge,layout);
+            return layout;
+        }
+
+        internal bool SetBridgeDesign(IEnumerable<int> sections,RoadBridgeDesign design)
+        {
+            var runs=new HashSet<int>();
+            foreach(int id in sections)
+            {
+                var edge=graph.Segment(id);
+                if(edge?.structure==RoadStructure.Elevated)runs.Add(RunOf(edge).firstEdge);
+            }
+            bool changed=false;
+            foreach(var item in edgeRuns)
+            {
+                if(!runs.Contains(item.Value.firstEdge))continue;
+                var edge=graph.Segment(item.Key);
+                if(edge.structure!=RoadStructure.Elevated||edge.bridgeDesign==design)continue;
+                edge.bridgeDesign=design;
+                changed=true;
+            }
+            if(changed)bridgeSpans.Clear();
+            return changed;
+        }
+
+        internal bool SetTunnelPortalStyle(PublicRoadSegment selected, TunnelPortalStyle style)
+        {
+            int run = RunOf(selected).firstEdge;
+            bool changed = false;
+            foreach (var item in edgeRuns)
+            {
+                if (item.Value.firstEdge != run) continue;
+                var edge = graph.Segment(item.Key);
+                if (edge.tunnelPortalStyle == style) continue;
+                edge.tunnelPortalStyle = style;
+                changed = true;
+            }
+            return changed;
+        }
+
         /// <summary>Where a section lies along its bridge (RoadStructureBuilder.Runs): the same answer from any chunk.</summary>
         RunSpan RunOf(PublicRoadSegment edge)
         {
@@ -413,11 +932,12 @@ namespace AirCity.World
 
         /// <summary>A dead end is finished with rounded corners, on the ground, on a bridge and in a tunnel alike.</summary>
         bool RoundEnd(int node,PublicRoadSegment edge)=>
-            !graph.Node(node).outsideConnection && graph.Node(node).terminalEntrance!=VisitorCentreLayout.EntranceId && junctions[node].arms.Count==1;
+            !graph.Node(node).outsideConnection && graph.Node(node).terminalEntrance!=VisitorCentreLayout.EntranceId &&
+            !AirCity.Airfield.FlyingSchoolLayout.IsEntrance(graph.Node(node).terminalEntrance) && junctions[node].arms.Count==1;
 
         /// <summary>The pavement of a dead end and, on the ground, its kerb and verge. Returns the end's outline (on
         /// the pavement, with the direction out of the road at each point) for a bridge's or tunnel's edge to follow.</summary>
-        List<(Vector3 point,Vector3 normal)> BuildEnd(PublicRoadSegment edge,int node,Vector2 outward,float half,float verge,float radius)
+        List<(Vector3 point,Vector3 normal)> BuildEnd(PublicRoadSegment edge,int node,Vector2 outward,float half,float verge,float radius,bool retainsBank)
         {
             var end=PublicRoadNetwork.XZ(graph.Node(node).position);var right=Right(outward);
             var inner=SurfaceBuilder.RoadEndOutline(end,outward,half,radius);
@@ -445,18 +965,21 @@ namespace AirCity.World
                 float ya=Height(a),yb=Height(b);
                 if(raised)
                 {
-                    Quad(kerbs,World(a,ya),World(b,yb),World(b,yb+KerbHeight),World(a,ya+KerbHeight));
                     // a bridge or tunnel paves its own sidewalk behind the kerb, out to its parapet or wall
-                    if(built)Quad(kerbs,World(a,ya+KerbHeight),World(b,yb+KerbHeight),World(b+normals[i+1]*KerbWidth,yb+KerbHeight),World(a+normals[i]*KerbWidth,ya+KerbHeight));
-                    else Quad(shoulder,World(a,ya+KerbHeight),World(b,yb+KerbHeight),World(bb,yb+KerbHeight),World(aa,ya+KerbHeight));
+                    if(built||retainsBank)Kerb(World(a,ya+KerbHeight),World(b,yb+KerbHeight),World(b+normals[i+1]*KerbWidth,yb+KerbHeight),World(a+normals[i]*KerbWidth,ya+KerbHeight),!built,retainsBank);
+                    else
+                    {
+                        Quad(kerbs,World(a,ya),World(b,yb),World(b,yb+KerbHeight),World(a,ya+KerbHeight));
+                        GroundShoulder(World(a,ya+KerbHeight),World(b,yb+KerbHeight),World(bb,yb+KerbHeight),World(aa,ya+KerbHeight));
+                    }
                 }
-                else if(!built)Quad(shoulder,World(a,ya-.035f),World(b,yb-.035f),World(bb,yb-.09f),World(aa,ya-.09f));
+                else if(!built&&!retainsBank)GroundShoulder(World(a,ya-.035f),World(b,yb-.035f),World(bb,yb-.09f),World(aa,ya-.09f), pavementStep: .035f);
             }
             if(!raised)
             {
                 int first=paint.mesh.Count;
                 var line=SurfaceBuilder.RoadEndOutline(end-outward*.25f,outward,half-.25f,Mathf.Max(.1f,radius-.25f));
-                paint.Strip(line,LineHalf,PaintBuilder.White);DrapePaint(first,p=>Height(p)-.18f);
+                paint.Strip(line,LineHalf,PaintBuilder.White);LanePaint(first,_=>(null,0f));DrapePaint(first,p=>Height(p)-.18f);
             }
             var ring=new List<(Vector3,Vector3)>(inner.Count);
             for(int i=0;i<inner.Count;i++)ring.Add((World(inner[i],Height(inner[i])),World(normals[i],0f)));
@@ -467,7 +990,27 @@ namespace AirCity.World
         {
             var centre = junction.p;
             float y = junction.node.position.y;
+            int paved = surface.Count;
             if (junction.outline.Count >= 3) Fan(surface, junction.node.position + Vector3.up * .19f, junction.outline);
+            // tyre tracks carry on across the junction along the road that runs straight through it (the most nearly
+            // opposite pair of arms of one road type); the whole junction is worn by braking and turning traffic
+            Arm through = null; float straightest = -.9f;
+            foreach (var a in junction.arms)
+            foreach (var b in junction.arms)
+            {
+                if (a == b || a.edge.style != b.edge.style) continue;
+                float dot = Vector2.Dot(a.direction, b.direction);
+                if (dot < straightest) { straightest = dot; through = a; }
+            }
+            for (int i = paved; i < surface.Count; i++)
+            {
+                var c = surface.colors[i]; c.b = junction.arms.Count >= 3 ? 1f : 0f; surface.colors[i] = c;
+                // lanes negative: a junction, scrubbed all over (AirfieldSurface)
+                if (through == null) { surface.uv1[i] = new Vector4(0f, 0f, -.25f, 0f); continue; }
+                float x = Vector2.Dot(new Vector2(surface.positions[i].x, surface.positions[i].z) - centre, Right(through.direction));
+                LaneVertex(i, through.edge, through.halfWidth, through.edge.a == junction.node.id ? x : -x, c.b);
+                var lanes = surface.uv1[i]; lanes.z = -lanes.z; surface.uv1[i] = lanes;
+            }
             int n = junction.arms.Count;
             for (int i = 0; i < n; i++)
             {
@@ -483,18 +1026,22 @@ namespace AirCity.World
                     outward[k] = k == 0 ? Left(arm.direction) : k == kerb.Count - 1 ? Right(next.direction) : d.sqrMagnitude > 1e-8f ? Right(d.normalized) : Left(arm.direction);
                 }
                 bool raised = arm.edge.Type.edge == RoadEdge.Kerb || next.edge.Type.edge == RoadEdge.Kerb;
-                // a kerbed corner: the sidewalk level behind the kerb (KerbAlong draws the kerb on the line itself);
-                // a shoulder corner: gravel falling away from the pavement edge
+                // A kerbed corner carries a level sidewalk. A gravel shoulder falls away from the pavement.
                 float rise = raised ? .19f + KerbHeight : .145f, fall = raised ? .19f + KerbHeight : .09f, start = raised ? KerbWidth : 0f;
                 // between two bridges or tunnels the corner is concrete like their verges, never gravel
                 bool built = arm.edge.structure != RoadStructure.Ground && next.edge.structure != RoadStructure.Ground;
+                bool retaining = raised && !built && (RetainsBank(arm.edge) || RetainsBank(next.edge));
+                bool meetsTunnel = !built && (arm.edge.structure == RoadStructure.Tunnel || next.edge.structure == RoadStructure.Tunnel ||
+                    PortalLining(arm.edge) != null || PortalLining(next.edge) != null);
                 if (built && !raised) rise = fall = .19f;
                 for (int k = 0; k + 1 < kerb.Count; k++)
                 {
                     float w0 = Mathf.Lerp(v0, v1, k / (kerb.Count - 1f)), w1 = Mathf.Lerp(v0, v1, (k + 1f) / (kerb.Count - 1f));
                     Vector3 c0 = World(kerb[k] + outward[k] * start, y + rise), c1 = World(kerb[k + 1] + outward[k + 1] * start, y + rise),
                         c2 = World(kerb[k + 1] + outward[k + 1] * w1, y + fall), c3 = World(kerb[k] + outward[k] * w0, y + fall);
-                    if (built) concrete.Face(c0, c1, c2, c3, Vector3.up); else Quad(shoulder, c0, c1, c2, c3);
+                    if (raised) Kerb(World(kerb[k], y + rise), World(kerb[k + 1], y + rise), c1, c0, !built, retaining);
+                    if (built) concrete.Face(c0, c1, c2, c3, Vector3.up);
+                    else GroundShoulder(c0, c1, c2, c3, pavementStep: raised ? 0f : .19f - rise, seal: meetsTunnel);
                 }
             }
             int first = paint.mesh.Count;
@@ -506,19 +1053,27 @@ namespace AirCity.World
                 if (arm.kerb != null && arm.kerb.Count >= 2)
                 {
                     var next = junction.arms[(i + 1) % n];
-                    if (arm.edge.Type.edge == RoadEdge.Kerb || next.edge.Type.edge == RoadEdge.Kerb) KerbAlong(arm.kerb, y + .19f);
-                    else paint.Strip(Inset(arm.kerb, .25f), .075f, PaintBuilder.White);
+                    if (arm.edge.Type.edge != RoadEdge.Kerb && next.edge.Type.edge != RoadEdge.Kerb)
+                        paint.Strip(Inset(arm.kerb, .25f), .075f, PaintBuilder.White);
                 }
                 if (n >= 3) Approach(junction, arm);
             }
-            if (junction.node.control != JunctionControl.TrafficLights)
+            if (Through(junction, false, out var main, out var opposite, out float across) && across > .01f)
             {
-                // a priority road straight through keeps its lane lines across the junction
-                var main = junction.arms.Find(a => PublicRoadSignals.Group(graph, junction.node.id, a.edge.id) == 0);
-                var opposite = main == null ? null : junction.arms.Find(a => a != main && Vector2.Dot(a.direction, main.direction) < -.9f);
-                if (main != null && opposite != null && main.edge.Type.Lanes == opposite.edge.Type.Lanes && !main.edge.Type.OneWay)
-                    paint.Dashes(centre + main.direction * main.cut, centre + opposite.direction * opposite.cut, .075f, 3f, 6f, PaintBuilder.Yellow);
+                // the road straight through keeps its centre line across the junction: the junction's part of the
+                // stretch that runs through it from the sections either side
+                DashStretch(junction, false, out float before, out _, out float whole);
+                Vector2 p0 = centre + main.direction * main.cut, p1 = centre + opposite.direction * opposite.cut;
+                paint.Dashes((a, b) => new[] { Vector2.Lerp(p0, p1, (a - before) / across), Vector2.Lerp(p0, p1, (b - before) / across) },
+                    before, before + across, 0f, whole, LineHalf, 3f, DashGap, PaintBuilder.Yellow);
             }
+            LanePaint(first, p =>
+            {
+                if (Geo.Inside(junction.outline, p)) return (null, 0f);
+                var on = NearestArm(junction, p);
+                float x = Vector2.Dot(p - junction.p, Right(on.direction));
+                return (on.edge, on.edge.a == junction.node.id ? x : -x);
+            });
             DrapePaint(first,p=>
             {
                 if(Geo.Inside(junction.outline,p) || Geo.DistanceToOutline(junction.outline,p)<.001f)return y+.01f;
@@ -532,6 +1087,19 @@ namespace AirCity.World
                 float across=Mathf.Abs(Vector2.Dot(p-junction.p,Right(best.direction)));
                 return Elevation(best.edge,p)+Crown(best.edge)*Mathf.Clamp01(1f-across/best.halfWidth);
             });
+        }
+
+        /// <summary>The arm of a junction a point beside it lies on: the one whose centreline is nearest.</summary>
+        Arm NearestArm(Junction junction, Vector2 p)
+        {
+            Arm best = null; float distance = float.MaxValue;
+            foreach (var arm in junction.arms)
+            {
+                var end = PublicRoadNetwork.XZ(graph.Node(arm.edge.a == junction.node.id ? arm.edge.b : arm.edge.a).position);
+                float d = (Geo.ClosestOnSegment(p, junction.p, end, out _) - p).sqrMagnitude;
+                if (d < distance) { distance = d; best = arm; }
+            }
+            return best;
         }
 
         /// <summary>A bend: the road's strip, shoulders and markings carried round the arc, its height eased from one
@@ -560,26 +1128,41 @@ namespace AirCity.World
                 return World(arc[k] + right[k] * x, Mathf.Lerp(h0, h1, along[k] / total) + .18f + crossfall + extra);
             }
             // the arc is road too: roadbed grading, ground texture and ground cover follow it, not the cut-off corner
+            var limits=FormationLimits(edge);
             for (int k = 0; k + 1 < m; k++)
                 links.Add(new Link(World(arc[k], Mathf.Lerp(h0, h1, along[k] / total)), World(arc[k + 1], Mathf.Lerp(h0, h1, along[k + 1] / total)),
-                    half + verge, edge.structure));
+                    half + verge, edge.structure,limits.start,limits.end, RetainsBank(edge) || RetainsBank(a1.edge)));
             float[] xs = { -half, 0f, half };
+            // a0 runs away from the node and so does the arc, starting on a0's side: x to the arc's right is a0's left
+            bool flip = edge.a == junction.node.id;
             // where a ground road meets a bridge or tunnel the bend lies on the ground, like the abutment it leads to
             bool built = a0.edge.structure != RoadStructure.Ground && a1.edge.structure != RoadStructure.Ground;
+            bool retainsBank = RetainsBank(a0.edge) || RetainsBank(a1.edge);
+            bool concreteShoulder = built || retainsBank;
             for (int k = 0; k + 1 < m; k++)
             {
-                for (int col = 0; col < 2; col++) Quad(surface, At(k, xs[col]), At(k + 1, xs[col]), At(k + 1, xs[col + 1]), At(k, xs[col + 1]));
+                for (int col = 0; col < 2; col++)
+                {
+                    int i = surface.Count;
+                    Vector3 pa = At(k, xs[col]), pb = At(k + 1, xs[col]);
+                    Quad(surface, pa, pb, At(k + 1, xs[col + 1]), At(k, xs[col + 1]));
+                    for (int v = i; v < surface.Count; v++)
+                    {
+                        float x = surface.positions[v] == pa || surface.positions[v] == pb ? xs[col] : xs[col + 1];
+                        LaneVertex(v, edge, half, flip ? -x : x, 0f);
+                    }
+                }
                 foreach (float side in new[] { -1f, 1f })
                     if (edge.Type.edge == RoadEdge.Kerb)
                     {
                         float back = (half + KerbWidth) * side;
-                        Quad(kerbs, At(k, half * side, KerbHeight), At(k + 1, half * side, KerbHeight), At(k + 1, half * side), At(k, half * side));
-                        Quad(kerbs, At(k, half * side, KerbHeight), At(k + 1, half * side, KerbHeight), At(k + 1, back, KerbHeight), At(k, back, KerbHeight));
-                        if (built) continue;
-                        Quad(shoulder, At(k, back, KerbHeight), At(k + 1, back, KerbHeight), At(k + 1, (half + verge) * side, KerbHeight),
+                        Kerb(At(k, half * side, KerbHeight), At(k + 1, half * side, KerbHeight),
+                            At(k + 1, back, KerbHeight), At(k, back, KerbHeight), !built, retainsBank);
+                        if (concreteShoulder) continue;
+                        GroundShoulder(At(k, back, KerbHeight), At(k + 1, back, KerbHeight), At(k + 1, (half + verge) * side, KerbHeight),
                             At(k, (half + verge) * side, KerbHeight));
                     }
-                    else if (!built) Quad(shoulder, At(k, half * side, -.035f), At(k + 1, half * side, -.035f), At(k + 1, (half + verge) * side, -.09f), At(k, (half + verge) * side, -.09f));
+                    else if (!concreteShoulder) GroundShoulder(At(k, half * side, -.035f), At(k + 1, half * side, -.035f), At(k + 1, (half + verge) * side, -.09f), At(k, (half + verge) * side, -.09f), pavementStep: .035f);
             }
             paint.frame = RunwayFrame.None;
             int first = paint.mesh.Count;
@@ -589,9 +1172,14 @@ namespace AirCity.World
                 for (int k = 0; k < m; k++) line.Add(arc[k] + right[k] * x);
                 return line;
             }
-            // a0 runs away from the node and so does the arc, starting on a0's side: x to the arc's right is a0's left
-            bool flip = edge.a == junction.node.id;
-            Markings(edge, half, 0f, total, 0f, total, false, false, (x, f, t) => Slice(Line(flip ? -x : x), along, f, t));
+            Markings(edge, half, 0f, total, 0f, total, false, false, (x, f, t) => Geo.Slice(Line(flip ? -x : x), along, f, t),
+                (x, f, t, gap, color, lanes) =>
+                {
+                    // the bend's part of the stretch that runs through it from the sections either side
+                    DashStretch(junction, lanes, out float before, out _, out float whole);
+                    var line = Line(flip ? -x : x);
+                    paint.Dashes((a, b) => Geo.Slice(line, along, a - before, b - before), before + f, before + t, 0f, whole, LineHalf, 3f, gap, color);
+                });
             Median(edge, total, 0f, 0f, (sa, sb, x0, x1, top) =>
             {
                 for (int k = 0; k + 1 < m; k++)
@@ -601,6 +1189,17 @@ namespace AirCity.World
                     float y0 = Mathf.Lerp(h0, h1, along[k] / total) + .18f, y1 = Mathf.Lerp(h0, h1, along[k + 1] / total) + .18f;
                     MedianSlice(edge, arc[k] + right[k] * u0, arc[k] + right[k] * u1, arc[k + 1] + right[k + 1] * u0, arc[k + 1] + right[k + 1] * u1, y0, y1, top);
                 }
+            });
+            LanePaint(first, p =>
+            {
+                int near = 0; float nearD = float.MaxValue;
+                for (int k = 0; k < m; k++)
+                {
+                    float d = (arc[k] - p).sqrMagnitude;
+                    if (d < nearD) { nearD = d; near = k; }
+                }
+                float x = Vector2.Dot(p - arc[near], right[near]);
+                return (edge, flip ? -x : x);
             });
             DrapePaint(first, p =>
             {
@@ -613,13 +1212,15 @@ namespace AirCity.World
                 float x = Mathf.Abs(Vector2.Dot(p - arc[best], right[best]));
                 return Mathf.Lerp(h0, h1, along[best] / total) + crown * Mathf.Clamp01(1f - x / half);
             });
-            if (!built) return;
+            if (!built && !retainsBank) return;
             // one unbroken piece round the bend, on the pavement's own cross-sections: it meets both sections' ends exactly
             var piece = Piece(edge, verge);
+            piece.retainsBank = retainsBank;
             for (int k = 0; k < m; k++) piece.Add(At(k, -half), At(k, half));
             RunOf(edge); piece.run = bendRuns.TryGetValue(junction.node.id, out var run) ? run : default; piece.length = ArcLength(junction);
             piece.capStart = piece.capEnd = a0.edge.structure != a1.edge.structure;
-            RoadStructureBuilder.Build(piece, DrawnGround, concrete, groundTriangles, (p, radius) => MaySupport(a0.edge, p, radius) && MaySupport(a1.edge, p, radius), piers);
+            piece.bridge = BridgeFor(edge);
+            RoadStructureBuilder.Build(piece, StructureGround, concrete, groundTriangles, (p, radius) => MaySupport(a0.edge, p, radius) && MaySupport(a1.edge, p, radius), piers, waterHeight);
         }
 
         // ------------------------------------------------------------------ markings and furniture by road type
@@ -634,59 +1235,104 @@ namespace AirCity.World
         /// </summary>
         /// <param name="line">The stretch's line at offset x (right positive looking from node a to b) between two
         /// distances along it.</param>
-        void Markings(PublicRoadSegment edge, float half, float from, float to, float stopA, float stopB, bool junctionA, bool junctionB,
-            Func<float, float, float, List<Vector2>> line)
+        /// <param name="dashes">Paints a dashed line at offset x between two distances (3 m dashes, the gap given;
+        /// lanes: a line between lanes, not the centre line), laid out with the stretch it belongs to (DashStretch).</param>
+        void Markings(PublicRoadSegment edge, float half, float from, float to, float stopA, float stopB, bool solidA, bool solidB,
+            Func<float, float, float, List<Vector2>> line, Action<float, float, float, float, Color, bool> dashes)
         {
             var t = edge.Type;
             float scale = half / Mathf.Max(t.Width * .5f, .01f);   // a profile may widen a country road: lanes scale with it
             if (stopB - stopA < .5f) return;
             if (t.edge == RoadEdge.Shoulder)
                 foreach (float side in new[] { -1f, 1f }) paint.Strip(line((half - .25f) * side, from, to), LineHalf, PaintBuilder.White);
+            // dashed lines are solid for the last stretch before a stop line: no passing and no lane changes on the
+            // approach (the same spans as DashSpan)
+            float solid = Mathf.Min(SolidApproach, (stopB - stopA) / 3f);
+            float da = solidA ? stopA + solid : stopA, db = solidB ? stopB - solid : stopB;
+            bool dashed = db - da > 1f;
+            if (!dashed) da = db = solidA ? stopB : stopA;
             if (!t.OneWay && !t.Divided)
             {
-                if (t.centre == CentreLine.Dashed) paint.Dashes(line(0f, stopA, stopB), LineHalf, 3f, 6f, PaintBuilder.Yellow);
-                else foreach (float side in new[] { -1f, 1f }) paint.Strip(line(.15f * side, stopA, stopB), LineHalf, PaintBuilder.Yellow);
+                // the centre line: yellow, broken where passing is allowed, double solid otherwise and up to a stop line
+                void Double(float f, float to2)
+                {
+                    if (to2 - f < .05f) return;
+                    foreach (float side in new[] { -1f, 1f }) paint.Strip(line(DoubleLine * side, f, to2), LineHalf, PaintBuilder.Yellow);
+                }
+                if (t.centre != CentreLine.Dashed) Double(stopA, stopB);
+                else
+                {
+                    if (dashed) dashes(0f, da, db, DashGap, PaintBuilder.Yellow, false);
+                    Double(stopA, da); Double(db, stopB);
+                }
             }
-            // lines between lanes running the same way: dashed, solid for the last stretch before a junction (no lane
-            // changes on the approach)
-            float solid = Mathf.Min(SolidApproach, (stopB - stopA) / 3f);
-            float da = junctionA ? stopA + solid : stopA, db = junctionB ? stopB - solid : stopB;
+            // lines between lanes running the same way
             var lanes = t.LaneCentres();
             for (int i = 0; i + 1 < lanes.Count; i++)
             {
                 if (lanes[i].forwards != lanes[i + 1].forwards) continue;
                 float x = (lanes[i].x + lanes[i + 1].x) * .5f * scale;
-                if (db - da > 1f) paint.Dashes(line(x, da, db), LineHalf, 3f, 9f, PaintBuilder.White);
-                if (junctionA) paint.Strip(line(x, stopA, da), LineHalf, PaintBuilder.White);
-                if (junctionB) paint.Strip(line(x, db, stopB), LineHalf, PaintBuilder.White);
+                if (dashed) dashes(x, da, db, DashGap, PaintBuilder.White, true);
+                if (da - stopA > .05f) paint.Strip(line(x, stopA, da), LineHalf, PaintBuilder.White);
+                if (stopB - db > .05f) paint.Strip(line(x, db, stopB), LineHalf, PaintBuilder.White);
             }
             if (t.Divided)
                 foreach (float side in new[] { -1f, 1f })
                     paint.Strip(line((t.median * .5f + t.innerShoulder - .2f) * side * scale, stopA, stopB), LineHalf, PaintBuilder.Yellow);
         }
 
+        /// <summary>
+        /// Tyre wear is drawn by the shaders from where a point lies in a road's lanes. A pavement vertex `across`
+        /// metres right of the road's centreline (looking from node a to b) carries: uv0.z = across, uv0.w = the lane
+        /// width (negative on a one-way road, whose lanes run across from one side), uv1.z = the lanes each way,
+        /// uv1.w = where the lanes start from the centreline (past a median and its shoulder; on a one-way road its
+        /// first lane's edge), colour b = how much traffic brakes and waits here (0..1: near a stop line, in a junction).
+        /// In a junction the lanes are the through road's, negated: the whole junction is scrubbed by turning traffic.
+        /// </summary>
+        void LaneVertex(int i, PublicRoadSegment edge, float half, float across, float braking)
+        {
+            var t = edge.Type;
+            float scale = half / Mathf.Max(t.Width * .5f, .01f), width = t.laneWidth * scale;
+            float inner = t.OneWay ? -(half - t.innerShoulder * scale) : t.Divided ? (t.median * .5f + t.innerShoulder) * scale : 0f;
+            var p = surface.positions[i];
+            surface.uv0[i] = new Vector4(p.x, p.z, across, t.OneWay ? -width : width);
+            surface.uv1[i] = new Vector4(0f, 0f, Mathf.Max(t.forward, t.backward), inner);
+            var c = surface.colors[i]; c.b = braking; surface.colors[i] = c;
+        }
+
+        /// <summary>
+        /// Paint wears too, fastest under the wheels: every paint vertex added since `first` carries, in place of a
+        /// runway's frame, uv3 = (metres from the inner edge of its side's lanes, lanes that side, minus the lane
+        /// width, wear). `at` gives the road a point is on and how far right of its centreline (a to b) it is; no
+        /// road for paint inside a junction (lanes -1), which wears evenly.
+        /// </summary>
+        void LanePaint(int first, Func<Vector2, (PublicRoadSegment edge, float across)> at)
+        {
+            for (int i = first; i < paint.mesh.Count; i++)
+            {
+                var p = paint.mesh.positions[i];
+                var (edge, across) = at(new Vector2(p.x, p.z));
+                // white paint is renewed more often than the yellow centre lines
+                var colour = paint.mesh.colors[i];
+                float wear = colour.b > .5f ? WhitePaintWear : PaintWear;
+                if (edge == null) { paint.mesh.uv3[i] = new Vector4(0f, -1f, -1f, wear); continue; }
+                var t = edge.Type;
+                float half = Width(edge) * .5f, scale = half / Mathf.Max(t.Width * .5f, .01f), width = t.laneWidth * scale;
+                float metres = t.OneWay ? across + half - t.innerShoulder * scale
+                    : Mathf.Abs(across) - (t.Divided ? (t.median * .5f + t.innerShoulder) * scale : 0f);
+                paint.mesh.uv3[i] = new Vector4(metres, t.OneWay || across >= 0f ? t.forward : t.backward, -width, wear);
+            }
+        }
+
+        /// <summary>How worn public-road paint is (0 fresh .. 1 nearly gone): chipped all over, more under the wheels.</summary>
+        const float PaintWear = .45f, WhitePaintWear = .3f;
+
+        /// <summary>Broken lines are 3 m dashes 9 m apart (10 ft and 30 ft); each line of a double line is this far
+        /// from the road's centre.</summary>
+        const float DashGap = 9f, DoubleLine = .15f;
+
         /// <summary>Lane lines are solid this far back from a junction's stop line.</summary>
         const float SolidApproach = 25f;
-
-        bool IsJunctionAt(int node) => junctions.TryGetValue(node, out var j) && j.IsJunction && j.arms.Count >= 3;
-
-        /// <summary>The part of a polyline between two distances along it (`along`: each point's distance).</summary>
-        static List<Vector2> Slice(List<Vector2> points, float[] along, float from, float to)
-        {
-            var result = new List<Vector2>();
-            int n = points.Count;
-            Vector2 At(float d)
-            {
-                int i = 1;
-                while (i < n - 1 && along[i] < d) i++;
-                float seg = along[i] - along[i - 1];
-                return Vector2.Lerp(points[i - 1], points[i], seg > 1e-6f ? Mathf.Clamp01((d - along[i - 1]) / seg) : 0f);
-            }
-            result.Add(At(from));
-            for (int i = 1; i < n - 1; i++) if (along[i] > from && along[i] < to) result.Add(points[i]);
-            result.Add(At(to));
-            return result;
-        }
 
         /// <summary>The median of a divided road along a stretch `length` long: a raised kerbed island or a concrete
         /// barrier, built by `slice(from, to, x0, x1, top)` (along the stretch, across it, top height above the road).
@@ -707,7 +1353,7 @@ namespace AirCity.World
         {
             if (!junctions.TryGetValue(node, out var j) || !j.IsJunction) return 0f;
             var arm = j.arms.Find(a => a.edge.id == edge.id);
-            return arm == null ? 0f : StopAt(arm) - arm.cut + 1f;
+            return arm == null ? 0f : arm.stop - arm.cut + 1f;
         }
 
         /// <summary>A slice of median on a straight stretch.</summary>
@@ -744,77 +1390,64 @@ namespace AirCity.World
             var inR1 = Vector2.Lerp(r1, l1, KerbWidth / Mathf.Max(Vector2.Distance(l1, r1), .01f));
             kerbs.TwoSided(World(l0, y0 + top), World(l1, y1 + top), World(inL1, y1 + top), World(inL0, y0 + top));
             kerbs.TwoSided(World(inR0, y0 + top), World(inR1, y1 + top), World(r1, y1 + top), World(r0, y0 + top));
-            verges.TwoSided(World(inL0, y0 + top), World(inL1, y1 + top), World(inR1, y1 + top), World(inR0, y0 + top));
+            Quad(verges, World(inL0, y0 + top), World(inL1, y1 + top), World(inR1, y1 + top), World(inR0, y0 + top));
         }
 
         void Concrete(Vector2 a0, Vector2 a1, Vector2 b1, Vector2 b0, float y0, float y1, float ha, float hb) =>
             concrete.TwoSided(World(a0, y0 + ha), World(a1, y1 + ha), World(b1, y1 + hb), World(b0, y0 + hb));
 
-        /// <summary>A kerb along a line (the junction kerbs): a low concrete edge whose face is on the line, its top
-        /// running a kerb's width outward (to the line's right).</summary>
-        void KerbAlong(List<Vector2> line, float y)
+        // The pavement ends at the kerb's front and the sidewalk starts at its back. The kerb
+        // owns the strip between them on ground roads. Bridges and tunnels supply their own cut.
+        void Kerb(Vector3 frontA, Vector3 frontB, Vector3 backB, Vector3 backA, bool ground, bool retainsBank)
         {
-            int n = line.Count;
-            var o = new Vector2[n];
-            for (int k = 0; k < n; k++)
-            {
-                var d = line[Mathf.Min(k + 1, n - 1)] - line[Mathf.Max(k - 1, 0)];
-                o[k] = d.sqrMagnitude > 1e-10f ? Right(d.normalized) * KerbWidth : Vector2.zero;
-            }
-            for (int k = 0; k + 1 < n; k++)
-            {
-                if ((line[k + 1] - line[k]).sqrMagnitude < 1e-6f) continue;
-                kerbs.TwoSided(World(line[k], y + KerbHeight), World(line[k + 1], y + KerbHeight), World(line[k + 1], y), World(line[k], y));
-                kerbs.TwoSided(World(line[k] + o[k], y + KerbHeight), World(line[k + 1] + o[k + 1], y + KerbHeight), World(line[k + 1], y + KerbHeight),
-                    World(line[k], y + KerbHeight));
-            }
+            var rise = Vector3.up * KerbHeight;
+            kerbs.TwoSided(frontA, frontB, frontB - rise, frontA - rise);
+            kerbs.TwoSided(frontA, frontB, backB, backA);
+            if (!ground) return;
+            float height = retainsBank ? RoadStructureBuilder.PavementClipHeight : 0f;
+            groundTriangles.Add(new BuiltSurfaceMap.Triangle(frontA, frontB, backB, excavationHeight: height, excavationDepth: MeshData.RoadEdgeDepth));
+            groundTriangles.Add(new BuiltSurfaceMap.Triangle(frontA, backB, backA, excavationHeight: height, excavationDepth: MeshData.RoadEdgeDepth));
         }
 
         /// <summary>
-        /// Paint where a road meets a junction, for the traffic arriving along it: a solid stop line across its
-        /// approach lanes (give-way dashes where it gives way at an unsignalled junction), a zebra crossing in front of it
-        /// on streets with sidewalks, and an arrow in each approach lane showing the moves it may make (LaneConnections).
+        /// Paint where a road meets a junction, as on North American roads: a crosswalk of bars along the road where it
+        /// has sidewalks and traffic stops, a solid stop line across the lanes arriving (from the centre line to the
+        /// edge line or kerb, never onto the shoulder) where they stop for a sign or a signal, and on an approach of
+        /// two or more lanes an arrow in each showing the moves it may make (LaneConnections). A single lane carries
+        /// no arrow, and the road straight through a priority junction has no stop line.
         /// </summary>
         void Approach(Junction junction, Arm arm)
         {
             var t = arm.edge.Type;
-            bool arriving = arm.edge.b == junction.node.id;          // traffic coming in drives along -direction
-            int lanesIn = arriving ? t.forward : t.backward;
-            if (lanesIn == 0) return;
             var u = arm.direction;
             var across = Left(u);                                     // seen arriving, the approach lanes are on this side
+            var centre = junction.p;
+            if (arm.crossing)
+            {
+                // bars 0.6 m wide and 0.6 m apart, centred across the road and clear of its kerbs
+                float along = arm.cut + CrosswalkStart + CrosswalkLength * .5f, half = arm.halfWidth - .4f;
+                int bars = Mathf.Max(1, Mathf.FloorToInt((2f * half + .6f) / 1.2f));
+                float first = -(bars - 1) * .6f;
+                for (int k = 0; k < bars; k++)
+                    paint.Box(centre + u * along + across * (first + k * 1.2f), u, .3f, CrosswalkLength * .5f, PaintBuilder.White);
+            }
+            if (arm.control == ApproachControl.None) return;
+            bool arriving = arm.edge.b == junction.node.id;          // traffic coming in drives along -direction
+            int lanesIn = arriving ? t.forward : t.backward;
             float scale = arm.halfWidth / Mathf.Max(t.Width * .5f, .01f);
             var (inner, outer) = t.Carriageway(arriving);
             // the approach lanes across: from the centre side to the kerb side, in "across" units
             float a0 = Mathf.Abs(inner) * scale, a1 = Mathf.Abs(outer) * scale;
             if (t.OneWay) { a0 = -(t.Width * .5f - t.innerShoulder) * scale; a1 = (t.Width * .5f - t.outerShoulder) * scale; }
-            var centre = junction.p;
-            bool signals = junction.node.control == JunctionControl.TrafficLights;
-            bool gives = !signals && PublicRoadSignals.Group(graph, junction.node.id, arm.edge.id) == 1;
-            bool crossing = t.edge == RoadEdge.Kerb;
-            float stop = StopAt(arm);
-            var c0 = centre + u * stop + across * a0;
-            var c1 = centre + u * stop + across * a1;
-            if (signals || (!gives && junction.arms.Count >= 3 && t.Lanes > 1)) paint.Strip(SampleLine(c0,c1),.25f,PaintBuilder.White);
-            else if (gives)
-                for (int k = 0; k < 2; k++)
-                {
-                    var o = u * (k * .6f);
-                    paint.Dashes(c0 + o, c1 + o, .15f, .6f, .3f, PaintBuilder.White);
-                }
-            if (crossing)
-            {
-                // zebra stripes across the whole road, between the stop line and the junction
-                float zebra = arm.cut + 2.2f, half = arm.halfWidth - .3f;
-                // bars 3 m long along the road, 0.55 m wide, 0.55 m apart, centred across it
-                int bars = Mathf.FloorToInt((2f * half + .55f) / 1.1f);
-                float first = -(bars - 1) * .55f;
-                for (int k = 0; k < bars; k++)
-                    paint.Box(centre + u * zebra + across * (first + k * 1.1f), u, .275f, 1.5f, PaintBuilder.White);
-            }
-            // Short approaches cannot fit an arrow between their two junctions.
-            if(arm.length-stop-ArmAt(arm.edge.a==junction.node.id?arm.edge.b:arm.edge.a,arm.edge.id).cut<7f)return;
-            // arrows: one per approach lane, a few metres before the stop line
+            // the stop line: from the centre line's edge (or the median's line) to the edge line
+            float b0 = t.OneWay || t.Divided ? a0 : DoubleLine + LineHalf;
+            float b1 = t.edge == RoadEdge.Shoulder ? Mathf.Min(a1, arm.halfWidth - .25f + LineHalf) : a1;
+            paint.Strip(SampleLine(centre + u * arm.stop + across * b0, centre + u * arm.stop + across * b1), StopLineHalf, PaintBuilder.White);
+            // arrows: one per lane, their tips a few metres short of the stop line; left out where they cannot fit
+            // between this junction and the section's other end
+            if (lanesIn < 2) return;
+            var far = ArmAt(arm.edge.a == junction.node.id ? arm.edge.b : arm.edge.a, arm.edge.id);
+            if (arm.length - arm.stop - far.cut < ArrowSetBack + ArrowLength + 4f) return;
             var exits = graph.LaneConnections(junction.node.id).FindAll(c => c.incoming == arm.edge.id);
             for (int lane = 0; lane < lanesIn; lane++)
             {
@@ -824,41 +1457,54 @@ namespace AirCity.World
                 bool straight = exits.Exists(c => c.incomingLane == lane && c.turn == RoadTurn.Straight);
                 bool rightTurn = exits.Exists(c => c.incomingLane == lane && c.turn == RoadTurn.Right);
                 if (!left && !straight && !rightTurn) continue;
-                Arrow(centre + u * (stop + 6f) + across * x, -u, left, straight, rightTurn);
+                Arrow(centre + u * (arm.stop + ArrowSetBack + ArrowLength) + across * x, -u, left, straight, rightTurn);
             }
         }
 
-        /// <summary>How far from a junction's centre an arm's stop line is: past the junction's own pavement, and past a
-        /// crosswalk where the road has sidewalks (kept short of the section's middle).</summary>
-        static float StopAt(Arm arm)
-        {
-            float stop = arm.cut + (arm.edge.Type.edge == RoadEdge.Kerb ? 4.5f : .8f);
-            if (stop + 8f > arm.length * .5f) stop = Mathf.Max(arm.cut + .5f, arm.length * .5f - 8f);
-            return stop;
-        }
+        /// <summary>A stop line is 0.5 m wide; a lane arrow is 4.2 m long, its tip this far short of the stop line.</summary>
+        const float StopLineHalf = .25f, ArrowLength = 4.2f, ArrowSetBack = 5f;
 
-        /// <summary>Where a road's stop line is at a junction, metres from the junction's node (0 if it isn't a junction).</summary>
+        /// <summary>Where a road's lines stop at a junction, metres from the junction's node: its stop line, or the
+        /// junction's edge where it has none (0 if the node isn't a junction).</summary>
         public float StopLine(int node, int edge)
         {
             if (!junctions.TryGetValue(node, out var j) || !j.IsJunction) return 0f;
             var arm = j.arms.Find(a => a.edge.id == edge);
-            return arm != null ? StopAt(arm) : 0f;
+            return arm != null ? arm.stop : 0f;
         }
 
-        /// <summary>Lane-contained arrows: one continuous head per movement and rounded turn stems.</summary>
+        /// <summary>
+        /// A lane arrow, ArrowLength long from its tail: a shaft with one continuous head for straight on, and for
+        /// each turn a branch that sweeps 60 degrees off the shaft into its own head. A shared arrow's shaft is moved
+        /// off the lane's middle, away from its branch, so the whole mark sits in the middle of the lane.
+        /// </summary>
         void Arrow(Vector2 tail, Vector2 forward, bool left, bool straight, bool right)
         {
-            var side=Right(forward);
-            paint.Strip(new[]{tail,tail+forward*(straight?3.2f:1.55f)},.15f,PaintBuilder.White);
-            if(straight)paint.ArrowHead(tail+forward*4.5f,forward,1.4f,.5f,PaintBuilder.White);
-            foreach(var (on,sign) in new[]{(left,-1f),(right,1f)})
+            var side = Right(forward);
+            const float shaft = .15f, radius = .6f, sweep = 60f * Mathf.Deg2Rad;
+            if (straight && left != right) tail -= side * (right ? .3f : -.3f);
+            if (straight)
             {
-                if(!on)continue;
-                var start=tail+forward*1.4f;var direction=side*sign;
-                var centre=start+direction*.65f;var end=centre+forward*.65f;
-                var arc=new List<Vector2>();Geo.Arc(arc,centre,start,end,.12f);
-                paint.Strip(arc,.15f,PaintBuilder.White);
-                paint.ArrowHead(tail+forward*2.05f+direction*1.4f,direction,.95f,.45f,PaintBuilder.White);
+                paint.Strip(new[] { tail, tail + forward * (ArrowLength - 1.3f) }, shaft, PaintBuilder.White);
+                paint.ArrowHead(tail + forward * ArrowLength, forward, 1.5f, .55f, PaintBuilder.White);
+            }
+            foreach (var (on, sign) in new[] { (left, -1f), (right, 1f) })
+            {
+                if (!on) continue;
+                // the branch leaves the shaft part way along a shared arrow, and further along a turn arrow of its own
+                var direction = side * sign;
+                var start = tail + forward * (straight ? 1.2f : 2.2f);
+                var pivot = start + direction * radius;
+                var points = new List<Vector2>();
+                if (!straight) points.Add(tail);
+                for (int k = 0; k <= 6; k++)
+                {
+                    float angle = sweep * k / 6f;
+                    points.Add(pivot - direction * (radius * Mathf.Cos(angle)) + forward * (radius * Mathf.Sin(angle)));
+                }
+                var heading = forward * Mathf.Cos(sweep) + direction * Mathf.Sin(sweep);
+                paint.Strip(points, shaft, PaintBuilder.White);
+                paint.ArrowHead(points[points.Count - 1] + heading * 1.05f, heading, 1.2f, .48f, PaintBuilder.White);
             }
         }
 
@@ -877,6 +1523,23 @@ namespace AirCity.World
 
         /// <summary>A quad into a plain mesh (kerbs), facing whichever way its corners wind.</summary>
         static void Quad(LandscapeMesh mesh, Vector3 a, Vector3 b, Vector3 c, Vector3 d) => mesh.TwoSided(a, b, c, d);
+
+        void GroundShoulder(Vector3 innerA, Vector3 innerB, Vector3 outerB, Vector3 outerA, float pavementStep = 0f, bool seal = false)
+        {
+            Quad(shoulder, innerA, innerB, outerB, outerA);
+            var outward = Geo.XZ(outerA + outerB - innerA - innerB);
+            var kind = new Vector4((float)AirfieldKind.Junction, 0f);
+            shoulder.RoadEdge(0, outerA, outerB, outward, Color.black, kind);
+            if (seal) RoadStructureBuilder.SealShoulder(concrete, outerA, outerB, Geo.X0Z(outward.normalized), StructureGround,
+                shoulderRise: pavementStep > 0f ? -.09f : KerbHeight);
+            if (pavementStep > 0f)
+            {
+                // The gravel starts below the carriageway. Close that step before either
+                // surface clips the terrain around the join.
+                var top = Vector3.up * pavementStep;
+                shoulder.RoadEdge(0, innerA + top, innerB + top, outward, Color.black, kind);
+            }
+        }
 
         static void Quad(MeshData mesh, Vector3 a, Vector3 b, Vector3 c, Vector3 d)
         {
@@ -927,17 +1590,30 @@ namespace AirCity.World
         }
 
         public void SampleGround(Vector2 p, out float height, out float distance, out float halfWidth) =>
-            SampleGround(links, p, out height, out distance, out halfWidth);
+            SampleGround(links, p, out height, out distance, out halfWidth, out _);
 
-        void SampleGround(List<Link> links, Vector2 p, out float height, out float distance, out float halfWidth)
+        void SampleGround(List<Link> links, Vector2 p, out float height, out float distance, out float halfWidth, out bool retainsBank, bool grading=false)
         {
-            height = 0f; distance = float.MaxValue; halfWidth = 3.25f;
+            height = 0f; distance = float.MaxValue; halfWidth = 3.25f; retainsBank = false;
+            Link nearest = default;
+            Vector2 station = default;
             foreach (var link in links)
             {
                 if (link.structure != RoadStructure.Ground) continue;
                 var q = Geo.ClosestOnSegment(p, link.a, link.b, out float t); float d = Vector2.Distance(p, q);
-                if (d >= distance) continue;
+                if (d >= distance || grading&&!link.FormsGroundAt(p,d)) continue;
                 distance = d; height = Mathf.Lerp(link.heightA, link.heightB, Mathf.Clamp01(t)); halfWidth = link.halfWidth;
+                retainsBank = link.retainsBank;
+                nearest = link;
+                station = q;
+            }
+            if (grading && retainsBank)
+            {
+                // A long straight can cross a cliff, flat land and a ridge in a single authored edge.
+                // Protect the uphill slope only alongside the cut at this station.
+                var across = Right((nearest.b - nearest.a).normalized) * halfWidth;
+                retainsBank = RoadStructureBuilder.UphillSide(World(station - across, height), World(station + across, height),
+                    groundHeight, waterHeight) != 0;
             }
             foreach (var j in junctions.Values)
             {
@@ -966,31 +1642,45 @@ namespace AirCity.World
             return heights;
         }
 
-        void RememberGround(int first, int firstShoulder)
+        void RememberGround(int first, int firstShoulder, int firstCut, bool retainsBank)
         {
+            Pavement retained = null;
+            if (retainsBank)
+                for (int i = firstCut; i < groundTriangles.Count; i++)
+                {
+                    var cut = groundTriangles[i];
+                    if (cut.excavationHeight < RoadStructureBuilder.TunnelClearance) continue;
+                    (retained ??= new Pavement()).AddTriangle(cut.a, cut.b, cut.c);
+                }
             void Keep(MeshData mesh,int start)
             {
                 foreach(var ids in mesh.indices)for(int i=0;i<ids.Count;i+=3)
                 {
                     int a=ids[i],b=ids[i+1],c=ids[i+2];
-                    if(a<start || b<start || c<start || Mathf.Min(mesh.colors[a].a,mesh.colors[b].a,mesh.colors[c].a)<.99f)continue;
-                    groundTriangles.Add(new BuiltSurfaceMap.Triangle(mesh.positions[a],mesh.positions[b],mesh.positions[c]));
+                    if(a<start || b<start || c<start || Mathf.Min(mesh.colors[a].a,mesh.colors[b].a,mesh.colors[c].a)<.99f ||
+                        Mathf.Abs(Vector3.Cross(mesh.positions[b]-mesh.positions[a],mesh.positions[c]-mesh.positions[a]).y)<.0001f)continue;
+                    var centre = (mesh.positions[a] + mesh.positions[b] + mesh.positions[c]) / 3f;
+                    bool inCut = retained != null && retained.Contains(Alignment3D.XZ(centre));
+                    groundTriangles.Add(new BuiltSurfaceMap.Triangle(mesh.positions[a],mesh.positions[b],mesh.positions[c],
+                        excavationHeight: inCut ? RoadStructureBuilder.PavementClipHeight : 0f, excavationDepth: MeshData.RoadEdgeDepth));
                 }
             }
             Keep(surface,first);Keep(shoulder,firstShoulder);
             // Follow the longitudinal grade, with a flat soil formation across the carriageway. Extending a
             // crowned pavement's two inclined roof planes onto 12.5 m terrain corners digs a trench under its crown.
-            Vector2 AxisAt(Vector2 point)
+            Link GroundLinkAt(Vector2 point)
             {
-                float best = float.MaxValue; var axis = Vector2.right;
+                float best = float.MaxValue;
+                Link closest = default;
                 foreach (var link in links)
                 {
                     if (link.structure != RoadStructure.Ground) continue;
                     float distance = (Geo.ClosestOnSegment(point, link.a, link.b, out _) - point).sqrMagnitude;
                     if (distance >= best) continue;
-                    best = distance; axis = (link.b - link.a).normalized;
+                    best = distance;
+                    closest = link;
                 }
-                return axis;
+                return closest;
             }
             void Remember(List<Vector3> positions, int start)
             {
@@ -1000,7 +1690,10 @@ namespace AirCity.World
                     var origin = positions[quad];
                     var normal = Vector3.Cross(positions[quad + 1] - origin, positions[quad + 2] - origin);
                     var centre = (positions[quad] + positions[quad + 1] + positions[quad + 2] + positions[quad + 3]) * .25f;
-                    var axis = AxisAt(new Vector2(centre.x, centre.z));
+                    bool inCut = retained != null && retained.Contains(Alignment3D.XZ(centre));
+                    var link = GroundLinkAt(new Vector2(centre.x, centre.z));
+                    var axis = (link.b - link.a).normalized;
+                    if (axis == Vector2.zero) axis = Vector2.right;
                     var gradient = Mathf.Abs(normal.y) > .00001f ? new Vector2(-normal.x, -normal.z) / normal.y : Vector2.zero;
                     gradient = axis * Vector2.Dot(gradient, axis);
                     float formation = float.MaxValue;
@@ -1019,7 +1712,9 @@ namespace AirCity.World
                         for (int x = x0; x <= Mathf.Min(x0 + 1, ValleyWorld.Resolution - 1); x++)
                         {
                             float px = x * spacing - ValleyWorld.Size * .5f, pz = z * spacing - ValleyWorld.Size * .5f;
+                            if (!link.AllowsFoundation(new Vector2(px, pz))) continue;
                             float height = formation + Vector2.Dot(gradient, new Vector2(px - origin.x, pz - origin.z));
+                            if (inCut && groundHeight(new Vector2(px, pz)) > height + 1.25f) continue;
                             int key = z * ValleyWorld.Resolution + x; float ceiling = height + .008f;
                             if (!groundCeilings.TryGetValue(key, out float previous) || ceiling < previous) groundCeilings[key] = ceiling;
                             float floor = height - .008f;
@@ -1034,14 +1729,17 @@ namespace AirCity.World
         }
 
         /// <summary>A terrain sample `distance` from a ground road (at height `road` there) graded to its roadbed.</summary>
-        static float Roadbed(float original, float road, float distance, float halfWidth, float spacing)
+        internal static float Roadbed(float original, float road, float distance, float halfWidth, float spacing)
         {
-            float roadbed = road + .125f;
-            float run = Mathf.Max(0f, distance - Mathf.Max(halfWidth + 4f, spacing * 1.35f));
-            float easedRun = run * Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(run / 12f));
-            // Ground roads are supported by soil all the way to their shoulders. Hill cuts and 1:2 fill slopes
-            // meet the original terrain naturally; elevated links never participate in this derived roadbed.
-            return original > roadbed ? Mathf.Min(original, roadbed + easedRun * .7f) : Mathf.Max(original, roadbed - easedRun * .5f);
+            float run = Mathf.Max(0f, distance - Mathf.Max(halfWidth + 1f, spacing * .55f));
+            return FitRoadbed(original, road + .125f, run);
+        }
+
+        // Two metres of cut or one metre of fill per horizontal metre. Ease only where the slope meets the shoulder.
+        internal static float FitRoadbed(float original, float formation, float run)
+        {
+            float rise = run * Mathf.Lerp(.75f, 1f, Mathf.InverseLerp(0f, 6f, run));
+            return Mathf.Clamp(original, formation - rise, formation + rise * 2f);
         }
 
         List<Link> groundRoads;
@@ -1063,24 +1761,20 @@ namespace AirCity.World
                     var path = graph.Path(edge); float length = path.Length;
                     float start = ArmAt(edge.a, edge.id).cut, end = length - ArmAt(edge.b, edge.id).cut;
                     if (length <= .01f || end <= start) continue;
-                    int count = path.shape.curved || path.shape.smooth ? Mathf.Max(1, Mathf.CeilToInt((end - start) / 8f)) : 1;
-                    for (int i = 0; i < count; i++)
-                    {
-                        var a = Alignment3D.XZ(path.AtDistance(Mathf.Lerp(start, end, i / (float)count)));
-                        var b = Alignment3D.XZ(path.AtDistance(Mathf.Lerp(start, end, (i + 1f) / count)));
-                        groundRoads.Add(new Link(World(a, Elevation(edge, a)), World(b, Elevation(edge, b)), Width(edge) * .5f + ShoulderWidth(edge), edge.structure));
-                    }
+                    AddLinks(groundRoads,edge,path,start,end);
                 }
                 foreach (var j in junctions.Values)
                 {
                     if (!j.IsCurve || j.arc == null || j.arc.Count < 2 || j.arms[0].edge.structure != RoadStructure.Ground) continue;
                     var edge = j.arms[0].edge; int m = j.arc.Count; float total = Mathf.Max(ArcLength(j), 1e-4f), gone = 0f;
+                    var limits=FormationLimits(edge);
                     float h0 = Elevation(edge, j.arc[0]), h1 = Elevation(j.arms[1].edge, j.arc[m - 1]);
                     for (int k = 0; k + 1 < m; k++)
                     {
                         float next = gone + Vector2.Distance(j.arc[k], j.arc[k + 1]);
                         groundRoads.Add(new Link(World(j.arc[k], Mathf.Lerp(h0, h1, gone / total)), World(j.arc[k + 1], Mathf.Lerp(h0, h1, next / total)),
-                            j.arms[0].halfWidth + ShoulderWidth(edge), edge.structure));
+                            j.arms[0].halfWidth + ShoulderWidth(edge), edge.structure,limits.start,limits.end,
+                            RetainsBank(edge) || RetainsBank(j.arms[1].edge)));
                         gone = next;
                     }
                 }
@@ -1095,8 +1789,10 @@ namespace AirCity.World
                 if (gradingAt.TryGetValue((cx, cz), out float known)) return known;
                 var corner = new Vector2(cx * spacing - ValleyWorld.Size * .5f, cz * spacing - ValleyWorld.Size * .5f);
                 float original = groundHeight(corner);
-                SampleGround(groundRoads, corner, out float road, out float distance, out float halfWidth);
-                float change = distance < EarthworkReach ? Roadbed(original, road, distance, halfWidth, spacing) - original : 0f;
+                SampleGround(groundRoads, corner, out float road, out float distance, out float halfWidth, out bool retainsBank, true);
+                float graded = distance < EarthworkReach && !(retainsBank && original > road + 1.25f)
+                    ? Roadbed(original, road, distance, halfWidth, spacing) : original;
+                float change = (retainShore?.Invoke(corner, original, graded) ?? graded) - original;
                 gradingAt[(cx, cz)] = change;
                 return change;
             }
@@ -1111,9 +1807,10 @@ namespace AirCity.World
             foreach (var box in roadbedBounds)
             {
                 if (!box.Contains(p)) continue;
-                SampleGround(p, out float h, out float d, out float halfWidth);
+                SampleGround(links,p,out float h,out float d,out float halfWidth,out bool retainsBank,true);
                 if (d >= EarthworkReach) continue;
-                graded = Roadbed(original, h, d, halfWidth, world.Spacing);
+                if (!retainsBank || original <= h + 1.25f)
+                    graded = Roadbed(original, h, d, halfWidth, world.Spacing);
                 break;
             }
             if (groundCeilings.TryGetValue(index, out float ceiling))
@@ -1121,7 +1818,7 @@ namespace AirCity.World
                 float floor = groundFloors.TryGetValue(index, out float support) ? Mathf.Min(support, ceiling) : float.NegativeInfinity;
                 graded = Mathf.Clamp(graded, floor, ceiling);
             }
-            return graded;
+            return world.RetainShore(p, original, graded);
         }
     }
 }

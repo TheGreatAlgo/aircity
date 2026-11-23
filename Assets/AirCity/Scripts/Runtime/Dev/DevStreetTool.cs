@@ -97,14 +97,19 @@ namespace AirCity.Dev
             if(streetStructureMaterial==null)streetStructureMaterial=RoadStructureBuilder.Material(roadKerbMaterial);
             view.structures=streetStructureMaterial;
             view.trafficSignalPrefab = trafficSignalPrefab;
-            view.GroundHeight=p=>game!=null?game.valley.DisplayHeight(p):0f;
+            if(game!=null)
+            {
+                view.GroundHeight=p=>game.State.world.Height(p);
+                view.WaterHeight=p=>game.State.world.BridgeWaterAt(p);
+                view.RetainShore=(p,original,graded)=>game.State.world.RetainShore(p,original,graded);
+            }
+            else view.GroundHeight=_=>0f;
         }
 
-        void StreetTool(Mouse mouse, Keyboard keys, bool click, bool free, Vector3 point)
+        void StreetTool(Mouse _, Keyboard keys, bool click, bool free, Vector3 point)
         {
             var view = Streets;
             var net = view.network;
-            if (mouse.rightButton.wasPressedThisFrame || keys.escapeKey.wasPressedThisFrame) EndStreet();
             streetSnapShown = free;
             streetProblem = null;
             if (!free)
@@ -112,16 +117,20 @@ namespace AirCity.Dev
                 HideStreetPreview();
                 return;
             }
-            var q = game != null ? Geo.XZ(point) : Geo.XZ(airport.transform.InverseTransformPoint(point));
-            streetSnap = SnapStreet(net, q, keys.shiftKey.isPressed);
-            if(streetSnap.what==null)streetSnap.p=new Vector2(Mathf.Round(streetSnap.p.x),Mathf.Round(streetSnap.p.y));
+            if (!roadEndpointPress.HasValue)
+            {
+                var q = game != null ? Geo.XZ(point) : Geo.XZ(airport.transform.InverseTransformPoint(point));
+                streetSnap = SnapStreet(net, q, keys.shiftKey.isPressed);
+                if (streetSnap.what == null)
+                    streetSnap.p = new Vector2(Mathf.Round(streetSnap.p.x), Mathf.Round(streetSnap.p.y));
+            }
             if (streetChainPoint is Vector2 from)
             {
                 var quoteKey=(net,streetChain,StreetPoint(net,streetSnap),streetStyle,game!=null?game.State.funds:0,airport.LayoutVersion);
                 if(quoteKey!=streetQuoteKey)
                 {
                     streetQuoteKey=quoteKey;
-                    streetQuoteProblem=StreetLineProblem(net,from,streetSnap.p);
+                    streetQuoteProblem=StreetLineProblem(net);
                 }
                 streetProblem=streetQuoteProblem;
                 ShowStreetPreview(from, streetSnap.p);
@@ -132,7 +141,6 @@ namespace AirCity.Dev
             bool joined=streetSnap.node>=0||streetSnap.edge!=null,structure=StreetStructure(net,streetSnap.node,streetSnap.edge);
             if (streetChain >= 0)
             {
-                var end = StreetPoint(net, streetSnap);
                 // The standalone review scene uses the same transaction with free construction rules.
                 var state = game != null ? game.State : new AirCity.Game.CareerState { mode = AirCity.Game.GameMode.Sandbox };
                 if(streetPlan==null || !streetPlan.TryCommit(state,net,out var proposed,out streetProblem))
@@ -157,6 +165,7 @@ namespace AirCity.Dev
 
         void EndStreet()
         {
+            ResetRoadDrag();
             roadDatum=null;
             if (streetDraftBase != null) { Streets.network = streetDraftBase; streetDraftBase = null; }
             streetChain = -1;
@@ -173,27 +182,41 @@ namespace AirCity.Dev
             float reach = Mathf.Max(MetresPerPixel(game != null ? Geo.X0Z(q) + Vector3.up * game.valley.DisplayHeight(q) : airport.transform.TransformPoint(Geo.X0Z(q))) * 14f, RoadTypes.Of(streetStyle).Width * .5f);
             float level=RoadWorkingLevel(q);var chain=streetChain>=0?net.Node(streetChain):null;
             string Name(string what,float height)=>chain==null?what:what+LevelHint(height,chain.position.y);
+            if (undergroundTunnel.publicRoad is PublicRoadSegment tunnel)
+            {
+                if (undergroundTunnelNode >= 0)
+                {
+                    var end = net.Node(undergroundTunnelNode);
+                    return (Geo.XZ(end.position), end.id, null, Name("the tunnel end", end.position.y));
+                }
+                var path = net.Path(tunnel);
+                float parameter = path.ClosestParameter(q);
+                return (path.Horizontal(parameter), -1, tunnel, Name("the tunnel", path.Height(parameter)));
+            }
             PublicRoadNode bestNode = null;
             float best = float.MaxValue;
             foreach (var n in net.nodes)
             {
                 if(n.id==streetChain)continue;
-                float d = Vector2.Distance(PublicRoadNetwork.XZ(n.position), q);if(d>=Mathf.Max(reach,WidestStreet)+AcrossParallax)continue;
-                bool same=SnapRoadLayer(n.position.y,q);
-                if(same?d>=reach:!SnapAcrossLevels(n.position.y,PublicRoadNetwork.XZ(n.position),Mathf.Max(reach,net.At(n.id).Select(e=>e.Type.FullWidth*.5f).DefaultIfEmpty(0f).Max())))continue;
+                var at = Geo.XZ(n.position);
+                float d = Vector2.Distance(at, q);if(d>=Mathf.Max(reach,WidestStreet)+AcrossParallax)continue;
+                bool same=SnapRoadLayer(n.position.y,level,at);
+                if(same?d>=reach:!SnapAcrossLevels(n.position.y,at,Mathf.Max(reach,net.At(n.id).Select(e=>e.Type.FullWidth*.5f).DefaultIfEmpty(0f).Max())))continue;
                 float rank=same?d:AcrossRank(n.position.y,level,0f);
                 if (rank < best) { best = rank; bestNode = n; }
             }
             if (bestNode != null)
                 return (PublicRoadNetwork.XZ(bestNode.position), bestNode.id, null,
-                    Name(bestNode.terminalEntrance == VisitorCentreLayout.EntranceId ? "the visitor centre's driveway" : "the junction", bestNode.position.y));
+                    Name(bestNode.terminalEntrance == VisitorCentreLayout.EntranceId ? "the visitor centre's driveway" :
+                        FlyingSchoolLayout.IsEntrance(bestNode.terminalEntrance) ? "the flying school's driveway" : "the junction", bestNode.position.y));
             PublicRoadSegment bestEdge = null;
             Vector2 on = q;float onHeight=0f;
             best = float.MaxValue;
             foreach (var e in net.segments)
             {
                 var path=net.Path(e);float t=path.ClosestParameter(q);float h=path.Height(t);var c=path.Horizontal(t);
-                float d = Vector2.Distance(c, q);bool same=SnapRoadLayer(h,q);
+                float d = Vector2.Distance(c, q);if(d>Mathf.Max(reach,WidestStreet+AcrossParallax))continue;
+                bool same=SnapRoadLayer(h,level,c);
                 if(!same)
                 {
                     if(d>WidestStreet+AcrossParallax||!SnapAcrossSection(path,null,e.Type.FullWidth*.5f,out t,out h))continue;
@@ -204,13 +227,13 @@ namespace AirCity.Dev
                 if (rank < best) { best = rank; bestEdge = e; on = c;onHeight=h; }
             }
             if (bestEdge != null) return (on, -1, bestEdge, Name("the " + bestEdge.Type.name.ToLowerInvariant(),onHeight));
-            if (VisitorCentreConstruction.DrivewayOutward(game?.State, chain) is Vector2 outward && !net.At(chain.id).Any())
+            if (VisitorCentreConstruction.DrivewayOutward(game?.State, chain, airport) is Vector2 outward && !net.At(chain.id).Any())
             {
                 var mouth = Geo.XZ(chain.position);
                 var offset = q - mouth;
                 float forward = Vector2.Dot(offset, outward);
                 if (forward >= 6f && Mathf.Abs(Geo.Cross(offset, outward)) < Mathf.Clamp(reach, 4f, 8f))
-                    return (mouth + outward * forward, -1, null, "the visitor centre driveway alignment");
+                    return (mouth + outward * forward, -1, null, "the driveway alignment");
             }
             if (steps && streetChainPoint is Vector2 from)
             {
@@ -264,7 +287,7 @@ namespace AirCity.Dev
 
         /// <summary>Why a road from `from` to `to` won't do, or null: too short, meeting a road too shallowly, or crossing
         /// one so near a junction that a section between would be too short (PublicRoadNetwork.JoinProblem).</summary>
-        string StreetLineProblem(PublicRoadNetwork net, Vector2 from, Vector2 to)
+        string StreetLineProblem(PublicRoadNetwork net)
         {
             streetDraft=null;streetPlan=null;
             var state=game!=null?game.State:new CareerState {mode=GameMode.Sandbox};
@@ -285,14 +308,16 @@ namespace AirCity.Dev
                 streetPreview = go.AddComponent<PublicRoadsView>();
                 streetPreview.constructionPreview = true;
                 Dress(streetPreview);
-                streetPreview.level = .06f;   // over the roads it starts from
+                // The valley's excavation is in world space at PublicRoadGeometry's pavement elevation.
+                streetPreview.level = game != null ? .18f : .06f;
                 go.SetActive(true);
             }
             streetPreview.gameObject.SetActive(true);
             var net = Streets.network;
             var start = streetChain >= 0 && net.Node(streetChain) != null ? net.Node(streetChain).position :
                 new Vector3(a.x, game != null ? game.valley.DisplayHeight(a) : 0f, a.y);
-            var wanted = (streetDraft,start, StreetPoint(net,streetSnap), streetStyle);
+            var end = StreetPoint(net, streetSnap);
+            var wanted = (streetDraft, start, end, streetStyle);
             if (wanted == streetPreviewBuilt) return;
             streetPreviewBuilt = wanted;
             if(streetPreviewSource!=null){streetPreviewSource.ShowCommittedGeometry(true);game?.valley.EndBuiltSurfacePreview();streetPreviewSource=null;}
@@ -300,7 +325,8 @@ namespace AirCity.Dev
             if(g==null)
             {
                 g=new PublicRoadNetwork();
-                g.AddSegment(g.AddNode(start),g.AddNode(StreetPoint(net,streetSnap)),streetStyle,RoadStructure.Ground);
+                g.AddSegment(g.AddNode(start), g.AddNode(end), streetStyle, RoadStructure.Ground).alignment =
+                    roadBuildSettings.Shape(start, end);
             }
             var partition=streetDraft!=null?new PublicRoadPreviewPartition(net,g):null;
             if(partition!=null)
@@ -324,11 +350,14 @@ namespace AirCity.Dev
             streetPreview.network = g;
             streetPreview.Rebuild(partition?.changedSegments,partition?.changedJunctions,partition!=null?streetUnchangedPreview.Geometry:null);
             streetOutline.Clear();
-            float reach=PublicRoadGeometry.CurveRadius(streetStyle)*2f+RoadTypes.Of(streetStyle).FullWidth;
+            float width = RoadTypes.Of(streetStyle).FullWidth;
+            float reach = PublicRoadGeometry.CurveRadius(streetStyle) * 2f + width;
+            var path = streetPlan?.Path ?? new Alignment3D(start, end, roadBuildSettings.Shape(start, end));
+            var pathBounds = path.Bounds(width);
             foreach(var edge in MeshBoundary.Edges(streetPreview.Geometry.pavement))
             {
                 var middle=Geo.XZ((edge.a+edge.b)*.5f);
-                if(CareerConstruction.Distance(middle,Geo.XZ(start),streetSnap.p)<RoadTypes.Of(streetStyle).FullWidth ||
+                if(pathBounds.Contains(middle) && path.DistanceTo(middle) < width ||
                     Vector2.Distance(middle,Geo.XZ(start))<reach)streetOutline.Add(edge);
             }
             if(streetDraft!=null)
@@ -379,18 +408,7 @@ namespace AirCity.Dev
                 }
             }
             if (game == null) Marker(streetSnap.p, streetSnap.what != null, streetProblem != null, point);
-            else
-            {
-                float radius = MetresPerPixel(point) * (streetSnap.what != null ? 9f : 6f);
-                loop.Clear();
-                for (int i = 0; i < 16; i++)
-                {
-                    float angle = i / 16f * Mathf.PI * 2f;
-                    var p = streetSnap.p + new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * radius;
-                    loop.Add(Geo.X0Z(p,StreetEndpoint.y));
-                }
-                outlines.Line(cam, loop, streetProblem != null ? DevGui.Danger : DevGui.Accent, 2f,true,true);
-            }
+            else DrawRoadEndpoint(StreetEndpoint, streetSnap.what != null, streetProblem != null);
         }
     }
 }

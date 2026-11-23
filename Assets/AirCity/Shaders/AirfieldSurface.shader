@@ -12,6 +12,9 @@
 // Mesh layout (built by SurfaceBuilder; state kept current by SurfaceState): uv0 = (metres across from the
 // centreline, metres along), uv1 = (kind, runway length), uv4 = ploughs / mowers at work (see StripWorked),
 // color.r = wear 0..1, color.g = snow (cm), color.b = grass length (cm), color.a = edge coverage (fringes).
+// Public roads (PublicRoadGeometry.LaneVertex) add their lanes for tyre wear: uv0.z = metres right of the road's
+// centreline, uv0.w = lane width (negative: one-way, lanes counted across from one side), uv1.z = lanes each way
+// (0 = none; negative in a junction), uv1.w = where the lanes start from the centreline, color.b = braking traffic 0..1.
 Shader "AirCity/AirfieldSurface"
 {
     Properties
@@ -34,6 +37,7 @@ Shader "AirCity/AirfieldSurface"
         _JointDarkness ("Joint darkness", Range(0, 1)) = 0.4
         _SlabVariation ("Slab / lane tint variation", Range(0, 0.3)) = 0.05
         _Porosity ("Darkening when wet", Range(0, 1)) = 0.45
+        _TyreWear ("Road wheel paths (darkening)", Range(0, 0.6)) = 0.32
         _Rubber ("Tyre rubber", Range(0, 1)) = 0.8
         _RubberColor ("Tyre rubber colour", Color) = (0.03, 0.03, 0.03, 1)
         _Puddles ("Puddles when wet", Range(0, 1)) = 1
@@ -56,7 +60,7 @@ Shader "AirCity/AirfieldSurface"
             float4 _JointSpacing;
             float _JointWidth, _JointDarkness, _SlabVariation, _Porosity, _Rubber;
             half4 _RubberColor;
-            float _Puddles, _StripeStrength;
+            float _Puddles, _StripeStrength, _TyreWear;
             float _ConstructionZTest, _ConstructionZWrite;
         CBUFFER_END
 
@@ -73,8 +77,8 @@ Shader "AirCity/AirfieldSurface"
             float4 positionOS : POSITION;
             float3 normalOS : NORMAL;
             half4 color : COLOR;
-            float2 uv0 : TEXCOORD0;
-            float2 uv1 : TEXCOORD1;
+            float4 uv0 : TEXCOORD0;
+            float4 uv1 : TEXCOORD1;
             float4 work : TEXCOORD4;
         };
 
@@ -88,6 +92,7 @@ Shader "AirCity/AirfieldSurface"
             float2 kindLength : TEXCOORD3;
             half fogFactor : TEXCOORD4;
             float4 work : TEXCOORD5;
+            float4 lane : TEXCOORD6;      // across, lane width, lanes, lanes' start (public roads)
         };
 
         Varyings vert(Attributes v)
@@ -97,8 +102,9 @@ Shader "AirCity/AirfieldSurface"
             o.positionCS = TransformWorldToHClip(o.positionWS);
             o.normalWS = TransformObjectToWorldNormal(v.normalOS);
             o.color = v.color;
-            o.local = v.uv0;
-            o.kindLength = v.uv1;
+            o.local = v.uv0.xy;
+            o.kindLength = v.uv1.xy;
+            o.lane = float4(v.uv0.zw, v.uv1.zw);
             o.work = v.work;
             o.fogFactor = ComputeFogFactor(o.positionCS.z);
             return o;
@@ -239,6 +245,7 @@ Shader "AirCity/AirfieldSurface"
                 albedo *= 1.0 - joint * _JointDarkness;
 
                 albedo *= _Tint.rgb * (1.0 + (macro.r - 0.5) * 2.0 * _MacroStrength);
+                half tyres = 0;
                 if(kind == KIND_ROAD)
                 {
                     half4 roadPatch=Macro(xz+float2(37,81),23.0);
@@ -248,6 +255,32 @@ Shader "AirCity/AirfieldSurface"
                     albedo*=lerp(half3(.85,.87,.9),half3(1.17,1.12,1.04),faded);
                     albedo*=1.0-damp*.1;
                     albedo*=1.0+(roadGrain.a-.5)*.12;
+                    // tyres: two wheel paths in every lane, polished darker and smoother, broken up along the road;
+                    // an oil-stained strip between them where traffic brakes and waits, and a junction worn all over
+                    half braking = i.kindLength.y < 0.0 ? i.color.b : 0.0;   // public roads only: airside roads keep grass length there
+                    // a junction (lanes negative) is scrubbed all over by turning traffic, with the through road's
+                    // wheel paths carried across it
+                    bool junction = i.lane.z < -0.1;
+                    float lanes = abs(i.lane.z);
+                    if (lanes > 0.5)
+                    {
+                        float width = max(abs(i.lane.y), 1.0);
+                        float across = (i.lane.y < 0.0 ? i.lane.x : abs(i.lane.x)) - i.lane.w;
+                        half inLanes = step(0.0, across) * step(across, lanes * width);
+                        float fromMiddle = abs((frac(across / width) - 0.5) * width);
+                        half broken = 0.5 + 0.5 * smoothstep(0.25, 0.7, roadPatch.g * 0.6 + roadGrain.r * 0.4);
+                        half path = 1.0 - smoothstep(0.15, 0.66, abs(fromMiddle - 0.86));
+                        // too far off to tell the paths apart: their average, so lanes neither shimmer nor lighten
+                        path = lerp(path, 0.4, smoothstep(0.35, 1.1, fwidth(across)));
+                        tyres = path * broken * inLanes * (0.7 + 0.5 * braking);
+                        // oil drips where traffic stands waiting: the last metres before a stop line
+                        half oil = (1.0 - smoothstep(0.1, 0.7, fromMiddle)) * inLanes * smoothstep(0.5, 0.95, braking) * (junction ? 0.0 : 1.0);
+                        albedo *= 1.0 - oil * (0.07 + 0.16 * roadGrain.b);
+                    }
+                    if (junction) tyres = max(tyres, 0.45 * (0.5 + 0.5 * smoothstep(0.25, 0.7, roadPatch.g * 0.6 + roadGrain.r * 0.4)));
+                    // darker, and a little warmer: rubber and oil worked into the surface
+                    albedo *= lerp(half3(1, 1, 1), half3(0.62, 0.6, 0.58), saturate(tyres * _TyreWear * 2.6));
+                    albedo *= 1.0 - braking * 0.1 * smoothstep(0.3, 0.7, roadPatch.a);
                 }
                 if (kind == KIND_SHOULDER)
                     albedo *= 1.06;
@@ -292,7 +325,7 @@ Shader "AirCity/AirfieldSurface"
                     albedo = lerp(albedo, _RubberColor.rgb, rubber * 0.8);
                 }
 
-                half smoothness = (1.0 - mask.r) * _Smoothness + rubber * 0.12;
+                half smoothness = (1.0 - mask.r) * _Smoothness + rubber * 0.12 + tyres * 0.03;
                 half occlusion = lerp(1.0, mask.g, 0.8);
 
                 // weather: wet darkens and adds puddles in the low spots

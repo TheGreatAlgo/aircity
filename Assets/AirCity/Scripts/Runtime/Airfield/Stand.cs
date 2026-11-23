@@ -60,6 +60,11 @@ namespace AirCity.Airfield
         public List<StandServiceConfiguration> serviceConfigurations = new List<StandServiceConfiguration>();
         [Tooltip("Optional baggage approach/exit service-road nodes; 0 chooses the nearest suitable nodes.")]
         public int baggageEntryNode, baggageExitNode;
+        [Tooltip("The facility whose flight line this stand is part of (FlyingSchool.SiteId); empty for an ordinary stand. " +
+                 "An owned stand is placed, moved and removed with its facility and takes only that facility's aircraft.")]
+        public string owner = "";
+        /// <summary>Part of a facility's flight line (a flying school's): not an ordinary public stand.</summary>
+        public bool Owned => !string.IsNullOrEmpty(owner);
 
         public StandServiceConfiguration ServiceFor(AircraftType type) =>
             serviceConfigurations?.Find(c => c != null && c.aircraft == type);
@@ -106,11 +111,12 @@ namespace AirCity.Airfield
             copy.head.id = Guid.NewGuid().ToString("N");
             foreach (var h in copy.additionalHeads) h.id = Guid.NewGuid().ToString("N");
             copy.serviceConfigurations = serviceConfigurations.ConvertAll(c => c.Clone());
+            copy.owner = "";
             return copy;
         }
         /// <summary>"12", "D2": what's painted on it.</summary>
-        public string Label => DeIcing ? "D" + number : number.ToString();
-        public string Name => DeIcing ? "De-icing bay D" + number : "Stand " + number;
+        public string Label => DeIcing ? "D" + number : Owned ? "T" + number : number.ToString();
+        public string Name => DeIcing ? "De-icing bay D" + number : Owned ? "Tie-down T" + number : "Stand " + number;
     }
 
     /// <summary>

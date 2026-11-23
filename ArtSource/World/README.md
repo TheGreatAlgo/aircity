@@ -13,7 +13,7 @@ Native Unity mesh generators live in `Assets/AirCity/Scripts/Editor/World`:
 |---|---|
 | `TreeMeshGenerator.cs` | spruce/pine trunks, branches and foliage cards, six variants with distance levels |
 | `TreeImpostorBaker.cs` | transparent front/top views of the generated models, used by the distant tree meshes |
-| `RegionTreePalette.cs` | runtime mixed woodland/tropical tree geometry and Burst-baked BC1 distance silhouettes; nine woodland and seven tropical forms |
+| `RegionTreePalette.cs` | runtime valley trees: firs, spruces, pines, broadleaf crowns and palms as opaque crown volumes with bough/leaf-spray cards nearby, four levels; nine woodland, six mountain and seven tropical forms |
 | `WorldAssetSetup.cs` | tree library, model prefabs, materials, road profiles and traffic signal prefab |
 | `PublicRoadKitSetup.cs` | separate street/junction/highway/ramp mesh kit and source graph per prefab |
 | `GroundCoverSetup.cs` | twenty boulder/stone/grass/sedge/fern/shrub/fallen-timber models with near/far geometry in `GroundCover.asset` |

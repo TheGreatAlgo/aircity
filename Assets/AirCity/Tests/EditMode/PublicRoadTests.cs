@@ -1,4 +1,5 @@
 using System.Linq;
+using AirCity.Airfield;
 using AirCity.EditorTools.World;
 using AirCity.Game;
 using AirCity.World;
@@ -184,10 +185,28 @@ namespace AirCity.Tests.World
                 for (int z = 0; z < ValleyWorld.Resolution; z++)
                 for (int x = 0; x < ValleyWorld.Resolution; x++) map[z, x] = heights[z * ValleyWorld.Resolution + x] / ValleyWorld.HeightRange;
                 terrain.SetHeights(0, 0, map);
+                var cut = new Pavement();
+                foreach (var triangle in geometry.groundTriangles.Where(t => t.excavationHeight >= RoadStructureBuilder.TunnelClearance))
+                    cut.AddTriangle(triangle.a, triangle.b, triangle.c);
+                var lining = new Pavement();
+                lining.Add(geometry.structures, Matrix4x4.identity);
                 float minimum = float.MaxValue;
                 foreach (var p in geometry.pavement.vertices)
                 {
                     float h = terrain.GetInterpolatedHeight((p.x + ValleyWorld.Size * .5f) / ValleyWorld.Size, (p.z + ValleyWorld.Size * .5f) / ValleyWorld.Size);
+                    // A cliff gallery intentionally keeps rock above its roof. Every other surface
+                    // needs either the full vehicle clearance at this grade or a formed roadbed.
+                    var point = Alignment3D.XZ(p);
+                    if (h > p.y - .02f && cut.Project(point, p.y, out float floor, out _) && Mathf.Abs(p.y - floor) < .1f)
+                    {
+                        if (h > floor + RoadStructureBuilder.TunnelExcavationHeight)
+                        {
+                            float roof = floor + RoadStructureBuilder.TunnelExcavationHeight;
+                            Assert.That(lining.Project(point, roof, out float top, out _) && Mathf.Abs(top - roof) < .1f,
+                                Is.True, "Missing gallery roof under retained terrain at " + p);
+                        }
+                        continue;
+                    }
                     minimum = Mathf.Min(minimum, p.y - h);
                 }
                 Assert.GreaterOrEqual(minimum, .02f, "Terrain must not cover a ground road near a flattened junction.");

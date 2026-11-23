@@ -25,6 +25,7 @@ namespace AirCity.Airfield.Building
         }
 
         public int Count => positions.Count;
+        internal const float RoadEdgeDepth = .45f;
         public bool Empty => positions.Count == 0;
 
         public int Vertex(Vector3 position, Vector3 normal, Color color, Vector4 u0, Vector4 u1 = default,
@@ -56,6 +57,26 @@ namespace AirCity.Airfield.Building
         {
             Triangle(submesh, a, b, c);
             Triangle(submesh, a, c, d);
+        }
+
+        public void RoadEdge(int submesh, Vector3 a, Vector3 b, Vector2 outward, Color colour, Vector4 kind)
+        {
+            var edge = Geo.XZ(b-a);
+            if (edge.sqrMagnitude < .0001f) return;
+            var normal = Geo.X0Z(Geo.Right(edge.normalized));
+            if (Vector3.Dot(normal, Geo.X0Z(outward)) < 0f)
+            {
+                (a,b) = (b,a);
+                normal = -normal;
+            }
+            int first = Count;
+            float s = Vector2.Dot(Geo.XZ(a), Geo.Left(Geo.XZ(normal)));
+            float end = s + edge.magnitude;
+            Vertex(a, normal, colour, new Vector4(0f,s), kind);
+            Vertex(b, normal, colour, new Vector4(0f,end), kind);
+            Vertex(b - Vector3.up*RoadEdgeDepth, normal, colour, new Vector4(-RoadEdgeDepth,end), kind);
+            Vertex(a - Vector3.up*RoadEdgeDepth, normal, colour, new Vector4(-RoadEdgeDepth,s), kind);
+            Quad(submesh, first, first+1, first+2, first+3);
         }
 
         /// <summary>Write into a mesh (made if null). Channels the shader doesn't read can be left out.</summary>
@@ -147,6 +168,36 @@ namespace AirCity.Airfield.Building
                 float r = Mathf.Lerp(r0, r1, f);
                 into.Add(centre + new Vector2(Mathf.Cos(a), Mathf.Sin(a)) * r);
             }
+        }
+
+        /// <summary>The spacing to sample a bend's centreline at: at most 2 m, and at most 5 degrees of the turn, so a
+        /// tight bend's edges are as round as a wide one's.</summary>
+        public static float ArcStep(float radius) => Mathf.Clamp(radius * 5f * Mathf.Deg2Rad, 0.25f, 2f);
+
+        /// <summary>Each point's distance along a polyline.</summary>
+        public static float[] Along(IList<Vector2> points)
+        {
+            var along = new float[points.Count];
+            for (int i = 1; i < points.Count; i++) along[i] = along[i - 1] + Vector2.Distance(points[i - 1], points[i]);
+            return along;
+        }
+
+        /// <summary>The part of a polyline between two distances along it (`along`: each point's distance).</summary>
+        public static List<Vector2> Slice(IList<Vector2> points, float[] along, float from, float to)
+        {
+            var result = new List<Vector2>();
+            int n = points.Count;
+            Vector2 At(float d)
+            {
+                int i = 1;
+                while (i < n - 1 && along[i] < d) i++;
+                float seg = along[i] - along[i - 1];
+                return Vector2.Lerp(points[i - 1], points[i], seg > 1e-6f ? Mathf.Clamp01((d - along[i - 1]) / seg) : 0f);
+            }
+            result.Add(At(from));
+            for (int i = 1; i < n - 1; i++) if (along[i] > from && along[i] < to) result.Add(points[i]);
+            result.Add(At(to));
+            return result;
         }
 
         /// <summary>The arc of radius r tangent to two lines that meet at corner, running out along unit

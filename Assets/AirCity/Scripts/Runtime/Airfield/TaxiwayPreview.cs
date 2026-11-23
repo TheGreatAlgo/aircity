@@ -2,6 +2,7 @@ using System;
 using AirCity.Airfield.Building;
 using AirCity.World;
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 
 namespace AirCity.Airfield
@@ -10,8 +11,8 @@ namespace AirCity.Airfield
     /// What a taxiway or road about to be laid will look like (the dev taxiway / road tools): its one straight
     /// stretch built by TaxiwayBuilder like the real thing (surface, paint, lights, verges), fresh (no wear, snow or
     /// grass), into objects of its own. It is never part of the airport (nothing routes over it or maintains it),
-    /// and its own preview materials draw over the still-ungraded terrain without writing depth or altering
-    /// shared materials. Rebuilt only when it changes.
+    /// and its own preview materials draw over still-ungraded terrain. Tunnel drafts test depth against the
+    /// matching excavation and lining. Rebuilt only when it changes.
     ///
     ///   preview.Show(airport, from, to, 15f, PavementSurface.Concrete, lit: false, RoadClass.None);   // every frame
     ///   preview.Hide();
@@ -42,6 +43,7 @@ namespace AirCity.Airfield
             root.transform.localScale=airport.transform.lossyScale;root.SetActive(true);
             if(draft==geometry && source==airport)return;
             RestoreSource();draft=geometry;source=airport;valley=terrain;shown=false;
+            RespectDepth(terrain != null && geometry.ownership.Any(triangle => triangle.excavationHeight >= RoadStructureBuilder.TunnelExcavationHeight));
             surfacePart.Set(geometry.surface.mesh.Apply(surfacePart.Target,"Proposed taxiway network"),
                 airport.SurfaceMaterial(PavementSurface.Dirt),airport.SurfaceMaterial(PavementSurface.Asphalt),airport.SurfaceMaterial(PavementSurface.Concrete),airport.SurfaceMaterial(PavementSurface.Grass));
             paintPart.Set(geometry.paint.Apply(paintPart.Target,"Proposed taxiway paint"),airport.paint);
@@ -73,6 +75,7 @@ namespace AirCity.Airfield
             }
             RestoreSource();
             Ensure();
+            RespectDepth(false);
             if(structurePart.Renderer!=null)structurePart.Renderer.enabled=false;
             var t = airport.transform;
             root.transform.SetPositionAndRotation(t.position + t.up * Lift, t.rotation);
@@ -135,6 +138,14 @@ namespace AirCity.Airfield
             net = null;
             surfacePart = paintPart = glowPart = fixturePart = vergePart = structurePart = null;
             shown = false;
+        }
+
+        void RespectDepth(bool enabled)
+        {
+            surfacePart.previewRespectsDepth = enabled;
+            paintPart.previewRespectsDepth = enabled;
+            vergePart.previewRespectsDepth = enabled;
+            structurePart.previewRespectsDepth = enabled;
         }
 
         void Ensure()

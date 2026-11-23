@@ -193,6 +193,74 @@ namespace AirCity.Tests.Airfield
             airport.Taxiways.edges.Add(edge); Finish(airport,flight); Assert.IsTrue(hangar.ResidentInBay);
         }
 
+        [TestCase("LightJet", SizeCode.A, StandExit.PushBack, 970f, "C-STA6", "ClassicBlue", false)]
+        [TestCase("ExecutiveJet", SizeCode.B, StandExit.TaxiOut, 1320f, "C-STB8", "MidnightChampagne", true)]
+        [TestCase("FlagshipJet", SizeCode.B, StandExit.TaxiOut, 1590f, "C-STLA", "GraphiteSilver", true)]
+        public void BusinessJet_LeasesExecutiveSpotAndTaxisToStandAndBack(
+            string model, SizeCode standCode, StandExit standExit, float runwayLength, string registration,
+            string defaultLivery, bool hasAirstair)
+        {
+            var type = AircraftSetup.AllTypes().Single(t => t.model == model);
+            Assert.AreEqual(AircraftCategory.BusinessJet, type.category);
+            Assert.AreEqual(standCode.Letter(), type.SizeCode);
+            Assert.That(type.RunwayLength, Is.EqualTo(runwayLength));
+            Assert.IsFalse(type.unpavedRunways);
+            Assert.IsFalse(SmallHangar.Fits(type), "Business jets use the executive hangar");
+
+            var go = new GameObject(type.TypeName + " lease and ground transfer");
+            go.SetActive(false);
+            spawned.Add(go);
+            var airport = go.AddComponent<Airport>();
+            AirfieldSetup.AssignMaterials(airport);
+            airport.groundSize = 0f;
+            go.SetActive(true);
+            var net = airport.Taxiways;
+            float width = RunwayRules.TaxiwayWidthFor('B');
+            float lane = HangarSpec.For(HangarSize.Executive).Setback + width / 2f;
+            int start = net.AddNode(new Vector3(-150f, 0f, lane));
+            int end = net.AddNode(new Vector3(150f, 0f, lane));
+            net.Connect(start, end, width, PavementSurface.Asphalt);
+            var stand = net.AddStand(StandKind.Parking, new Vector3(115f, 0f, lane), 180f,
+                standCode, PavementSurface.Concrete, standExit);
+            Assert.IsNotNull(stand);
+            var bay = airport.AddHangar(Vector2.zero, 0f, HangarSize.Executive);
+            Assert.IsNotNull(bay);
+            Assert.IsTrue(bay.TryLease(type, "Starling Charter", registration, out var problem), problem);
+            var jet = bay.ResidentAircraft;
+            Assert.IsNotNull(jet, "The game catalog supplies the real aircraft prefab");
+            var paint = jet.GetComponent<AircraftLiveryApplier>();
+            Assert.AreEqual(registration, paint.registration);
+            Assert.AreEqual(defaultLivery, paint.liveryAsset.name);
+            Assert.IsTrue(bay.ResidentInBay);
+
+            Assert.AreEqual(hasAirstair, jet.Airstair != null);
+            if (hasAirstair)
+            {
+                jet.Airstair.SetOpen(true);
+                jet.Airstair.Animate(type.airstair.seconds);
+                Assert.IsFalse(jet.Airstair.Stowed);
+            }
+            var outbound = airport.Traffic.TaxiToStand(jet, out problem);
+            Assert.IsNotNull(outbound, problem);
+            Assert.AreSame(stand, outbound.Route.stand.stand);
+            if (hasAirstair)
+            {
+                var parked = jet.transform.position;
+                airport.Simulate(.25f);
+                Assert.AreEqual(FlightPhase.Ready, outbound.Phase);
+                Assert.That(Vector3.Distance(parked, jet.transform.position), Is.LessThan(.01f));
+            }
+            Finish(airport, outbound);
+            if (hasAirstair) Assert.IsTrue(jet.Airstair.Stowed);
+            var inbound = airport.Traffic.TaxiToHangar(jet, bay, out problem);
+            Assert.IsNotNull(inbound, problem);
+            Finish(airport, inbound);
+            Assert.That(Vector2.Distance(XZ(jet.transform.position), bay.ParkPosition(type)), Is.LessThan(.15f),
+                "The executive approach must preserve the centered stop.");
+            Assert.IsTrue(bay.ResidentInBay);
+            Assert.AreSame(jet, bay.ResidentAircraft);
+        }
+
 
         [TestCase(0)] [TestCase(1)] [TestCase(2)]
         public void ResidentSave_RestoresTaxiHandPushAndFinalDoorwayApproach(int stage)

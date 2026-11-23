@@ -14,13 +14,16 @@ namespace AirCity.World
         public int LastSubmittedTrees { get; private set; }
         public int LastFullDetailTrees { get; private set; }
         public int LastMediumDetailTrees { get; private set; }
+        /// <summary>Trees drawn as crown volumes only (the two far levels).</summary>
         public int LastImpostorTrees { get; private set; }
         public long LastSubmittedTriangles { get; private set; }
         public int LastRemovalCheckedTrees { get; private set; }
         /// <summary>Trees in the merged shadow-only meshes that cast for trees beyond <see cref="ShadowDistance"/>.</summary>
         public int DistantShadowTrees { get; private set; }
         const float DetailTileSize = 200f, DistanceTileSize = 800f;
-        const float FullDetailDistance = 90f, ImpostorDistance = 360f, ShadowDistance = 180f;
+        // Boughs and leaf sprays to 300 m (two levels); beyond that a tree is its opaque crown volumes, and from
+        // 1200 m a single low shape. A tree's own mesh casts its shadow to 110 m, the shadow crowns below take over.
+        const float FullDetailDistance = 80f, MediumDetailDistance = 300f, RegionDistance = 1200f, ShadowDistance = 110f;
         const int InstanceLimit = 500;
         // Sun shadows of trees beyond ShadowDistance. Casting them through the instanced draws re-sends every tree's
         // transform for every shadow cascade each frame (measured +10 ms at 600 m, +25 ms at 1500 m on an M2), and
@@ -33,11 +36,9 @@ namespace AirCity.World
         const int CrownSides = 5, CrownVertices = CrownSides + 2, CrownIndices = CrownSides * 6;
         const int CrownsPerMesh = ushort.MaxValue / CrownVertices;
         const string DistantShadowRoot = "Distant tree shadows";
-        /// <summary>A tree's foliage as a two-ended pyramid in the tree's own space: widest ring, and both tips.</summary>
-        struct Crown { public Vector2 centre; public float ring, radius, bottom, top; }
         [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
         struct CrownVertex { public Vector3 position; public float seed; }
-        Crown[] crowns;
+        TreeCrown[] crowns;
         Transform distantShadows;
         Material distantShadowMaterial;
         sealed class Batch
@@ -107,8 +108,9 @@ namespace AirCity.World
             Time.realtimeSinceStartup - cell.shadowStaleSince > ShadowRebuildDelay);
 
         /// <summary>Where a species' foliage is widest, how wide, and how far down and up it reaches.</summary>
-        static Crown MeasureCrown(TreeVariant variant)
+        static TreeCrown MeasureCrown(TreeVariant variant)
         {
+            if (variant.crown.radius > 0f) return variant.crown;
             var mesh = variant.levels[1] != null ? variant.levels[1] : variant.levels[0];
             if (mesh == null) return default;
             if (mesh.isReadable && mesh.subMeshCount > 1 && mesh.GetIndexCount(1) > 0)
@@ -136,11 +138,11 @@ namespace AirCity.World
                     if (r > radius) { radius = r; widest = band; }
                 }
                 // A little inside the outline: foliage has gaps, a solid shape has none.
-                return new Crown { centre = centre, bottom = bottom, top = top, radius = radius * .85f,
+                return new TreeCrown { centre = centre, bottom = bottom, top = top, radius = radius * .85f,
                     ring = bottom + (widest + .5f) / Bands * (top - bottom) };
             }
             var bounds = mesh.subMeshCount > 1 ? mesh.GetSubMesh(1).bounds : mesh.bounds;
-            return new Crown { centre = new Vector2(bounds.center.x, bounds.center.z), bottom = bounds.min.y, top = bounds.max.y,
+            return new TreeCrown { centre = new Vector2(bounds.center.x, bounds.center.z), bottom = bounds.min.y, top = bounds.max.y,
                 ring = Mathf.Lerp(bounds.min.y, bounds.max.y, .4f), radius = .35f * (bounds.extents.x + bounds.extents.z) };
         }
 
@@ -261,7 +263,7 @@ namespace AirCity.World
                 bounds.Expand(2f); // Include animated branch movement at every level.
                 variantBounds[i] = bounds;
             }
-            crowns = new Crown[variants];
+            crowns = new TreeCrown[variants];
             for (int i = 0; i < variants; i++) crowns[i] = MeasureCrown(activeLibrary.variants[i]);
             int side = Mathf.CeilToInt(ValleyWorld.Size / DetailTileSize);
             int distantSide = Mathf.CeilToInt(ValleyWorld.Size / DistanceTileSize);
@@ -448,12 +450,12 @@ namespace AirCity.World
                 if (ShadowRebuildDue(cell)) RefreshDistantShadows(cell);
                 foreach (var shadow in cell.shadows) shadow.enabled = distance < DistantShadowEnd;
                 if (!GeometryUtility.TestPlanesAABB(planes, cell.bounds)) continue;
-                bool distant = distance >= ImpostorDistance;
+                bool distant = distance >= MediumDetailDistance;
                 foreach (var batch in distant ? cell.distant : cell.detail)
                 {
                     if (!GeometryUtility.TestPlanesAABB(planes, batch.bounds)) continue;
                     float batchDistance = Vector3.Distance(camera.transform.position, batch.bounds.ClosestPoint(camera.transform.position));
-                    int level = distant ? 2 : batchDistance < FullDetailDistance ? 0 : batchDistance < ImpostorDistance ? 1 : 2;
+                    int level = batchDistance < FullDetailDistance ? 0 : batchDistance < MediumDetailDistance ? 1 : batchDistance < RegionDistance ? 2 : 3;
                     DrawBatch(batch, level, batchDistance, camera);
                 }
             }
@@ -462,7 +464,8 @@ namespace AirCity.World
         void DrawBatch(Batch batch, int level, float distance, Camera camera)
         {
             var variant = activeLibrary.variants[batch.variant];
-            var mesh = variant.levels[level];
+            // A library with fewer levels ends on its last one.
+            var mesh = variant.levels[Mathf.Min(level, variant.levels.Length - 1)];
             int count = batch.matrices.Length;
             if (count == 0) return;
             LastSubmittedTrees += count;
@@ -474,8 +477,6 @@ namespace AirCity.World
                 uint indices = mesh.GetIndexCount(submesh);
                 if (indices == 0) continue;
                 var material = submesh == 0 ? variant.bark != null ? variant.bark : activeLibrary.bark :
-                    level == 2 && variant.distantFoliage != null ? variant.distantFoliage :
-                    level == 2 && activeLibrary.distantFoliage != null ? activeLibrary.distantFoliage :
                     variant.foliage != null ? variant.foliage : activeLibrary.foliage;
                 var parameters = new RenderParams(material) {
                     camera = camera, worldBounds = batch.bounds, receiveShadows = true,

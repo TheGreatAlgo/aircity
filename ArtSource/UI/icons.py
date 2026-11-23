@@ -210,6 +210,22 @@ def hangar():
     return i
 
 
+def flying_school():
+    """A light aircraft inside the training circuit it flies: a straight-winged trainer, nose up, and the circuit
+    round it with its direction."""
+    i = Icon()
+    i.rect(8, 20, 120, 110, radius=34)
+    i.rect(17, 29, 111, 101, radius=25, on=False)
+    i.rect(40, 14, 72, 36, on=False)                      # a gap in the upwind leg for the arrowhead
+    i.polygon([(40, 24.5), (64, 9), (64, 40)])
+    cx, top = 64, 42
+    i.rect(cx - 4.5, top + 3, cx + 4.5, top + 50, radius=4.5)   # fuselage
+    i.rect(cx - 27, top + 13, cx + 27, top + 23, radius=3)      # straight wing
+    i.rect(cx - 11, top + 43, cx + 11, top + 50, radius=2)      # tailplane
+    i.line([(cx - 9, top + 2), (cx + 9, top + 2)], 3.5)         # propeller
+    return i
+
+
 def plane(i, cx, top, s):
     """A generic twin-jet from above, nose up, `s` = its length in units."""
     def P(x, y):
@@ -369,11 +385,75 @@ def level_ground():
     return i
 
 
+def overview():
+    """Inspection clipboard with two summary lines."""
+    i = Icon()
+    i.rect(21, 22, 107, 113, 9)
+    i.rect(31, 32, 97, 103, 3, on=False)
+    i.rect(46, 13, 82, 34, 5)
+    i.line([(44, 55), (84, 55)], 9)
+    i.line([(44, 75), (74, 75)], 9)
+    return i
+
+
+def manage():
+    """Three sliders for school management."""
+    i = Icon()
+    for x, y in ((30, 45), (64, 82), (98, 55)):
+        i.line([(x, 18), (x, 110)], 8)
+        i.rect(x - 12, y - 9, x + 12, y + 9, 3)
+    return i
+
+
+def students():
+    i = Icon()
+    i.circle(84, 42, 15)
+    i.rect(68, 65, 112, 100, 12)
+    i.circle(49, 38, 19, on=False)
+    i.circle(47, 41, 17)
+    i.rect(14, 62, 83, 109, 16, on=False)
+    i.rect(16, 66, 78, 107, 14)
+    return i
+
+
+def structure():
+    """Stacked floor plates."""
+    i = Icon()
+    i.line([(15, 45), (64, 23), (113, 45), (64, 67), (15, 45)], 8)
+    for y in (64, 83):
+        i.line([(15, y), (64, y + 22), (113, y)], 8)
+    return i
+
+
+def classroom():
+    i = Icon()
+    i.rect(15, 16, 113, 70, 6)
+    i.rect(24, 25, 104, 61, 2, on=False)
+    i.line([(42, 46), (85, 46)], 6)
+    for x in (47, 80):
+        i.circle(x, 84, 10)
+        i.rect(x - 14, 97, x + 14, 115, 7)
+    return i
+
+
+def flight_simulator():
+    """A monitor with a flight attitude display."""
+    i = Icon()
+    i.rect(13, 20, 115, 88, 9)
+    i.rect(23, 30, 105, 77, 2, on=False)
+    i.line([(37, 60), (53, 60), (64, 51), (75, 60), (91, 60)], 7)
+    i.line([(64, 88), (64, 105)], 9)
+    i.line([(42, 106), (86, 106)], 9)
+    return i
+
+
 ICONS = {
     "select": select, "runway": runway, "taxiway": taxiway, "road": road, "street": street, "apron": apron, "terminal": terminal,
     "depot": depot, "hangar": hangar, "lights": lights, "stand": stand, "deice": deice, "bridge": bridge, "gates": gates, "delete": delete,
     "baggage": baggage, "deicing-storage": deicing_storage,
-    "clear-trees": clear_trees, "level-ground": level_ground,
+    "clear-trees": clear_trees, "level-ground": level_ground, "flying-school": flying_school,
+    "overview": overview, "manage": manage, "students": students, "structure": structure,
+    "classroom": classroom, "flight-simulator": flight_simulator,
 }
 
 

@@ -113,7 +113,8 @@ namespace AirCity.Game
             var net=airport.Taxiways;
             var pavementSpans=net.edges.Where(e=>e.structure==RoadStructure.Ground).Select(e=>(a:net.Node(e.a),b:net.Node(e.b),half:e.width*.5f+world.Spacing)).ToArray();
             var terminalOutlines=airport.terminals.Select(t=>(IList<Vector2>)t.Outline())
-                .Concat(airport.Hangars.Select(h=>(IList<Vector2>)h.Pad)).ToArray();
+                .Concat(airport.Hangars.Select(h=>(IList<Vector2>)h.Pad))
+                .Concat(airport.FlyingSchools.Select(s=>(IList<Vector2>)s.Block)).ToArray();
             bool Existing(Vector2 p)
             {
                 if(VisitorCentreConstruction.OverlapProblem(state,SampleFootprint(p,world.Spacing))!=null)return true;
@@ -187,7 +188,7 @@ namespace AirCity.Game
             float delta=0f;
             if(anchorEmptyAirport && !airport.Runways.Any(r=>r!=runway) && airport.Taxiways.edges.Count==0 && airport.Taxiways.nodes.Count==0 &&
                 airport.Taxiways.stands.Count==0 && airport.aprons.Count==0 && airport.terminals.Count==0 && airport.Depots.Count==0 &&
-                !airport.Hangars.Any() &&
+                !airport.Hangars.Any() && !airport.FlyingSchools.Any() &&
                 airport.deicingFacilities.Count==0 && airport.deicingWorkAreas.Count==0 && airport.deicingParkingBays.Count==0 &&
                 airport.deicingOutsideAccess.Count==0 && airport.GetComponentsInChildren<AirCity.Vehicles.BaggageDepot>(true).Length==0 &&
                 airport.GetComponentsInChildren<AirCity.Aircraft.Aircraft>(true).Length==0)

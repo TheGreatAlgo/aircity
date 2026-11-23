@@ -66,16 +66,6 @@ half4 ValleyCliffPatch(TEXTURE2D_PARAM(map, mapSampler), float2 uv, float2 gradi
         ValleyCliffRotate(gradientX, quarter), ValleyCliffRotate(gradientY, quarter));
 }
 
-half4 ValleyCliffSample(TEXTURE2D_PARAM(map, mapSampler), float2 uv)
-{
-    float2 warped = ValleyCliffUV(uv), gradientX = ddx(warped), gradientY = ddy(warped);
-    float2 cellA, cellB, cellC; half3 patchWeights;
-    ValleyCliffPatches(warped, cellA, cellB, cellC, patchWeights);
-    return ValleyCliffPatch(TEXTURE2D_ARGS(map, mapSampler), warped, gradientX, gradientY, cellA) * patchWeights.x
-        + ValleyCliffPatch(TEXTURE2D_ARGS(map, mapSampler), warped, gradientX, gradientY, cellB) * patchWeights.y
-        + ValleyCliffPatch(TEXTURE2D_ARGS(map, mapSampler), warped, gradientX, gradientY, cellC) * patchWeights.z;
-}
-
 half3 ValleyCliffNormalPatch(float2 uv, float2 gradientX, float2 gradientY, float2 cell)
 {
     half3 decoded = UnpackNormalScale(ValleyCliffPatch(TEXTURE2D_ARGS(_CliffNormal, sampler_CliffNormal),
@@ -84,14 +74,33 @@ half3 ValleyCliffNormalPatch(float2 uv, float2 gradientX, float2 gradientY, floa
     return decoded;
 }
 
-half3 ValleyCliffNormalSample(float2 uv)
+// One projection of the rock scan: up to three patches of albedo, mask and normal. A projection carrying under 1%
+// of a pixel is not read, nor is a patch carrying under 1% of its projection. colour = false reads normals only.
+void ValleyCliffAxis(float2 uv, half axisWeight, bool colour, out half3 rock, out half4 mask, out half3 normalTS)
 {
     float2 warped = ValleyCliffUV(uv), gradientX = ddx(warped), gradientY = ddy(warped);
-    float2 cellA, cellB, cellC; half3 patchWeights;
-    ValleyCliffPatches(warped, cellA, cellB, cellC, patchWeights);
-    return normalize(ValleyCliffNormalPatch(warped, gradientX, gradientY, cellA) * patchWeights.x
-        + ValleyCliffNormalPatch(warped, gradientX, gradientY, cellB) * patchWeights.y
-        + ValleyCliffNormalPatch(warped, gradientX, gradientY, cellC) * patchWeights.z);
+    rock = 0.0h; mask = 0.0h; normalTS = half3(0, 0, 1);
+    UNITY_BRANCH if (axisWeight > 0.0h)
+    {
+        float2 cells[3]; half3 patchWeights;
+        ValleyCliffPatches(warped, cells[0], cells[1], cells[2], patchWeights);
+        patchWeights *= step(.01h, patchWeights);
+        patchWeights /= max(dot(patchWeights, half3(1, 1, 1)), .0001h);
+        half3 normal = 0.0h;
+        for (int i = 0; i < 3; i++)
+        {
+            UNITY_BRANCH if (patchWeights[i] > 0.0h)
+            {
+                if (colour)
+                {
+                    rock += ValleyCliffPatch(TEXTURE2D_ARGS(_CliffAlbedo, sampler_CliffAlbedo), warped, gradientX, gradientY, cells[i]).rgb * patchWeights[i];
+                    mask += ValleyCliffPatch(TEXTURE2D_ARGS(_CliffMask, sampler_CliffMask), warped, gradientX, gradientY, cells[i]) * patchWeights[i];
+                }
+                normal += ValleyCliffNormalPatch(warped, gradientX, gradientY, cells[i]) * patchWeights[i];
+            }
+        }
+        normalTS = normalize(normal);
+    }
 }
 
 half3 ValleyTerrainGeometricNormal(float2 terrainUV, half3 interpolatedNormal)
@@ -123,11 +132,8 @@ void ValleyCliffCoordinates(float3 positionWS, half3 geometricNormal, out float2
     weights /= max(dot(weights, half3(1, 1, 1)), .0001h);
 }
 
-half3 ValleyCliffNormal(float2 uvX, float2 uvY, float2 uvZ, half3 weights, half2 sides, half3 geometricNormal)
+half3 ValleyCliffNormal(half3 nx, half3 ny, half3 nz, half3 weights, half2 sides, half3 geometricNormal)
 {
-    half3 nx = ValleyCliffNormalSample(uvX);
-    half3 ny = ValleyCliffNormalSample(uvY);
-    half3 nz = ValleyCliffNormalSample(uvZ);
     // Project the perturbation into each plane, then onto the terrain tangent plane. A flat normal map
     // exactly preserves the geometric normal instead of pushing blended slopes towards an axis.
     half3 detail = half3(0, nx.y, nx.x * sides.x) * weights.x
@@ -136,20 +142,29 @@ half3 ValleyCliffNormal(float2 uvX, float2 uvY, float2 uvZ, half3 weights, half2
     return normalize(geometricNormal + detail);
 }
 
+void ValleyCliffLayers(float3 positionWS, half3 geometricNormal, bool colour, out half3 rock, out half4 mask, out half3 normalWS)
+{
+    float2 uvX, uvY, uvZ; half3 weights; half2 sides;
+    ValleyCliffCoordinates(positionWS, geometricNormal, uvX, uvY, uvZ, weights, sides);
+    weights *= step(.01h, weights);
+    weights /= max(dot(weights, half3(1, 1, 1)), .0001h);
+    half3 rockX, rockY, rockZ, nx, ny, nz; half4 maskX, maskY, maskZ;
+    ValleyCliffAxis(uvX, weights.x, colour, rockX, maskX, nx);
+    ValleyCliffAxis(uvY, weights.y, colour, rockY, maskY, ny);
+    ValleyCliffAxis(uvZ, weights.z, colour, rockZ, maskZ, nz);
+    rock = rockX * weights.x + rockY * weights.y + rockZ * weights.z;
+    mask = maskX * weights.x + maskY * weights.y + maskZ * weights.z;
+    normalWS = ValleyCliffNormal(nx, ny, nz, weights, sides, geometricNormal);
+}
+
 void ValleyCliffSurface(float3 positionWS, half3 geometricNormal, inout half3 albedo,
     inout half smoothness, inout half occlusion, inout half3 normalWS)
 {
     half amount = ValleyCliffAmount(geometricNormal);
     UNITY_BRANCH if (amount > .001h)
     {
-        float2 uvX, uvY, uvZ; half3 weights; half2 sides;
-        ValleyCliffCoordinates(positionWS, geometricNormal, uvX, uvY, uvZ, weights, sides);
-        half3 rock = ValleyCliffSample(TEXTURE2D_ARGS(_CliffAlbedo, sampler_CliffAlbedo), uvX).rgb * weights.x
-            + ValleyCliffSample(TEXTURE2D_ARGS(_CliffAlbedo, sampler_CliffAlbedo), uvY).rgb * weights.y
-            + ValleyCliffSample(TEXTURE2D_ARGS(_CliffAlbedo, sampler_CliffAlbedo), uvZ).rgb * weights.z;
-        half4 mask = ValleyCliffSample(TEXTURE2D_ARGS(_CliffMask, sampler_CliffMask), uvX) * weights.x
-            + ValleyCliffSample(TEXTURE2D_ARGS(_CliffMask, sampler_CliffMask), uvY) * weights.y
-            + ValleyCliffSample(TEXTURE2D_ARGS(_CliffMask, sampler_CliffMask), uvZ) * weights.z;
+        half3 rock, cliffNormal; half4 mask;
+        ValleyCliffLayers(positionWS, geometricNormal, true, rock, mask, cliffNormal);
         // Large mineral/weathering patches remain visible at airport scale without baking light into the scan.
         half broad = ValleyCliffNoise(positionWS * .012);
         half weather = ValleyCliffNoise(positionWS * .045 + float3(17, 3, 41));
@@ -157,7 +172,7 @@ void ValleyCliffSurface(float3 positionWS, half3 geometricNormal, inout half3 al
         albedo = lerp(albedo, rock, amount);
         smoothness = lerp(smoothness, min(mask.a, .14h), amount);
         occlusion = lerp(occlusion, lerp(.65h, 1.0h, mask.g), amount);
-        normalWS = normalize(lerp(normalWS, ValleyCliffNormal(uvX, uvY, uvZ, weights, sides, geometricNormal), amount));
+        normalWS = normalize(lerp(normalWS, cliffNormal, amount));
     }
 }
 
@@ -166,9 +181,9 @@ void ValleyCliffDepthNormal(float3 positionWS, half3 geometricNormal, inout half
     half amount = ValleyCliffAmount(geometricNormal);
     UNITY_BRANCH if (amount > .001h)
     {
-        float2 uvX, uvY, uvZ; half3 weights; half2 sides;
-        ValleyCliffCoordinates(positionWS, geometricNormal, uvX, uvY, uvZ, weights, sides);
-        normalWS = normalize(lerp(normalWS, ValleyCliffNormal(uvX, uvY, uvZ, weights, sides, geometricNormal), amount));
+        half3 rock, cliffNormal; half4 mask;
+        ValleyCliffLayers(positionWS, geometricNormal, false, rock, mask, cliffNormal);
+        normalWS = normalize(lerp(normalWS, cliffNormal, amount));
     }
 }
 #endif

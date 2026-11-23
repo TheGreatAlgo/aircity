@@ -53,6 +53,9 @@ Shader "AirCity/RegionOcean"
                 float inside = step(0,uv.x) * step(uv.x,1) * step(0,uv.y) * step(uv.y,1);
                 float outsideMetres = length((uv - saturate(uv)) / _MapOrigin.zw);
                 float waterLevel = lerp(_SeaLevel, input.positionWS.y, _Inland);
+                // A terrain cut can expose this mesh inland. Keep the shoreline transition and horizon,
+                // while discarding water reliably below the terrain at its own position.
+                clip(lerp(1.0, waterLevel + .75 - bed.r, inside));
                 float depth = max(.02, waterLevel - bed.r);
                 float shoreDistance = bed.g + outsideMetres;
                 float colourDepth = lerp(max(depth, max(0,shoreDistance-30) * .07),depth,_Inland);

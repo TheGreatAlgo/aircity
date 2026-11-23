@@ -12,33 +12,81 @@ namespace AirCity.Tests.World
         static TreeLibrary Source => AssetDatabase.LoadAssetAtPath<TreeLibrary>(WorldAssetSetup.TreesPath);
         static long Triangles(Mesh mesh) => Enumerable.Range(0, mesh.subMeshCount).Sum(sub => (long)mesh.GetIndexCount(sub) / 3);
 
-        [Test]
-        public void WoodlandMixAddsDistinctBroadleafCrownsAndReusesCheaperConifersWithoutOwningSourceAssets()
+        static long Solid(Mesh mesh) => mesh.GetIndexCount(0) / 3;
+        static long Cards(Mesh mesh) => mesh.GetIndexCount(1) / 3;
+
+        static void AssertSolidFirstLevels(TreeVariant variant)
         {
-            var source = Source; Assert.IsNotNull(source);
-            var high = source.variants[0].levels[0]; var bark = source.bark;
-            using (var palette = RegionTreePalette.Create(source, RegionPreset.Woodland))
+            Assert.AreEqual(RegionTreePalette.Levels, variant.levels.Length, variant.name);
+            Assert.LessOrEqual(Triangles(variant.levels[0]), 900, variant.name);
+            Assert.LessOrEqual(Triangles(variant.levels[1]), 350, variant.name);
+            Assert.LessOrEqual(Triangles(variant.levels[2]), 70, variant.name);
+            Assert.LessOrEqual(Triangles(variant.levels[3]), 24, variant.name);
+            for (int level = 1; level < RegionTreePalette.Levels; level++)
+                Assert.Less(Triangles(variant.levels[level]), Triangles(variant.levels[level - 1]), variant.name);
+            // Far trees are opaque shapes: no alpha-tested cards, so nothing to overdraw or to shimmer.
+            Assert.AreEqual(0, Cards(variant.levels[2]), variant.name); Assert.AreEqual(0, Cards(variant.levels[3]), variant.name);
+            Assert.Greater(Solid(variant.levels[3]), 0, variant.name);
+            foreach (var mesh in variant.levels)
             {
-                var variants = palette.Library.variants;
-                Assert.AreEqual(source.variants.Length + 3, variants.Length);
-                for (int i = 0; i < source.variants.Length; i++)
-                {
-                    Assert.AreSame(source.variants[i].levels[1], variants[i].levels[0]);
-                    Assert.Less(Triangles(variants[i].levels[0]), Triangles(source.variants[i].levels[0]));
-                }
-                var alder = variants[source.variants.Length]; var birch = variants[source.variants.Length + 1];
-                var spreading = variants[source.variants.Length + 2];
-                Assert.Greater(spreading.levels[0].bounds.size.x, birch.levels[0].bounds.size.x * 1.4f);
-                Assert.Greater(birch.levels[0].bounds.size.y / birch.levels[0].bounds.size.x,
-                    alder.levels[0].bounds.size.y / alder.levels[0].bounds.size.x);
-                foreach (var variant in variants) Assert.AreEqual(6, Triangles(variant.levels[2]));
+                Assert.AreEqual(2, mesh.subMeshCount);
+                Assert.That(mesh.bounds.max.y, Is.InRange(10f, 30f), variant.name);
             }
-            Assert.IsNotNull(high); Assert.IsNotNull(bark);
-            Assert.AreSame(high, source.variants[0].levels[0], "Disposing a runtime palette must preserve authored assets.");
+            Assert.Greater(variant.crown.radius, 1f, variant.name + ": the shadow crown comes from the generator.");
+            Assert.Greater(variant.crown.top, variant.crown.bottom);
+            Assert.IsTrue(variant.bark.enableInstancing && variant.foliage.enableInstancing);
+            Assert.AreEqual("AirCity/TreeCanopy", variant.bark.shader.name);
+            Assert.IsFalse(variant.bark.IsKeywordEnabled("_CARDS"), "Trunks and crown volumes are opaque.");
         }
 
         [Test]
-        public void TropicalCrownsAndPalmsHaveBoundedGeometryAndSharedCompressedSixTriangleDistanceSilhouettes()
+        public void WoodlandHasSixEvergreensAndThreeBroadleafCrownsAsSolidShapesWithBoughsOnlyNearby()
+        {
+            var source = Source; Assert.IsNotNull(source);
+            var atlas = source.foliage.GetTexture("_BaseMap"); Assert.IsNotNull(atlas);
+            using (var palette = RegionTreePalette.Create(source, RegionPreset.Woodland))
+            {
+                var variants = palette.Library.variants;
+                Assert.AreEqual(9, variants.Length);
+                foreach (var variant in variants) AssertSolidFirstLevels(variant);
+                for (int i = 0; i < 6; i++)
+                {
+                    Assert.IsTrue(variants[i].name.Contains("fir") || variants[i].name.Contains("spruce") || variants[i].name.Contains("pine"), variants[i].name);
+                    Assert.Greater(Cards(variants[i].levels[0]), 100, "Evergreens carry boughs nearby.");
+                    Assert.AreSame(atlas, variants[i].foliage.GetTexture("_BaseMap"), "Conifer boughs reuse the authored branch atlas.");
+                    Assert.IsTrue(variants[i].foliage.IsKeywordEnabled("_CARDS"));
+                }
+                // A fir is a spire, a pine carries its crown high on a bare stem.
+                Assert.Less(variants[0].crown.bottom, 5f); Assert.Greater(variants[4].crown.bottom, 10f);
+                var alder = variants[6]; var birch = variants[7]; var spreading = variants[8];
+                Assert.Greater(spreading.levels[0].bounds.size.x, birch.levels[0].bounds.size.x * 1.4f);
+                Assert.Greater(birch.levels[0].bounds.size.y / birch.levels[0].bounds.size.x,
+                    alder.levels[0].bounds.size.y / alder.levels[0].bounds.size.x);
+                // The far shape keeps the near one's outline, so a tree does not change size as the camera moves.
+                foreach (var variant in variants)
+                    Assert.That(variant.levels[2].bounds.size.x, Is.InRange(variant.levels[0].bounds.size.x * .55f, variant.levels[0].bounds.size.x * 1.15f), variant.name);
+                using var mountains = RegionTreePalette.Create(source, RegionPreset.Mountains);
+                Assert.AreEqual(6, mountains.Library.variants.Length, "Mountain forests are evergreen.");
+            }
+            Assert.IsNotNull(source.foliage); Assert.IsNotNull(source.foliage.GetTexture("_BaseMap"), "Disposing a runtime palette must preserve authored assets.");
+        }
+
+        [Test]
+        public void WoodlandIsMostlyEvergreenWithBroadleafGroves()
+        {
+            using var palette = RegionTreePalette.Create(Source, RegionPreset.Woodland);
+            var world = new ValleyWorld { preset = RegionPreset.Woodland, seed = 1986 };
+            int evergreen = 0, total = 0; var seen = new int[9];
+            for (int z = -2500; z <= 2500; z += 250)
+            for (int x = -2500; x <= 2500; x += 250)
+            for (int i = 0; i < 20; i++)
+            { int variant = palette.Variant(world, new Vector2(x, z), (i + .5f) / 20f); seen[variant]++; total++; if (variant < 6) evergreen++; }
+            Assert.Greater(evergreen, total * .6f); Assert.Less(evergreen, total * .95f);
+            Assert.IsTrue(seen.All(count => count > 0), "Every woodland form grows somewhere.");
+        }
+
+        [Test]
+        public void TropicalCrownsAndPalmsAreSolidShapesWithBoundedGeometry()
         {
             using var palette = RegionTreePalette.Create(Source, RegionPreset.Tropical);
             var variants = palette.Library.variants;
@@ -47,19 +95,15 @@ namespace AirCity.Tests.World
             Assert.GreaterOrEqual(variants.Count(v => v.name.Contains("crown") || v.name.Contains("broadleaf")), 4);
             Assert.Greater(variants[0].levels[0].bounds.size.y, variants[2].levels[0].bounds.size.y * 1.4f,
                 "Tall coconut and short fan palms must retain different silhouettes at a shared root scale.");
-            var atlas = variants[0].distantFoliage.GetTexture("_BaseMap") as Texture2D;
-            Assert.IsNotNull(atlas); Assert.AreEqual(TextureFormat.DXT1, atlas.format);
-            Assert.AreEqual(256, atlas.width); Assert.AreEqual(1024, atlas.height);
             foreach (var variant in variants)
             {
-                Assert.LessOrEqual(Triangles(variant.levels[0]), 800);
-                Assert.LessOrEqual(Triangles(variant.levels[1]), 350);
-                Assert.AreEqual(6, Triangles(variant.levels[2]));
-                Assert.AreSame(atlas, variant.distantFoliage.GetTexture("_BaseMap"));
-                Assert.IsTrue(variant.bark.enableInstancing && variant.foliage.enableInstancing && variant.distantFoliage.enableInstancing);
-                foreach (var mesh in variant.levels)
-                    Assert.Greater(mesh.bounds.size.sqrMagnitude, 1f);
+                AssertSolidFirstLevels(variant);
+                // Fronds are geometry; only branched crowns carry leaf sprays.
+                if (variant.name.Contains("palm") || variant.name.Contains("pandanus")) Assert.AreEqual(0, Cards(variant.levels[0]), variant.name);
+                else Assert.Greater(Cards(variant.levels[0]), 40, variant.name);
             }
+            using var desert = RegionTreePalette.Create(null, RegionPreset.Desert);
+            Assert.AreEqual(2, desert.Library.variants.Length, "Warm regions need no authored conifer assets.");
         }
 
         [Test]

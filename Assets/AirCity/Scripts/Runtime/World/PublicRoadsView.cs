@@ -21,6 +21,8 @@ namespace AirCity.World
 
         public bool constructionPreview;
         public System.Func<Vector2,float> GroundHeight {get;set;}
+        public System.Func<Vector2,float?> WaterHeight {get;set;}
+        internal System.Func<Vector2,float,float,float> RetainShore {get;set;}
         readonly ConstructionMaterials previewMaterials = new ConstructionMaterials();
         PublicRoadGeometry geometry;
         GameObject root;
@@ -54,29 +56,31 @@ namespace AirCity.World
             network ??= new PublicRoadNetwork();
             if (network.segments.Count == 0) return;
             float y = level - .18f;
-            geometry = new PublicRoadGeometry(network, null, null, GroundHeight??(_ => y),segmentIds,junctionIds,projectionContext);
+            geometry = new PublicRoadGeometry(network, null, null, GroundHeight??(_ => y),segmentIds,junctionIds,projectionContext,
+                retainShore:RetainShore,waterHeight:WaterHeight);
             root = new GameObject("Public roads") { hideFlags = HideFlags.DontSave };
             root.transform.SetParent(transform, false);
             root.transform.localPosition = Vector3.up * y;
-            Part("Asphalt", geometry.pavement, asphalt);
-            Part("Shoulders and sidewalks", geometry.shoulders, shoulder);
-            Part("Markings", geometry.markings, markings);
-            Part("Kerbs and barriers", geometry.kerbMesh, kerb);
-            Part("Median islands", geometry.medianGrass, medianGrass);
-            Part("Bridges", geometry.structures, structures);
+            bool respectDepth = constructionPreview && geometry.groundTriangles.Exists(triangle => triangle.excavationHeight >= RoadStructureBuilder.TunnelExcavationHeight);
+            Part("Asphalt", geometry.pavement, asphalt, respectDepth);
+            Part("Shoulders and sidewalks", geometry.shoulders, shoulder, respectDepth);
+            Part("Markings", geometry.markings, markings, respectDepth);
+            Part("Kerbs and barriers", geometry.kerbMesh, kerb, respectDepth);
+            Part("Median islands", geometry.medianGrass, medianGrass, respectDepth);
+            Part("Bridges", geometry.structures, structures, respectDepth);
             signals = root.AddComponent<PublicRoadSignalsView>();
             signals.Build(network, trafficSignalPrefab, geometry.StopLine,junctionIds);
             signals.SetClock(clock);
         }
 
-        void Part(string name, Mesh mesh, Material material)
+        void Part(string name, Mesh mesh, Material material, bool respectDepth)
         {
             mesh.hideFlags = HideFlags.DontSave;
             var go = new GameObject(name) { hideFlags = HideFlags.DontSave };
             go.transform.SetParent(root.transform, false);
             go.AddComponent<MeshFilter>().sharedMesh = mesh;
             var r = go.AddComponent<MeshRenderer>();
-            r.sharedMaterial = constructionPreview ? previewMaterials.Get(material) : material;
+            r.sharedMaterial = constructionPreview ? previewMaterials.Get(material, respectDepth) : material;
             r.shadowCastingMode = mesh == geometry.structures || mesh == geometry.kerbMesh ? ShadowCastingMode.On : ShadowCastingMode.Off;
         }
 

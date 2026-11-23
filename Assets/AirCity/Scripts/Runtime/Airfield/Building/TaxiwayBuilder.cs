@@ -155,15 +155,106 @@ namespace AirCity.Airfield.Building
         /// parapet or wall.</summary>
         public const float StructureVerge=.6f;
 
+        internal bool SetBridgeDesign(ISet<int> selected,RoadBridgeDesign design)
+        {
+            var pieces=StructurePieces();
+            var runs=pieces.Where(p=>p.edge==p.other&&p.edge.structure==RoadStructure.Elevated&&selected.Contains(p.edge.id))
+                .Select(p=>p.piece.run.firstEdge).ToHashSet();
+            bool changed=false;
+            foreach(var item in pieces)
+            {
+                var edge=item.edge;
+                if(edge!=item.other||edge.structure!=RoadStructure.Elevated||!runs.Contains(item.piece.run.firstEdge)||edge.bridgeDesign==design)continue;
+                edge.bridgeDesign=design;
+                changed=true;
+            }
+            return changed;
+        }
+
         /// <summary>The bridge and tunnel pieces of the service roads (RoadStructureBuilder): each section between its
         /// nodes' cuts, and each bend or straight-through node between two sections of one structure. `edge` and
         /// `other` are the sections a piece belongs to.</summary>
-        public List<(StructurePiece piece,TaxiwayEdge edge,TaxiwayEdge other)> StructurePieces()
+        internal bool SetTunnelPortalStyle(TaxiwayEdge selected, TunnelPortalStyle style)
+        {
+            var pieces = StructurePieces();
+            var selectedPiece = pieces.Find(item => item.edge == selected && item.other == selected).piece;
+            if (selectedPiece == null) return false;
+            bool changed = false;
+            foreach (var item in pieces)
+            {
+                if (item.edge != item.other || item.piece.run.firstEdge != selectedPiece.run.firstEdge ||
+                    item.edge.tunnelPortalStyle == style) continue;
+                item.edge.tunnelPortalStyle = style;
+                changed = true;
+            }
+            return changed;
+        }
+
+        internal Dictionary<int, TaxiwayEdge> PortalLinings(System.Func<Vector2,float> ground, System.Func<Vector2,float?> water)
+        {
+            Prepare();
+            var result = new Dictionary<int, TaxiwayEdge>();
+            foreach (var edge in net.edges)
+            {
+                if (!edge.IsRoad || edge.structure != RoadStructure.Ground) continue;
+                var a = Adjacent(edge.a, edge);
+                var b = Adjacent(edge.b, edge);
+                if (a != null && b != null && RoadStructureBuilder.ShortDryApproach(net.Path(edge), edge.width * .5f +
+                    StructureVerge + RoadStructureBuilder.WallThickness, water))
+                    result[edge.id] = a.structure == RoadStructure.Tunnel ? a : b;
+            }
+            foreach (var joint in joints.Values)
+            {
+                if (joint.arms.Count != 2 || !joint.arms[0].Real || !joint.arms[1].Real) continue;
+                var a = joint.arms[0];
+                var b = joint.arms[1];
+                if (Mathf.Abs(a.hw - b.hw) > .01f || Vector2.Angle(a.dir, b.dir) <= 179.5f) continue;
+                if (a.edge.structure == RoadStructure.Tunnel) (a, b) = (b, a);
+                var edge = a.edge;
+                if (!edge.IsRoad || edge.structure != RoadStructure.Ground || b.edge.structure != RoadStructure.Tunnel ||
+                    result.ContainsKey(edge.id)) continue;
+                var path = net.Path(edge);
+                float half = a.hw + StructureVerge + RoadStructureBuilder.WallThickness;
+                for (int i = 0; i <= 3; i++)
+                {
+                    float step = Mathf.Min(path.Length, i * 2f * RoadStructureBuilder.WallStep);
+                    float station = edge.a == joint.node.id ? step : path.Length - step;
+                    Vector3 At(float side)
+                    {
+                        var point = path.Offset(station, side * half);
+                        point.y = RoadHeight(edge, Geo.XZ(point)) + AirfieldHeights.Road;
+                        return point;
+                    }
+                    if (!RoadStructureBuilder.TunnelCoverAt(At(-1f), At(1f), p => ground(Geo.XZ(p))).roofed) continue;
+                    result[edge.id] = b.edge;
+                    break;
+                }
+            }
+            return result;
+
+            TaxiwayEdge Adjacent(int node, TaxiwayEdge edge)
+            {
+                var arms = joints[node].arms;
+                if (arms.Count != 2 || !arms[0].Real || !arms[1].Real || Mathf.Abs(arms[0].hw - arms[1].hw) > .01f ||
+                    Vector2.Angle(arms[0].dir, arms[1].dir) <= 179.5f) return null;
+                var other = arms[0].edge == edge ? arms[1].edge : arms[0].edge;
+                return other.IsRoad && other.structure != RoadStructure.Ground ? other : null;
+            }
+        }
+
+        public List<(StructurePiece piece,TaxiwayEdge edge,TaxiwayEdge other)> StructurePieces(
+            IReadOnlyDictionary<int, TaxiwayEdge> portalLinings = null, ISet<int> retaining = null,
+            System.Func<Vector2,float> ground = null, System.Func<Vector2,float?> water = null)
         {
             Prepare();
             var result=new List<(StructurePiece,TaxiwayEdge,TaxiwayEdge)>();
             var byId=new Dictionary<int,TaxiwayEdge>();
-            foreach(var edge in net.edges)if(edge.IsRoad&&edge.structure!=RoadStructure.Ground)byId[edge.id]=edge;
+            RoadStructure Structure(TaxiwayEdge edge) => portalLinings?.ContainsKey(edge.id) == true ? RoadStructure.Tunnel : edge.structure;
+            TunnelPortalStyle PortalStyle(TaxiwayEdge edge) =>
+                portalLinings != null && portalLinings.TryGetValue(edge.id, out var lining) ? lining.tunnelPortalStyle : edge.tunnelPortalStyle;
+            bool RetainsBank(TaxiwayEdge edge) => retaining?.Contains(edge.id) == true;
+            foreach(var edge in net.edges)
+                if(edge.IsRoad && (Structure(edge)!=RoadStructure.Ground || RetainsBank(edge)))byId[edge.id]=edge;
             if(byId.Count==0)return result;
             static Vector2 Right(Vector2 d)=>new Vector2(d.y,-d.x);
             float Length(TaxiwayEdge e)=>Mathf.Max(0f,net.Path(e).Length-joints[e.a].ArmOf(e).cut-joints[e.b].ArmOf(e).cut);
@@ -173,10 +264,17 @@ namespace AirCity.Airfield.Building
                 var joint=joints[node];
                 if(joint.arms.Count!=2||!joint.arms[0].Real||!joint.arms[1].Real)return null;
                 var other=joint.arms[0].edge==e?joint.arms[1].edge:joint.arms[0].edge;
-                if(other==e||!other.IsRoad||other.structure!=e.structure)return null;
+                if(other==e||!byId.ContainsKey(other.id)||Structure(other)!=Structure(e))return null;
                 return joint.arc!=null||Vector2.Dot(joint.arms[0].dir,joint.arms[1].dir)<-.9f?other:null;
             }
-            bool MeetsGround(int node,TaxiwayEdge e)=>joints[node].arms.Exists(a=>!a.Real||a.edge!=e&&a.edge.structure==RoadStructure.Ground);
+            bool MeetsGround(int node,TaxiwayEdge e)=>joints[node].arms.Exists(a=>!a.Real||a.edge!=e&&Structure(a.edge)==RoadStructure.Ground);
+            TaxiwayEdge StraightNeighbor(int node, TaxiwayEdge edge)
+            {
+                if (!joints.TryGetValue(node, out var joint) || joint.arms.Count != 2 || !joint.arms[0].Real || !joint.arms[1].Real ||
+                    Mathf.Abs(joint.arms[0].hw - joint.arms[1].hw) > .01f ||
+                    Vector2.Angle(joint.arms[0].dir, joint.arms[1].dir) <= 179.5f) return null;
+                return joint.arms[0].edge == edge ? joint.arms[1].edge : joint.arms[0].edge;
+            }
             // a joint's centreline from arms[0]'s mouth to arms[1]'s
             List<Vector2> Line(Joint joint)
             {
@@ -199,7 +297,8 @@ namespace AirCity.Airfield.Building
             {
                 var path=net.Path(edge);float cutA=joints[edge.a].ArmOf(edge).cut,cutB=joints[edge.b].ArmOf(edge).cut,from=cutA,to=path.Length-cutB,half=edge.width*.5f;
                 if(to-from<.01f)continue;
-                var piece=new StructurePiece {structure=edge.structure,verge=StructureVerge,surface=AirfieldHeights.Road,run=edgeRuns[edge.id],length=Length(edge)};
+                var piece=new StructurePiece {structure=Structure(edge),portalStyle=PortalStyle(edge),verge=StructureVerge,surface=AirfieldHeights.Road,run=edgeRuns[edge.id],length=Length(edge),
+                    retainsBank=RetainsBank(edge)};
                 int count=Mathf.Max(1,Mathf.CeilToInt((to-from)/4f));
                 for(int i=0;i<=count;i++)
                 {
@@ -207,10 +306,23 @@ namespace AirCity.Airfield.Building
                     Vector3 At(float x){var p=path.Offset(s,x,cutA,cutB);p.y=RoadHeight(edge,Geo.XZ(p))+AirfieldHeights.Road;return p;}
                     piece.Add(At(-half),At(half));
                 }
-                bool onA=Onward(edge.a,edge)!=null,onB=Onward(edge.b,edge)!=null;
+                int last=piece.left.Count-1;
+                bool onA=Continues(edge.a,0),onB=Continues(edge.b,last);
+                bool Continues(int node, int frame)
+                {
+                    if (Onward(node, edge) != null) return true;
+                    var adjacent = StraightNeighbor(node, edge);
+                    if (adjacent == null) return false;
+                    if (piece.structure == RoadStructure.Elevated && Structure(adjacent) == RoadStructure.Tunnel)
+                    {
+                        if (frame == 0) piece.tunnelAtStart = PortalStyle(adjacent);
+                        else piece.tunnelAtEnd = PortalStyle(adjacent);
+                    }
+                    return piece.structure == RoadStructure.Tunnel && adjacent.structure == RoadStructure.Elevated && ground != null &&
+                        RoadStructureBuilder.DeckNeedsLining(piece.left[frame], piece.right[frame], piece.verge, ground, water);
+                }
                 piece.capStart=!onA;piece.abutStart=!onA&&MeetsGround(edge.a,edge);piece.capEnd=!onB;piece.abutEnd=!onB&&MeetsGround(edge.b,edge);
                 // a dead end: the parapet or wall closes it, rounding the corners of the road's square end
-                int last=piece.left.Count-1;
                 if(joints[edge.a].arms.Count==1){piece.capStart=false;piece.endStart=RoadStructureBuilder.SquareEnd(piece.left[0],piece.right[0],-path.Tangent(0));}
                 if(joints[edge.b].arms.Count==1){piece.capEnd=false;piece.endEnd=RoadStructureBuilder.SquareEnd(piece.left[last],piece.right[last],path.Tangent(1));}
                 result.Add((piece,edge,edge));
@@ -220,7 +332,8 @@ namespace AirCity.Airfield.Building
                 if(joint.arms.Count!=2||!joint.arms[0].Real||!byId.ContainsKey(joint.arms[0].edge.id)||Onward(joint.node.id,joint.arms[0].edge)==null)continue;
                 var line=Line(joint);int m=line.Count;if(m<2)continue;
                 var edge=joint.arms[0].edge;float half=joint.arms[0].hw,y=joint.node.position.y+AirfieldHeights.Road;
-                var piece=new StructurePiece {structure=edge.structure,verge=StructureVerge,surface=AirfieldHeights.Road,length=LineLength(joint)};
+                var piece=new StructurePiece {structure=Structure(edge),portalStyle=PortalStyle(edge),verge=StructureVerge,surface=AirfieldHeights.Road,length=LineLength(joint),
+                    retainsBank=RetainsBank(edge) || RetainsBank(joint.arms[1].edge)};
                 if(bendRuns.TryGetValue(joint.node.id,out var run))piece.run=run;
                 for(int k=0;k<m;k++)
                 {
@@ -230,6 +343,55 @@ namespace AirCity.Airfield.Building
                 result.Add((piece,edge,joint.arms[1].edge));
             }
             return result;
+        }
+
+        /// <summary>
+        /// The outline of a taxiway or road section as it is drawn, `half` metres either side of its centreline,
+        /// between two distances along it (from its node a): up one side and back down the other, airport-local. A
+        /// bend belongs half to each of its two sections, so an outline that reaches a bend carries on round it to
+        /// the middle of the arc instead of running straight to the corner; at a junction it stops at its edge.
+        /// </summary>
+        public bool SectionOutline(TaxiwayEdge edge, float from, float to, float half, List<Vector3> loop)
+        {
+            Prepare();
+            if (!joints.TryGetValue(edge.a, out var ja) || !joints.TryGetValue(edge.b, out var jb)) return false;
+            Arm aa = ja.ArmOf(edge), ab = jb.ArmOf(edge);
+            if (aa == null || ab == null) return false;
+            var path = net.Path(edge);
+            float length = path.Length;
+            var centre = new List<(Vector3 p, Vector2 right)>();
+            // the half of a bend's arc on this section's side, in the direction a to b
+            void HalfArc(Joint j, Arm arm, bool leaving)
+            {
+                if (j.arc == null || j.arc.Count < 2 || j.arms.Count != 2) return;
+                var along = Geo.Along(j.arc);
+                float total = along[along.Length - 1];
+                bool first = j.arms[0] == arm;       // the arc starts at arms[0]'s cut
+                var points = first ? Geo.Slice(j.arc, along, 0f, total * .5f) : Geo.Slice(j.arc, along, total * .5f, total);
+                if (first == leaving) points.Reverse();   // leaving the bend: from the arc's middle to this section's cut
+                for (int k = 0; k < points.Count; k++)
+                {
+                    var d = points[Mathf.Min(k + 1, points.Count - 1)] - points[Mathf.Max(k - 1, 0)];
+                    if (d.sqrMagnitude > 1e-8f) centre.Add((Geo.X0Z(points[k], j.node.position.y), Geo.Right(d.normalized)));
+                }
+            }
+            if (from <= .01f) HalfArc(ja, aa, true);
+            float s0 = Mathf.Max(from, aa.cut), s1 = Mathf.Min(to, length - ab.cut);
+            if (s1 - s0 > .01f)
+            {
+                int count = Mathf.Max(1, Mathf.CeilToInt((s1 - s0) / 4f));
+                for (int i = 0; i <= count; i++)
+                {
+                    float s = Mathf.Lerp(s0, s1, i / (float)count);
+                    var c = path.Offset(s, 0f);
+                    centre.Add((c, Geo.XZ(path.Offset(s, 1f) - c)));
+                }
+            }
+            if (to >= length - .01f) HalfArc(jb, ab, false);
+            if (centre.Count < 2) return false;
+            for (int i = 0; i < centre.Count; i++) loop.Add(centre[i].p - Geo.X0Z(centre[i].right) * half);
+            for (int i = centre.Count - 1; i >= 0; i--) loop.Add(centre[i].p + Geo.X0Z(centre[i].right) * half);
+            return true;
         }
 
         public float RoadHeight(TaxiwayEdge edge,Vector2 p)
@@ -339,7 +501,7 @@ namespace AirCity.Airfield.Building
             float radius = RunwayRules.TaxiwayTurnRadius(a0.edge.width);
             float tanHalf = Mathf.Tan(alpha * 0.5f);
             float cut = radius / tanHalf;
-            float maxCut = Mathf.Min(Limit(j, a0), Limit(j, a1));
+            float maxCut = Mathf.Min(BendLimit(j, a0), BendLimit(j, a1));
             if (cut > maxCut)
             {
                 cut = maxCut;
@@ -348,7 +510,7 @@ namespace AirCity.Airfield.Building
             if (radius < a0.hw * 1.25f) return false;
             Geo.Fillet(j.p, a0.dir, a1.dir, radius, out var centre);
             j.arc = new List<Vector2>();
-            Geo.Arc(j.arc, centre, j.p + a0.dir * cut, j.p + a1.dir * cut, 2f);
+            Geo.Arc(j.arc, centre, j.p + a0.dir * cut, j.p + a1.dir * cut, Geo.ArcStep(radius));
             a0.cut = a1.cut = cut;
             return true;
         }
@@ -390,6 +552,16 @@ namespace AirCity.Airfield.Building
             return JunctionShape.Reach(a.length, a.need, there);
         }
 
+        /// <summary>How far along an arm a bend may reach. A road that ends in a dead end has nothing to share with
+        /// there: the bend takes it all but a short straight, so a short stub doesn't squeeze the bend tight. Taxiways
+        /// keep their share: aircraft are routed round the radius the rules give (TaxiPlanner).</summary>
+        float BendLimit(Joint j, Arm a)
+        {
+            if (a.Road && joints.TryGetValue(TaxiwayNetwork.Other(a.edge, j.node.id), out var far) && far.arms.Count == 1)
+                return a.length - Mathf.Min(4f, a.length * 0.25f);
+            return Limit(j, a);
+        }
+
         // ------------------------------------------------------------------ pieces
 
         static int Sub(PavementSurface s) => (int)s;
@@ -411,12 +583,23 @@ namespace AirCity.Airfield.Building
             if(roundA)s0+=radius;if(roundB)s1-=radius;
             if(e.IsRoad && (e.alignment.curved||e.alignment.smooth||e.structure!=RoadStructure.Ground))BuildCurvedRoad(e,ja,jb,armA,armB,s0,s1,surface,paint);
             else if (s1 - s0 > 0.01f)
+            {
+                int first = surface.mesh.Count;
                 surface.Rect(Sub(e.surface), ja.p, u, s0, s1, -hw, hw, e.IsRoad ? AirfieldHeights.Road : AirfieldHeights.Taxiway,
                     e.IsRoad?AirfieldKind.Road:AirfieldKind.Taxiway, 0f, unpaved ? SurfaceBuilder.Fringe : 0f, false);
+                if (e.IsRoad && !unpaved) RoadStripEdges(surface, e.surface, first, surface.mesh.Count);
+            }
             if(e.IsRoad)
             {
-                if(roundA)surface.Polygon(Sub(e.surface),SurfaceBuilder.RoadEndOutline(ja.p,-u,hw,radius),AirfieldHeights.Road,AirfieldKind.Road);
-                if(roundB)surface.Polygon(Sub(e.surface),SurfaceBuilder.RoadEndOutline(jb.p,u,hw,radius),AirfieldHeights.Road,AirfieldKind.Road);
+                if(roundA) Cap(ja.p,-u);
+                if(roundB) Cap(jb.p,u);
+
+                void Cap(Vector2 end, Vector2 outward)
+                {
+                    var outline = SurfaceBuilder.RoadEndOutline(end, outward, hw, radius);
+                    surface.Polygon(Sub(e.surface), outline, AirfieldHeights.Road, AirfieldKind.Road);
+                    if (!unpaved && e.structure == RoadStructure.Ground) RoadOutlineEdge(surface, e.surface, outline, true);
+                }
             }
             if (e.IsRoad)
             {
@@ -456,6 +639,11 @@ namespace AirCity.Airfield.Building
                 float s0=Mathf.Lerp(from,to,i/(float)steps),s1=Mathf.Lerp(from,to,(i+1f)/steps);int first=surface.mesh.Count;
                 void Vertex(float s,float x){var p=At(s,x);surface.mesh.Vertex(Geo.X0Z(p,AirfieldHeights.Road),Vector3.up,new Color(surface.state.wear,surface.state.snow,surface.state.grass,1),new Vector4(x,s),new Vector4((float)AirfieldKind.Road,0));}
                 Vertex(s0,-half);Vertex(s1,-half);Vertex(s1,half);Vertex(s0,half);surface.mesh.Quad(Sub(edge.surface),first,first+1,first+2,first+3);
+                if (edge.structure == RoadStructure.Ground && edge.surface.IsPaved())
+                {
+                    var points = surface.mesh.positions;
+                    RoadStripEdges(surface, edge.surface, points[first], points[first+3], points[first+1], points[first+2]);
+                }
             }
             paint.frame=RunwayFrame.None;
             List<Vector2> Line(float x)
@@ -464,11 +652,44 @@ namespace AirCity.Airfield.Building
                 for(int i=0;i<=count;i++)points.Add(At(Mathf.Lerp(from,to,i/(float)count),x));return points;
             }
             paint.Strip(Line(-half+RoadEdgeInset),RoadLineHalfWidth,PaintBuilder.White,true);paint.Strip(Line(half-RoadEdgeInset),RoadLineHalfWidth,PaintBuilder.White,true);
-            paint.Dashes(Line(0),RoadLineHalfWidth,3,6,PaintBuilder.White,true);
+            List<Vector2> Centre(float f,float t)
+            {
+                int count=Mathf.Max(1,Mathf.CeilToInt((t-f)/2f));var points=new List<Vector2>(count+1);
+                for(int i=0;i<=count;i++)points.Add(At(Mathf.Lerp(f,t,i/(float)count),0));return points;
+            }
+            RoadDashes(edge,Centre,paint);
             RoadEnd(a,aa,path.Length-ab.cut,paint);RoadEnd(b,ab,path.Length-aa.cut,paint);
         }
 
         // ------------------------------------------------------------------ service roads
+
+        static void RoadStripEdges(SurfaceBuilder surface, PavementSurface material, int first, int end)
+        {
+            var points = surface.mesh.positions;
+            for (int i = first; i+3 < end; i+=2)
+                RoadStripEdges(surface, material, points[i], points[i+1], points[i+2], points[i+3]);
+        }
+
+        static void RoadStripEdges(SurfaceBuilder surface, PavementSurface material, Vector3 leftA, Vector3 rightA, Vector3 leftB, Vector3 rightB)
+        {
+            var outward = Geo.XZ(leftA+leftB-rightA-rightB);
+            RoadEdge(surface, material, leftA, leftB, outward);
+            RoadEdge(surface, material, rightA, rightB, -outward);
+        }
+
+        static void RoadOutlineEdge(SurfaceBuilder surface, PavementSurface material, List<Vector2> line, bool left)
+        {
+            for (int i = 0; i+1 < line.Count; i++)
+                RoadEdge(surface, material, Geo.X0Z(line[i],AirfieldHeights.Road), Geo.X0Z(line[i+1],AirfieldHeights.Road),
+                    Geo.Right(line[i+1]-line[i])*(left?-1f:1f));
+        }
+
+        static void RoadEdge(SurfaceBuilder surface, PavementSurface material, Vector3 a, Vector3 b, Vector2 outward)
+        {
+            var state = surface.state;
+            surface.mesh.RoadEdge(Sub(material), a, b, outward, new Color(state.wear,state.snow,state.grass,1f),
+                new Vector4((float)AirfieldKind.Road,0f));
+        }
 
         const float RoadLineHalfWidth = 0.075f, RoadEdgeInset = 0.3f;
 
@@ -490,12 +711,106 @@ namespace AirCity.Airfield.Building
                     var off = Geo.Right(u) * (sgn * (hw - RoadEdgeInset));
                     paint.Strip(new[] { ja.p + u * p0 + off, ja.p + u * p1 + off }, RoadLineHalfWidth, PaintBuilder.White, true);
                 }
-                paint.Dashes(ja.p + u * p0, ja.p + u * p1, RoadLineHalfWidth, 3f, 6f, PaintBuilder.White, true);
+                RoadDashes(e, (f, t) => new List<Vector2> { ja.p + u * f, ja.p + u * t }, paint);
             }
             if(roundA)paint.Strip(SurfaceBuilder.RoadEndOutline(ja.p+u*RoadEdgeInset,-u,hw-RoadEdgeInset,Mathf.Max(.1f,radius-RoadEdgeInset)),RoadLineHalfWidth,PaintBuilder.White,true);
             if(roundB)paint.Strip(SurfaceBuilder.RoadEndOutline(jb.p-u*RoadEdgeInset,u,hw-RoadEdgeInset,Mathf.Max(.1f,radius-RoadEdgeInset)),RoadLineHalfWidth,PaintBuilder.White,true);
             RoadEnd(ja, armA, len - armB.cut, paint);
             RoadEnd(jb, armB, len - armA.cut, paint);
+        }
+
+        // ------------------------------------------------------------------ dashes round bends
+
+        /// <summary>The part of a road its centre dashes run along, in metres from its node a: between its ends' cuts,
+        /// give-way lines and rounded dead ends. Empty where nothing is painted.</summary>
+        (float from, float to) RoadDashSpan(TaxiwayEdge e)
+        {
+            var ja = joints[e.a];
+            var jb = joints[e.b];
+            Arm armA = ja.ArmOf(e), armB = jb.ArmOf(e);
+            float len = armA.length, hw = e.width * 0.5f;
+            bool roundA = ja.arms.Count == 1, roundB = jb.arms.Count == 1;
+            if (e.alignment.curved || e.alignment.smooth || e.structure != RoadStructure.Ground)
+            {
+                // BuildCurvedRoad: the whole strip
+                float s0 = armA.cut, s1 = len - armB.cut, r = Mathf.Min(2f, hw * .6f, (s1 - s0) * .2f);
+                if (roundA) s0 += r;
+                if (roundB) s1 -= r;
+                return s1 > s0 ? (s0, s1) : (s0, s0);
+            }
+            float radius = Mathf.Min(2f, hw * .6f, len * .2f);
+            float p0 = Mathf.Max(PaintEnd(ja, armA), GiveWayAt(ja, armA), roundA ? radius : 0f);
+            float p1 = len - Mathf.Max(PaintEnd(jb, armB), GiveWayAt(jb, armB), roundB ? radius : 0f);
+            return p1 - p0 > 0.5f ? (p0, p1) : (p0, p0);
+        }
+
+        /// <summary>Whether a road's dashes carry on past a node: round a bend, or straight on into another road of
+        /// the same width that simply meets it there.</summary>
+        static bool RoadContinues(Joint j)
+        {
+            if (j.arms.Count != 2 || !j.arms[0].Road || !j.arms[1].Road || j.arms[0].edge == j.arms[1].edge) return false;
+            if (j.arc != null) return true;
+            return Mathf.Abs(j.arms[0].hw - j.arms[1].hw) < 0.01f && j.arms[0].cut < 0.01f && j.arms[1].cut < 0.01f &&
+                Vector2.Dot(j.arms[0].dir, j.arms[1].dir) < -0.99f && j.arms[0].edge.surface.IsPaved() && j.arms[1].edge.surface.IsPaved();
+        }
+
+        /// <summary>
+        /// Dashes are laid out in stretches that run through a bend (PaintBuilder.Dashes): from the middle of the road
+        /// before it (arms[0]), round the arc, to the middle of the road after it, or to that road's far end where its
+        /// dashes stop there (a junction, a dead end). The roads and the bend each paint their own part of the same
+        /// stretch, so the dashes keep their rhythm through the bend; stretches meet in a gap in the middle of a road.
+        /// `before`: the stretch's length up to the bend.
+        /// </summary>
+        void RoadStretch(Joint j, out float before, out float bend, out float total)
+        {
+            float Share(Arm arm)
+            {
+                var e = arm.edge;
+                var (from, to) = RoadDashSpan(e);
+                return Mathf.Max(0f, RoadContinues(joints[e.a]) && RoadContinues(joints[e.b]) ? (to - from) * 0.5f : to - from);
+            }
+            before = Share(j.arms[0]);
+            bend = 0f;
+            if (j.arc != null)
+                for (int i = 1; i < j.arc.Count; i++) bend += (j.arc[i] - j.arc[i - 1]).magnitude;
+            total = before + bend + Share(j.arms[1]);
+        }
+
+        /// <summary>A road's centre dashes: its part of the stretch through each end where the road carries on
+        /// (RoadStretch), or a stretch of its own. `line(a, b)`: its centreline between two distances from node a.</summary>
+        void RoadDashes(TaxiwayEdge e, System.Func<float, float, List<Vector2>> line, PaintBuilder paint)
+        {
+            var (from, to) = RoadDashSpan(e);
+            if (to - from < 0.01f) return;
+            bool onA = RoadContinues(joints[e.a]), onB = RoadContinues(joints[e.b]);
+            if (!onA && !onB)
+            {
+                paint.Dashes((a, b) => line(a, b), from, to, from, to, RoadLineHalfWidth, 3f, 6f, PaintBuilder.White, true);
+                return;
+            }
+            float mid = onA && onB ? (from + to) * 0.5f : onA ? to : from;
+            foreach (bool atA in new[] { true, false })
+            {
+                if (!(atA ? onA : onB)) continue;
+                var j = joints[atA ? e.a : e.b];
+                bool first = j.arms[0].edge == e;
+                RoadStretch(j, out float before, out float bend, out float total);
+                float own = atA ? mid - from : to - mid;
+                // u runs along the stretch; d back along this road from its cut at the node
+                float Station(float u)
+                {
+                    float d = first ? before - u : u - before - bend;
+                    return atA ? from + d : to - d;
+                }
+                float u0 = first ? before - own : before + bend, u1 = first ? before : before + bend + own;
+                paint.Dashes((a, b) =>
+                {
+                    float sa = Station(a), sb = Station(b);
+                    var points = line(Mathf.Min(sa, sb), Mathf.Max(sa, sb));
+                    if (sa > sb) points.Reverse();
+                    return points;
+                }, u0, u1, 0f, total, RoadLineHalfWidth, 3f, 6f, PaintBuilder.White, true);
+            }
         }
 
         /// <summary>How far from the node a road's give-way line is (0: it doesn't give way there). Before a taxiway:
@@ -572,7 +887,10 @@ namespace AirCity.Airfield.Building
                 float t = s / 16f;
                 pts.Add((1 - t) * (1 - t) * p0 + 2 * (1 - t) * t * j.p + t * t * p1);
             }
-            paint.Dashes(pts, RoadLineHalfWidth, 3f, 6f, PaintBuilder.White, true);
+            // laid out like the roads' own dashes (half a gap at each end), so the rhythm carries across
+            var at = Geo.Along(pts);
+            float across = at[at.Length - 1];
+            paint.Dashes((a, b) => Geo.Slice(pts, at, a, b), 0f, across, 0f, across, RoadLineHalfWidth, 3f, 6f, PaintBuilder.White, true);
         }
 
         /// <summary>A kerb line moved `inset` metres in onto the pavement (to the left of the way it runs: kerbs
@@ -671,15 +989,22 @@ namespace AirCity.Airfield.Building
             // the arc runs in from arm 0 and out along arm 1: its ends sit square to the straights
             var d0 = -j.arms[0].dir;
             var d1 = j.arms[1].dir;
+            int first = surface.mesh.Count;
             surface.Strip(Sub(e.surface), j.arc, hw, e.IsRoad ? AirfieldHeights.Road : AirfieldHeights.Taxiway, e.IsRoad?AirfieldKind.Road:AirfieldKind.Taxiway, 0f,
                 unpaved ? SurfaceBuilder.Fringe : 0f, d0, d1);
+            if (e.IsRoad && !unpaved && j.arms.Any(a=>a.edge.structure==RoadStructure.Ground))
+                RoadStripEdges(surface,e.surface,first,surface.mesh.Count);
             if (unpaved) return;
             paint.frame = RunwayFrame.None;
             if (e.IsRoad)
             {
                 foreach (float sgn in new[] { -1f, 1f })
                     paint.Strip(Offset(j.arc, sgn * (hw - RoadEdgeInset), d0, d1), RoadLineHalfWidth, PaintBuilder.White, true);
-                paint.Dashes(j.arc, RoadLineHalfWidth, 3f, 6f, PaintBuilder.White, true);
+                // the bend's part of the stretch that runs through it from the roads either side
+                RoadStretch(j, out float before, out float bend, out float total);
+                var at = Geo.Along(j.arc);
+                paint.Dashes((a, b) => Geo.Slice(j.arc, at, a - before, b - before), before, before + bend, 0f, total, RoadLineHalfWidth, 3f, 6f,
+                    PaintBuilder.White, true);
                 return;
             }
             paint.Strip(j.arc, CentrelineHalfWidth, PaintBuilder.Yellow);
@@ -706,6 +1031,16 @@ namespace AirCity.Airfield.Building
             if (!kind.IsPaved()) return;
             if (RoadJunction(j))
             {
+                if (roads)
+                    for (int i = 0; i < j.arms.Count; i++)
+                    {
+                        var a = j.arms[i];var b = j.arms[(i+1)%j.arms.Count];
+                        if (a.edge.structure!=RoadStructure.Ground && b.edge.structure!=RoadStructure.Ground) continue;
+                        var line = new List<Vector2> { j.p + a.dir*a.cut + Geo.Left(a.dir)*a.hw };
+                        line.AddRange(a.gap);
+                        line.Add(j.p + b.dir*b.cut + Geo.Right(b.dir)*b.hw);
+                        RoadOutlineEdge(surface,kind,line,false);
+                    }
                 RoadJunctionPaint(j, paint);
                 return;
             }

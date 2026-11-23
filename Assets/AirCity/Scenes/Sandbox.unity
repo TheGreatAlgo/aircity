@@ -3712,6 +3712,10 @@ MonoBehaviour:
     boardingHeight: 4
   aircraftTypes:
   - {fileID: -3326733738379100494, guid: 93109feb88444486e8f7e763ad1897d5, type: 3}
+  - {fileID: -3326733738379100494, guid: 676cf699912644968b4617fe66016e58, type: 3}
+  - {fileID: -3326733738379100494, guid: b754be0bc45f94d9badc37a36b4a28f1, type: 3}
+  - {fileID: -3326733738379100494, guid: cdab2f37a495d401ba627fec8b829506, type: 3}
+  - {fileID: -3326733738379100494, guid: 5e127d82fa0c04c82ba0a05beec1487e, type: 3}
   - {fileID: -3326733738379100494, guid: f5bc0cc00a7544541abbcb386391563c, type: 3}
   - {fileID: -3326733738379100494, guid: 6e8464e2305264b9e89142bb29480a72, type: 3}
   - {fileID: -3326733738379100494, guid: 5524b49403a8e4f1b80b74efaf00033e, type: 3}

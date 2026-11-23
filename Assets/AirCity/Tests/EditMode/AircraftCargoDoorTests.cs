@@ -9,7 +9,11 @@ namespace AirCity.Tests
 {
     public class AircraftCargoDoorTests
     {
+        [TestCase("LowWingPiston", 1)]
         [TestCase("Cessna172", 1)]
+        [TestCase("LightJet", 1)]
+        [TestCase("ExecutiveJet", 1)]
+        [TestCase("FlagshipJet", 1)]
         [TestCase("Narrowbody", 2)]
         [TestCase("Widebody", 3)]
         [TestCase("DoubleDeck", 3)]

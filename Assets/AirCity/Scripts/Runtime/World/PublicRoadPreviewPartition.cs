@@ -65,7 +65,7 @@ namespace AirCity.World
             foreach(var node in draft.nodes)if(!changedJunctions.Contains(node.id))unchangedJunctions.Add(node.id);
         }
         static bool Same(Dictionary<int,PublicRoadNode> a,PublicRoadSegment x,Dictionary<int,PublicRoadNode> b,PublicRoadSegment y)=>
-            x.a==y.a && x.b==y.b && x.style==y.style && x.structure==y.structure && x.alignment.Equals(y.alignment) &&
+            x.a==y.a && x.b==y.b && x.style==y.style && x.structure==y.structure && x.bridgeDesign==y.bridgeDesign && x.tunnelPortalStyle==y.tunnelPortalStyle && x.alignment.Equals(y.alignment) &&
             a[x.a].position==b[y.a].position && a[x.b].position==b[y.b].position &&
             a[x.a].outsideConnection==b[y.a].outsideConnection && a[x.b].outsideConnection==b[y.b].outsideConnection &&
             a[x.a].control==b[y.a].control && a[x.b].control==b[y.b].control;

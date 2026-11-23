@@ -49,6 +49,7 @@ namespace AirCity.EditorTools.World
                         text = text.Replace("SAMPLE_TEXTURE2D(" + texture + "##i, sampler_" + texture.Substring(1) + "0, splat##i##uv)",
                             "ValleySample(TEXTURE2D_ARGS(" + texture + "##i, sampler_" + texture.Substring(1) + "0), splat##i##uv)");
                 }
+                text = SkipUnseenLayers(file, text);
                 text = ExtendCliffs(file, text);
                 text = ExtendBuiltSurfaces(file,text);
                 changed |= Write(Root + file.Replace("TerrainLit", "ValleyTerrain"), Notice + text);
@@ -75,6 +76,31 @@ namespace AirCity.EditorTools.World
                 importsReady = true;
             }
             return AssetDatabase.LoadAssetAtPath<Shader>(ShaderPath);
+        }
+
+        /// <summary>The four layers' lookups are most of the terrain's cost: pass each one its layer's weight at the
+        /// pixel, so a layer the pixel does not show is not read. The control map is sampled before the masks.</summary>
+        static string SkipUnseenLayers(string file, string text)
+        {
+            if (file == "TerrainLitPasses.hlsl")
+            {
+                text = Regex.Replace(text, @"ValleySample\(TEXTURE2D_ARGS\((_Splat|_Normal|_Mask)([0-3]), (\w+)\), ([^)]+)\)",
+                    m => "ValleySampleWeighted(TEXTURE2D_ARGS(" + m.Groups[1].Value + m.Groups[2].Value + ", " + m.Groups[3].Value + "), " +
+                        m.Groups[4].Value + ", splatControl." + "rgba"[int.Parse(m.Groups[2].Value)] + ")");
+                text = ReplaceRequired(text, "void ComputeMasks(out half4 masks[4], half4 hasMask, float4 uvSplat01, float4 uvSplat23)",
+                    "// splatControl: the layers' weights at this pixel. Every use of a mask is multiplied by its layer's weight, so a\n" +
+                    "// layer without weight is not read.\n" +
+                    "void ComputeMasks(out half4 masks[4], half4 hasMask, float4 uvSplat01, float4 uvSplat23, half4 splatControl)");
+                const string Masks = "    half4 hasMask = half4(_LayerHasMask0, _LayerHasMask1, _LayerHasMask2, _LayerHasMask3);\n" +
+                    "    half4 masks[4];\n    ComputeMasks(masks, hasMask, IN.uvSplat01, IN.uvSplat23);\n\n";
+                const string Control = "    float2 splatUV = (IN.uvMainAndLM.xy * (_Control_TexelSize.zw - 1.0f) + 0.5f) * _Control_TexelSize.xy;\n" +
+                    "    half4 splatControl = SAMPLE_TEXTURE2D(_Control, sampler_Control, splatUV);\n";
+                text = ReplaceRequired(text, Masks + Control, Control + "\n" + Masks.Replace("IN.uvSplat23);\n\n", "IN.uvSplat23, splatControl);\n"));
+            }
+            if (file == "TerrainLitDepthNormalsPass.hlsl")
+                text = ReplaceRequired(text, "ComputeMasks(masks, hasMask, IN.uvSplat01, IN.uvSplat23);",
+                    "ComputeMasks(masks, hasMask, IN.uvSplat01, IN.uvSplat23, splatControl);");
+            return text;
         }
 
         static string ExtendCliffs(string file, string text)
@@ -136,7 +162,10 @@ namespace AirCity.EditorTools.World
             }
             if(file=="TerrainLitPasses.hlsl")
             {
-                text=ReplaceRequired(text,"    UNITY_SETUP_STEREO_EYE_INDEX_POST_VERTEX(IN);","    UNITY_SETUP_STEREO_EYE_INDEX_POST_VERTEX(IN);\n    AirCityClipBuiltSurface(IN.positionWS);");
+                // The lit pass discards only after its layer and cliff lookups: those skip unseen layers in dynamic
+                // branches, and a discard before such a branch leaves garbage pixels in blocks round every built
+                // surface's edge (Metal, Apple GPU).
+                text=ReplaceRequired(text,"    InitializeBakedGIData(IN, inputData);","    AirCityClipBuiltSurface(IN.positionWS);\n    InitializeBakedGIData(IN, inputData);");
                 text=ReplaceRequired(text,"    float2 texcoord     : TEXCOORD0;","    float2 texcoord     : TEXCOORD0;\n    float3 positionWS   : TEXCOORD1;");
                 text=ReplaceRequired(text,"    o.texcoord = v.texcoord;","    o.positionWS = positionWS;\n    o.texcoord = v.texcoord;");
                 text=ReplaceRequired(text,"    o.clipPos = TransformObjectToHClip(v.position.xyz);","    float3 positionWS=TransformObjectToWorld(v.position.xyz);\n    o.clipPos = TransformWorldToHClip(positionWS);");
@@ -144,7 +173,8 @@ namespace AirCity.EditorTools.World
                     text=ReplaceRequired(text,"half4 "+pass+"(VaryingsLean IN) : SV_TARGET\n{","half4 "+pass+"(VaryingsLean IN) : SV_TARGET\n{\n    AirCityClipBuiltSurface(IN.positionWS);");
             }
             if(file=="TerrainLitDepthNormalsPass.hlsl")
-                text=ReplaceRequired(text,"    #ifdef _ALPHATEST_ON","    AirCityClipBuiltSurface(IN.positionWS);\n    #ifdef _ALPHATEST_ON");
+                text=ReplaceRequired(text,"    #ifdef _WRITE_RENDERING_LAYERS\n    outRenderingLayers = EncodeMeshRenderingLayer();",
+                    "    AirCityClipBuiltSurface(IN.positionWS);\n\n    #ifdef _WRITE_RENDERING_LAYERS\n    outRenderingLayers = EncodeMeshRenderingLayer();");
             return text;
         }
 

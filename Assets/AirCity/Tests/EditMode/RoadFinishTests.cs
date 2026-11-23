@@ -33,9 +33,12 @@ namespace AirCity.Tests.World
             var graph=new PublicRoadNetwork();int c=graph.AddNode(new Vector3(0,100,0));
             foreach(var p in new[]{new Vector3(-180,92,0),new Vector3(180,111,0),new Vector3(0,107,-160)})
                 graph.AddSegment(c,graph.AddNode(p),style,RoadStructure.Ground);
+            graph.Control(c);   // town roads meeting: signals, so every approach has its stop line (and arrows where it has lanes to choose)
             var geometry=new PublicRoadGeometry(graph,null,null,_=>100);Own(geometry);
             var mesh=geometry.markings;var vertices=mesh.vertices;var shapes=new List<Vector4>();mesh.GetUVs(1,shapes);
-            Assert.Greater(shapes.Count(v=>v.w>1.5f),8,"Arrows must use analytic triangular heads.");
+            // arrows only where an approach has two or more lanes to choose from
+            if(style==PublicRoadStyle.Urban)Assert.AreEqual(0,shapes.Count(v=>v.w>1.5f),"A single approach lane carries no arrow.");
+            else Assert.Greater(shapes.Count(v=>v.w>1.5f),8,"Arrows must use analytic triangular heads.");
             var road=geometry.pavement.vertices;var indices=geometry.pavement.triangles;int checkedVertices=0;
             for(int i=0;i<vertices.Length;i++)
             {

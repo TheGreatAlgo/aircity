@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using AirCity.Airfield.Building;
 using UnityEngine;
 
 namespace AirCity.World
@@ -9,6 +10,8 @@ namespace AirCity.World
     internal struct RunSpan
     {
         public float offset,total;
+        public int firstEdge;
+        public int startNode,endNode;
         /// <summary>The piece's own stations run against the run's.</summary>
         public bool reversed;
         public bool closed,freeStart,freeEnd;
@@ -30,6 +33,7 @@ namespace AirCity.World
     internal sealed class StructurePiece
     {
         public RoadStructure structure;
+        public TunnelPortalStyle portalStyle;
         public readonly List<Vector3> left=new List<Vector3>(),right=new List<Vector3>();
         /// <summary>From the carriageway edge to the outer face of the parapet, or to the tunnel wall.</summary>
         public float verge;
@@ -59,11 +63,13 @@ namespace AirCity.World
         public RunSpan run;
         /// <summary>The piece's length as its run counts it (0: as measured along its cross-sections).</summary>
         public float length;
+        public RoadBridgeSpan bridge;
+        public bool retainsBank;
+        public TunnelPortalStyle? tunnelAtStart, tunnelAtEnd;
         public void Add(Vector3 l,Vector3 r){left.Add(l);right.Add(r);}
     }
 
-    /// <summary>Shared bridge deck/supports and tunnel lining/portals. Structure surfaces never own the ground
-    /// below a bridge or above a covered tunnel; only an open approach contributes terrain clipping.</summary>
+    /// <summary>Shared bridge decks and tunnel linings. A tunnel clears only the space between its floor and roof.</summary>
     internal static class RoadStructureBuilder
     {
         public const float DeckDepth=.8f,TunnelClearance=5.5f,TunnelCover=1.5f;
@@ -80,6 +86,13 @@ namespace AirCity.World
         public const float WallThickness=.4f,Coping=.35f,WallStep=1.25f,LintelHeight=.7f,LintelProud=.35f,LampSpacing=12f;
         /// <summary>A lamp on a bore's ceiling: the shader shows this colour unlit (alpha about 0.9).</summary>
         static readonly Color32 Lamp=new Color32(255,232,190,230);
+        public const float TunnelRoofThickness = .6f;
+        public const float TunnelExcavationHeight = TunnelClearance + TunnelRoofThickness;
+        public const float PavementClipHeight = .4f;
+        internal const float ShortStructureGap = 15f;
+        internal const float TunnelFloorThickness = .55f;
+        const float PortalArchRise = 1.25f;
+        const float WallEmbedment = .5f, ShoulderOverlap = .4f;
         /// <summary>The deck's edge is thinner than its middle: the underside tapers from here to DeckDepth.</summary>
         public const float EdgeDepth=.4f,GirderShare=.6f;
         /// <summary>Piers: the span aimed for, and how far a refused pier may move along the road.</summary>
@@ -133,7 +146,8 @@ namespace AirCity.World
             bool freeStart=!closed&&free(start.node,start.edge),freeEnd=!closed&&free(last,current);
             foreach(var item in order)
             {
-                var runs=item.bend?bendRuns:edgeRuns;var span=runs[item.id];
+                var runs=item.bend?bendRuns:edgeRuns;var span=runs[item.id];span.firstEdge=start.edge;
+                span.startNode=start.node;span.endNode=last;
                 span.total=offset;span.closed=closed;span.freeStart=freeStart;span.freeEnd=freeEnd;runs[item.id]=span;
             }
         }
@@ -157,11 +171,140 @@ namespace AirCity.World
         /// <summary>How many columns carry a deck this wide, and how thick they are for their height.</summary>
         public static int PierColumns(float width)=>width<=13f?1:width<=24f?2:3;
         public static float PierDiameter(float height)=>Mathf.Max(height<=8f?1.2f:height<=15f?1.5f:1.8f,height/12f);
+        public const float SubmergedFootDepth = 1.25f;
+
+        internal static float SupportFoot(Vector2 point, float ground, Func<Vector2,float?> water)
+        {
+            float? surface = water?.Invoke(point);
+            return surface.HasValue ? Mathf.Max(ground-.6f,surface.Value-SubmergedFootDepth) : ground-.6f;
+        }
+
+        internal static int UphillSide(Vector3 left, Vector3 right, Func<Vector2,float> ground,
+            Func<Vector2,float?> water)
+        {
+            var l = Alignment3D.XZ(left);
+            var r = Alignment3D.XZ(right);
+            if (water != null && (water(l).HasValue || water(r).HasValue)) return 0;
+            float leftDepth = ground(l) - left.y;
+            float rightDepth = ground(r) - right.y;
+            float relief = Mathf.Max(3f, Vector2.Distance(l, r) * .225f);
+            if (Mathf.Max(leftDepth, rightDepth) < 1.25f ||
+                Mathf.Min(leftDepth, rightDepth) > .8f || Mathf.Abs(leftDepth - rightDepth) < relief) return 0;
+            return leftDepth > rightDepth ? -1 : 1;
+        }
+
+        internal static bool RetainsBank(Alignment3D path, float halfWidth, Func<Vector2,float> ground, Func<Vector2,float?> water)
+        {
+            int count = Mathf.Max(1, Mathf.CeilToInt(path.Length / 4f));
+            for (int i = 0; i <= count; i++)
+            {
+                float station = path.Length * i / count;
+                if (UphillSide(path.Offset(station, -halfWidth), path.Offset(station, halfWidth), ground, water) != 0) return true;
+            }
+            return false;
+        }
+
+        internal static bool ShortDryApproach(Alignment3D path, float halfWidth, Func<Vector2,float?> water)
+        {
+            if (path.Length > ShortStructureGap) return false;
+            if (water == null) return true;
+            int spans = Mathf.Max(1, Mathf.CeilToInt(path.Length / WallStep));
+            for (int i = 0; i <= spans; i++)
+            {
+                float station = path.Length * i / spans;
+                if (!DryCrossSection(path.Offset(station, -halfWidth), path.Offset(station, halfWidth), water)) return false;
+            }
+            return true;
+        }
+
+        static bool DryCrossSection(Vector3 left, Vector3 right, Func<Vector2,float?> water) => water == null ||
+            (!water(Alignment3D.XZ(left)).HasValue && !water(Alignment3D.XZ(right)).HasValue &&
+                !water(Alignment3D.XZ((left + right) * .5f)).HasValue);
+
+        // Span values share the same boundaries as the concrete and the terrain cut. Bridge short
+        // interruptions only when the structure on either side agrees and every span is eligible.
+        static void FillShortGaps(int[] spans, Func<int,float> station, Func<int,int,bool> eligible = null)
+        {
+            for (int start = 1; start < spans.Length - 1; start++)
+            {
+                if (spans[start] != 0 || spans[start - 1] == 0) continue;
+                int kind = spans[start - 1];
+                int end = start;
+                while (end < spans.Length && spans[end] == 0 && (eligible == null || eligible(end, kind))) end++;
+                if (end == start || end == spans.Length || spans[end] != kind ||
+                    Mathf.Abs(station(end) - station(start)) > ShortStructureGap + .01f) continue;
+                Array.Fill(spans, kind, start, end - start);
+            }
+        }
+
+        static void ClearSpan(List<BuiltSurfaceMap.Triangle> openings, Vector3 leftA, Vector3 leftB, Vector3 rightB, Vector3 rightA,
+            float height, float depth, bool buried = false)
+        {
+            openings.Add(new BuiltSurfaceMap.Triangle(leftA, leftB, rightB, excavationHeight: height, buried: buried, excavationDepth: depth));
+            if (rightA != rightB)
+                openings.Add(new BuiltSurfaceMap.Triangle(leftA, rightB, rightA, excavationHeight: height, buried: buried, excavationDepth: depth));
+        }
+
+        internal static bool DeckNeedsLining(Vector3 left, Vector3 right, float verge, Func<Vector2,float> ground, Func<Vector2,float?> water)
+        {
+            var axis = Alignment3D.XZ(right - left).normalized;
+            var reach = new Vector3(axis.x, 0f, axis.y) * verge;
+            left -= reach;
+            right += reach;
+            return DryCrossSection(left, right, water) &&
+                TunnelCoverAt(left, right, point => ground(Alignment3D.XZ(point)), PavementClipHeight).roofed;
+        }
+
+        // A heightfield cut has no vertical face. Close it where the formation falls away
+        // below the shoulder and where the uncut bank rises above it at a portal.
+        internal static void SealShoulder(LandscapeMesh mesh, Vector3 a, Vector3 b, Vector3 outward, Func<Vector2,float> ground,
+            float shoulderRise = 0f)
+        {
+            float Ground(Vector3 p) => ground(Alignment3D.XZ(p));
+            var lip = Vector3.up * (MeshData.RoadEdgeDepth - .01f);
+            (Vector3 foot, Vector3 top, Vector3 back, bool exposed) Profile(Vector3 edge)
+            {
+                float terrain = Ground(edge);
+                var back = edge + outward * WallThickness;
+                float bank = Ground(back);
+                var foot = edge;
+                foot.y = Mathf.Min(edge.y - lip.y, terrain - WallEmbedment);
+                // Use the tunnel wall's pavement datum and coping profile at the common rim.
+                float pavement = edge.y - shoulderRise;
+                var top = edge;
+                if (Mathf.Max(terrain, bank) > edge.y)
+                    top.y = Mathf.Max(edge.y, pavement + WallRise(Mathf.Max(terrain, bank) - pavement));
+                back.y = Mathf.Min(bank, top.y) - .02f;
+                return (foot, top, back, terrain < edge.y - lip.y);
+            }
+            int count = Mathf.Max(1, Mathf.CeilToInt(Vector3.Distance(a, b) / WallStep));
+            mesh.colour = Plain;
+            mesh.uv = null;
+            var edgeA = a;
+            var start = Profile(a);
+            for (int i = 1; i <= count; i++)
+            {
+                var edgeB = Vector3.Lerp(a, b, i / (float)count);
+                var end = Profile(edgeB);
+                if (start.exposed || end.exposed)
+                    mesh.Face(edgeA - lip, edgeB - lip, end.foot, start.foot, outward);
+                if (start.top.y > edgeA.y + .001f || end.top.y > edgeB.y + .001f)
+                {
+                    var outerA = start.top + outward * WallThickness;
+                    var outerB = end.top + outward * WallThickness;
+                    mesh.Face(edgeA, edgeB, end.top, start.top, -outward);
+                    mesh.Face(start.top, end.top, outerB, outerA, Vector3.up);
+                    mesh.Face(outerA, outerB, end.back, start.back, outward);
+                }
+                edgeA = edgeB;
+                start = end;
+            }
+        }
 
         public static void Build(StructurePiece piece,Func<Vector2,float> ground,LandscapeMesh mesh,List<BuiltSurfaceMap.Triangle> openings,
-            Func<Vector3,float,bool> support=null,List<Vector3> piers=null)
+            Func<Vector3,float,bool> support=null,List<Vector3> piers=null,Func<Vector2,float?> water=null)
         {
-            int n=piece.left.Count;if(piece.structure==RoadStructure.Ground||n<2)return;
+            int n=piece.left.Count;if(n<2 || piece.structure == RoadStructure.Ground && !piece.retainsBank)return;
             var centre=new Vector3[n];var across=new Vector3[n];var along=new float[n];var half=new float[n];
             for(int k=0;k<n;k++)
             {
@@ -178,19 +321,296 @@ namespace AirCity.World
             {var d=centre[Mathf.Min(k+1,n-1)]-centre[Mathf.Max(k-1,0)];d.y=0;return d.normalized;}
             float Ground(Vector3 p)=>ground(Alignment3D.XZ(p));
             mesh.colour=Plain;mesh.uv=null;
+            int[] lining = null;
             if(piece.structure==RoadStructure.Elevated)
             {
-                Deck(piece,mesh,openings,n,centre,half,across,along,At,Forward,Ground);
+                lining = DeckLinings(piece, along, ground, water);
+                Deck(piece,mesh,openings,n,centre,half,across,along,At,Forward,Ground,lining);
+                LineDeck(piece, mesh, openings, across, along, Ground, lining);
                 // the deck leaves the mesh on its last detail (rail steel): everything after it is plain concrete again
                 mesh.colour=Plain;mesh.uv=null;
-                Piers(piece,mesh,n,centre,across,along,half,Ground,support,piers);
+                if (piece.bridge.suspension != null)
+                    piece.bridge.suspension.Build(piece, mesh, centre, across, along, half, ground, water);
+                else if (piece.bridge.arch != null)
+                    piece.bridge.arch.Build(piece, mesh, centre, across, along, half, ground, water);
+                else
+                    Piers(piece,mesh,n,centre,across,along,half,Ground,support,piers,water);
             }
-            else Tunnel(piece,mesh,openings,n,centre,across,along,Ground);
+            else if (piece.structure == RoadStructure.Tunnel) Tunnel(piece,mesh,openings,n,across,along,Ground);
+            if (piece.retainsBank) Cliffside(piece, mesh, openings, across, along, ground, water, lining);
             mesh.colour=Plain;mesh.uv=null;
         }
 
+        // An open retaining wall becomes a roofed gallery where the rock reaches above the
+        // lane clearance. Use the same shoulder cross-sections for the wall, roof and cut.
+        static void Cliffside(StructurePiece piece, LandscapeMesh mesh, List<BuiltSurfaceMap.Triangle> openings,
+            Vector3[] across, float[] along, Func<Vector2,float> ground, Func<Vector2,float?> water, int[] lining)
+        {
+            float Ground(Vector3 point) => ground(Alignment3D.XZ(point));
+            var up = Vector3.up;
+            var clearance = up * TunnelClearance;
+            var top = up * TunnelExcavationHeight;
+            var stations = new List<float>(piece.Stations(along));
+            var axes = new List<Vector3>(across);
+            var left = new List<Vector3>(piece.left);
+            var right = new List<Vector3>(piece.right);
+            ExtendToDeadEnd(true, piece.endStart, piece.trimStart);
+            int vergeStart = left.Count - across.Length;
+            ExtendToDeadEnd(false, piece.endEnd, piece.trimEnd);
+            int vergeEnd = vergeStart + across.Length - 1;
+            float shoulder = piece.verge;
+            var sides = new int[left.Count - 1];
+            var roofs = new int[sides.Length];
+            var dry = new bool[sides.Length];
+            for (int i = 0; i < left.Count; i++)
+            {
+                left[i] -= axes[i] * shoulder;
+                right[i] += axes[i] * shoulder;
+            }
+            for (int i = 0; i < sides.Length; i++)
+            {
+                if (lining != null && i >= vergeStart && i < vergeEnd && lining[i - vergeStart] != 0) continue;
+                var l = Vector3.Lerp(left[i], left[i + 1], .5f);
+                var r = Vector3.Lerp(right[i], right[i + 1], .5f);
+                dry[i] = DryCrossSection(left[i], right[i], water) && DryCrossSection(l, r, water) &&
+                    DryCrossSection(left[i + 1], right[i + 1], water);
+                if (!dry[i]) continue;
+                sides[i] = UphillSide(left[i], right[i], ground, null);
+                if (sides[i] == 0) sides[i] = UphillSide(l, r, ground, null);
+                if (sides[i] == 0) sides[i] = UphillSide(left[i + 1], right[i + 1], ground, null);
+            }
+            FillShortGaps(sides, i => stations[i], (i, _) => dry[i]);
+            for (int i = 0; i < sides.Length; i++)
+            {
+                int side = sides[i];
+                if (side == 0) continue;
+                int sections = Mathf.Max(1, Mathf.CeilToInt(Mathf.Abs(stations[i + 1] - stations[i]) / WallStep));
+                for (int j = 0; j <= sections && roofs[i] == 0; j++)
+                    if (NeedsRoof(i, j / (float)sections, side)) roofs[i] = side;
+            }
+            FillShortGaps(roofs, i => stations[i], (i, side) => sides[i] == side);
+
+            for (int i = 0; i < sides.Length; i++)
+            {
+                var l0 = left[i];
+                var r0 = right[i];
+                var l1 = left[i + 1];
+                var r1 = right[i + 1];
+                int side = sides[i];
+                if (piece.structure == RoadStructure.Ground && i >= vergeStart && i < vergeEnd)
+                {
+                    GroundVerge(l0, l1, -axes[i], -axes[i + 1], side >= 0);
+                    GroundVerge(r0, r1, axes[i], axes[i + 1], side <= 0);
+                }
+                if (side == 0) continue;
+
+                var nearA = side < 0 ? l0 : r0;
+                var nearB = side < 0 ? l1 : r1;
+                var farA = side < 0 ? r0 : l0;
+                var farB = side < 0 ? r1 : l1;
+                var outwardA = axes[i] * side;
+                var outwardB = axes[i + 1] * side;
+                var outerA = nearA + outwardA * WallThickness;
+                var outerB = nearB + outwardB * WallThickness;
+                var cutA = outerA - outwardA * .02f;
+                var cutB = outerB - outwardB * .02f;
+
+                float floorDepth = piece.structure == RoadStructure.Elevated ? EdgeDepth : TunnelFloorThickness;
+                ClearSpan(openings, cutA, cutB, farB, farA, TunnelExcavationHeight, floorDepth);
+
+                float depthA = Ground(outerA) - outerA.y;
+                float depthB = Ground(outerB) - outerB.y;
+                bool roofed = roofs[i] == side;
+                float minimumCoping = piece.stripRise + EdgeBeamRise;
+                var heightA = roofed ? top : up * Mathf.Clamp(depthA + Coping, minimumCoping, TunnelExcavationHeight);
+                var heightB = roofed ? top : up * Mathf.Clamp(depthB + Coping, minimumCoping, TunnelExcavationHeight);
+                mesh.colour = Plain;
+                mesh.uv = null;
+                if (piece.structure == RoadStructure.Ground)
+                {
+                    var floor = up * floorDepth;
+                    mesh.Face(outerA - floor, outerB - floor, farB - floor, farA - floor, -up);
+                }
+                mesh.Face(WallFoot(nearA, Ground), WallFoot(nearB, Ground), nearB + heightB, nearA + heightA, -outwardA);
+                mesh.Face(outerA + heightA, outerB + heightB, WallFoot(outerB, Ground), WallFoot(outerA, Ground), outwardA);
+                mesh.Face(nearA + heightA, nearB + heightB, outerB + heightB, outerA + heightA, up);
+                var heading = (nearB - nearA).normalized;
+                mesh.Face(WallFoot(outerA, Ground), WallFoot(nearA, Ground), nearA + heightA, outerA + heightA, -heading);
+                mesh.Face(WallFoot(nearB, Ground), WallFoot(outerB, Ground), outerB + heightB, nearB + heightB, heading);
+                if (i == 0 && piece.endStart != null) RetainDeadEnd(farA, outerA, -heading, roofed);
+                if (i == left.Count - 2 && piece.endEnd != null) RetainDeadEnd(farB, outerB, heading, roofed);
+                if (!roofed) continue;
+
+                mesh.Face(nearA + clearance, nearB + clearance, farB + clearance, farA + clearance, -up);
+                mesh.Face(outerA + top, outerB + top, farB + top, farA + top, up);
+                mesh.Face(farA + clearance, farB + clearance, farB + top, farA + top, -outwardA);
+                mesh.Face(nearA + clearance, farA + clearance, farA + top, outerA + top, -heading);
+                mesh.Face(farB + clearance, nearB + clearance, outerB + top, farB + top, heading);
+                float start = Mathf.Min(stations[i], stations[i + 1]);
+                float end = Mathf.Max(stations[i], stations[i + 1]);
+                const float spacing = 9f;
+                for (float station = (Mathf.Floor(start / spacing) + .5f) * spacing; station < end; station += spacing)
+                {
+                    if (station < start) continue;
+                    float t = Mathf.InverseLerp(stations[i], stations[i + 1], station);
+                    var foot = Vector3.Lerp(farA, farB, t) + Vector3.Lerp(outwardA, outwardB, t) * .23f;
+                    mesh.Box(foot + clearance * .5f, new Vector3(.46f, TunnelClearance, .46f));
+                }
+            }
+
+            if (piece.structure == RoadStructure.Ground)
+            {
+                RoundVerge(piece.endStart);
+                RoundVerge(piece.endEnd);
+            }
+
+            bool NeedsRoof(int i, float t, int side)
+            {
+                var l = Vector3.Lerp(left[i], left[i + 1], t);
+                var r = Vector3.Lerp(right[i], right[i + 1], t);
+                var extension = Vector3.Lerp(axes[i], axes[i + 1], t).normalized * WallThickness;
+                return TunnelCoverAt(l - (side < 0 ? extension : Vector3.zero),
+                    r + (side > 0 ? extension : Vector3.zero), Ground, TunnelClearance).roofed;
+            }
+
+            void GroundVerge(Vector3 a, Vector3 b, Vector3 outA, Vector3 outB, bool edgeFace)
+            {
+                var aInner = a - outA * (shoulder - piece.stripFrom);
+                var bInner = b - outB * (shoulder - piece.stripFrom);
+                var rise = up * piece.stripRise;
+                Strip(piece, mesh, aInner, bInner, a, b);
+                if (edgeFace) mesh.Face(WallFoot(a, Ground), WallFoot(b, Ground), b + rise, a + rise, outA);
+                ClearSpan(openings, aInner + rise, bInner + rise, b + rise, a + rise, PavementClipHeight, EdgeDepth);
+            }
+
+            void RoundVerge(List<(Vector3 point, Vector3 normal)> ring)
+            {
+                if (ring == null) return;
+                mesh.colour = Plain;
+                mesh.uv = null;
+                for (int i = 0; i + 1 < ring.Count; i++)
+                {
+                    var (a, outA) = ring[i];
+                    var (b, outB) = ring[i + 1];
+                    GroundVerge(a + outA * shoulder, b + outB * shoulder, outA, outB, true);
+                }
+            }
+
+            void ExtendToDeadEnd(bool start, List<(Vector3 point, Vector3 normal)> ring, float trim)
+            {
+                if (ring == null || trim < .01f) return;
+                int at = start ? 0 : left.Count - 1;
+                int neighbour = start ? 1 : at - 1;
+                var alongRoad = (left[at] + right[at] - left[neighbour] - right[neighbour]) * .5f;
+                float distance = Alignment3D.XZ(alongRoad).magnitude;
+                if (distance < .01f) return;
+                var offset = alongRoad * (trim / distance);
+                int index = start ? 0 : left.Count;
+                float direction = start != piece.run.reversed ? -1f : 1f;
+                left.Insert(index, left[at] + offset);
+                right.Insert(index, right[at] + offset);
+                axes.Insert(index, axes[at]);
+                stations.Insert(index, stations[at] + direction * trim);
+            }
+
+            void RetainDeadEnd(Vector3 from, Vector3 to, Vector3 outward, bool roofed)
+            {
+                float ceiling = roofed ? TunnelClearance : TunnelExcavationHeight;
+                int count = Mathf.Max(1, Mathf.CeilToInt(Vector3.Distance(from, to) / (.5f * WallStep)));
+                var a = from;
+                float heightA = EndHeight(a);
+                for (int j = 1; j <= count; j++)
+                {
+                    var b = Vector3.Lerp(from, to, j / (float)count);
+                    float heightB = EndHeight(b);
+                    if (heightA > .01f || heightB > .01f)
+                        mesh.Face(WallFoot(a, Ground), WallFoot(b, Ground), b + up * heightB, a + up * heightA, outward);
+                    a = b;
+                    heightA = heightB;
+                }
+
+                // Overlap the sampled rock face across the terrain triangles, leaving the downhill side open.
+                float EndHeight(Vector3 point) => Mathf.Clamp(Ground(point) - point.y + .2f, 0f, ceiling);
+            }
+        }
+
+        // Find where earth enters the bridge clearance, including between the deck's own frames.
+        // An existing cliffside gallery handles its bank except where the tunnel lining takes over.
+        static int[] DeckLinings(StructurePiece piece, float[] along, Func<Vector2,float> ground, Func<Vector2,float?> water)
+        {
+            if (piece.retainsBank && !piece.tunnelAtStart.HasValue && !piece.tunnelAtEnd.HasValue) return null;
+            var lined = new int[along.Length - 1];
+            for (int i = 0; i < lined.Length; i++)
+            {
+                int steps = Mathf.Max(1, Mathf.CeilToInt((along[i + 1] - along[i]) / WallStep));
+                for (int j = 0; j <= steps; j++)
+                {
+                    float t = j / (float)steps;
+                    if (!DeckNeedsLining(Vector3.Lerp(piece.left[i], piece.left[i + 1], t),
+                        Vector3.Lerp(piece.right[i], piece.right[i + 1], t), piece.verge, ground, water)) continue;
+                    lined[i] = 1;
+                    break;
+                }
+            }
+            FillShortGaps(lined, i => along[i], (i, _) =>
+                DryCrossSection((piece.left[i] + piece.left[i + 1]) * .5f, (piece.right[i] + piece.right[i + 1]) * .5f, water));
+            if (piece.retainsBank)
+            {
+                int start = 0, end = lined.Length;
+                if (piece.tunnelAtStart.HasValue)
+                    while (start < end && lined[start] != 0) start++;
+                if (piece.tunnelAtEnd.HasValue)
+                    while (end > start && lined[end - 1] != 0) end--;
+                Array.Clear(lined, start, end - start);
+            }
+            return lined;
+        }
+
+        static void LineDeck(StructurePiece deck, LandscapeMesh mesh, List<BuiltSurfaceMap.Triangle> openings,
+            Vector3[] across, float[] along, Func<Vector3,float> ground, int[] lined)
+        {
+            if (lined == null) return;
+            var stations = deck.Stations(along);
+            for (int first = 0; first < lined.Length; first++)
+            {
+                if (lined[first] == 0) continue;
+                int last = first + 1;
+                while (last < lined.Length && lined[last] != 0) last++;
+                bool joinsStart = first == 0 && deck.tunnelAtStart.HasValue;
+                bool joinsEnd = last == lined.Length && deck.tunnelAtEnd.HasValue;
+                float trimStart = first == 0 ? deck.trimStart : 0f;
+                float trimEnd = last == lined.Length ? deck.trimEnd : 0f;
+                var approach = new StructurePiece
+                {
+                    structure = RoadStructure.Tunnel,
+                    portalStyle = (joinsStart ? deck.tunnelAtStart : joinsEnd ? deck.tunnelAtEnd : deck.tunnelAtStart ?? deck.tunnelAtEnd)
+                        ?? deck.portalStyle,
+                    verge = deck.verge, stripFrom = deck.stripFrom, stripRise = deck.stripRise,
+                    length = Mathf.Abs(stations[last] - stations[first]) + trimStart + trimEnd,
+                    run = new RunSpan { offset = Mathf.Min(stations[first], stations[last]) - (deck.run.reversed ? trimEnd : trimStart),
+                        reversed = deck.run.reversed },
+                    capStart = !joinsStart, capEnd = !joinsEnd,
+                    abutStart = first == 0 && deck.abutStart, abutEnd = last == lined.Length && deck.abutEnd,
+                    endStart = first == 0 ? deck.endStart : null, endEnd = last == lined.Length ? deck.endEnd : null,
+                    trimStart = trimStart, trimEnd = trimEnd
+                };
+                int count = last - first + 1;
+                var axis = new Vector3[count];
+                var distance = new float[count];
+                for (int i = 0; i < count; i++)
+                {
+                    int at = first + i;
+                    approach.Add(deck.left[at], deck.right[at]);
+                    axis[i] = across[at];
+                    distance[i] = along[at] - along[first];
+                }
+                Tunnel(approach, mesh, openings, count, axis, distance, ground);
+                first = last - 1;
+            }
+        }
+
         static void Deck(StructurePiece piece,LandscapeMesh mesh,List<BuiltSurfaceMap.Triangle> openings,int n,Vector3[] centre,float[] half,Vector3[] across,
-            float[] along,Func<int,float,Vector3> at,Func<int,Vector3> forward,Func<Vector3,float> ground)
+            float[] along,Func<int,float,Vector3> at,Func<int,Vector3> forward,Func<Vector3,float> ground,int[] lining)
         {
             var up=Vector3.up;float lift=piece.stripRise,barrier=lift+BarrierHeight,top=lift+ParapetHeight;
             // metres along the run at each cross-section: panel joints and rail posts carry on from piece to piece
@@ -199,11 +619,13 @@ namespace AirCity.World
             for(int k=0;k+1<n;k++)
             {
                 float w0=half[k]+piece.verge,w1=half[k+1]+piece.verge,g0=w0*GirderShare,g1=w1*GirderShare;
-                var c0=at(k,0);var c1=at(k+1,0);
-                if(Mathf.Max(ground(c0)-c0.y,ground(c1)-c1.y)+piece.surface>-.5f)
+                bool lined = lining != null && lining[k] != 0;
+                if (!lined)
                 {
-                    var l0=at(k,-w0);var l1=at(k+1,-w1);var r0=at(k,w0);var r1=at(k+1,w1);
-                    openings.Add(new BuiltSurfaceMap.Triangle(l0,l1,r1));openings.Add(new BuiltSurfaceMap.Triangle(l0,r1,r0));
+                    var c0 = at(k, 0f);
+                    var c1 = at(k + 1, 0f);
+                    bool aboveGround = Mathf.Max(ground(c0) - c0.y, ground(c1) - c1.y) + piece.surface <= -.5f;
+                    ClearSpan(openings, at(k,-w0), at(k+1,-w1), at(k+1,w1), at(k,w0), TunnelClearance, EdgeDepth, buried: aboveGround);
                 }
                 // the underside: a flat girder soffit, with wings tapering up to the thin edges
                 mesh.colour=Plain;mesh.uv=null;
@@ -211,13 +633,14 @@ namespace AirCity.World
                 for(int side=-1;side<=1;side+=2)
                     DeckEdge(piece,mesh,at(k,w0*side),at(k+1,w1*side),across[k]*side,across[k+1]*side,Run(k),Run(k+1),
                         at(k,g0*side)+Vector3.down*DeckDepth,at(k+1,g1*side)+Vector3.down*DeckDepth,
-                        at(k,half[k]*side)+across[k]*side*piece.stripFrom,at(k+1,half[k+1]*side)+across[k+1]*side*piece.stripFrom);
+                        at(k,half[k]*side)+across[k]*side*piece.stripFrom,at(k+1,half[k+1]*side)+across[k+1]*side*piece.stripFrom, lined);
             }
             // a dead end: the same edge carried round the pavement's rounded end, the soffit filled in under it
             for(int end=0;end<2;end++)
             {
                 var ring=Ring(piece,end==0,WallStep*4f);if(ring==null)continue;
                 int k=end==0?0:n-1;float away=(end==1)!=piece.run.reversed?1f:-1f;
+                bool lined = lining != null && lining[end == 0 ? 0 : lining.Length - 1] != 0;
                 var outer=new Vector3[ring.Count];var reach=new float[ring.Count];
                 for(int i=0;i<ring.Count;i++)
                 {
@@ -231,8 +654,10 @@ namespace AirCity.World
                 {
                     mesh.colour=Plain;mesh.uv=null;
                     mesh.Face(under,Girder(i),Girder(i+1),Vector3.down);
+                    if (!lined)
+                        ClearSpan(openings, outer[i], outer[i + 1], centre[k], centre[k], TunnelClearance, EdgeDepth, buried: true);
                     DeckEdge(piece,mesh,outer[i],outer[i+1],ring[i].normal,ring[i+1].normal,RunAt(i),RunAt(i+1),Girder(i),Girder(i+1),
-                        ring[i].point+ring[i].normal*piece.stripFrom,ring[i+1].point+ring[i+1].normal*piece.stripFrom);
+                        ring[i].point+ring[i].normal*piece.stripFrom,ring[i+1].point+ring[i+1].normal*piece.stripFrom, lined);
                 }
             }
             mesh.uv=null;
@@ -246,6 +671,24 @@ namespace AirCity.World
                 };
                 mesh.colour=Plain;
                 for(int i=1;i+1<section.Length;i++)mesh.Face(section[0],section[i],section[i+1],outward);
+                if (lining == null || lining[end == 0 ? 0 : lining.Length - 1] == 0)
+                    CapDeckRails(k, outward);
+                mesh.colour=Plain;
+                if(!(end==0?piece.abutStart:piece.abutEnd))continue;
+                // an abutment wall under the deck's end, down into the ground the road carries on along
+                float soffit=at(k,0).y-DeckDepth,floor=Mathf.Min(ground(at(k,-w)),ground(at(k,0)),ground(at(k,w)))-.5f;
+                if(soffit-floor<.6f)continue;
+                var back=-outward*1f;var l=at(k,-w);var r=at(k,w);l.y=r.y=soffit;var fall=Vector3.down*(soffit-floor);
+                mesh.Face(l,r,r+fall,l+fall,outward);mesh.Face(l+back,r+back,r+back+fall,l+back+fall,-outward);
+                mesh.Face(l,l+back,l+back+fall,l+fall,-across[k]);mesh.Face(r,r+back,r+back+fall,r+fall,across[k]);
+            }
+            if (lining != null)
+                for (int k = 1; k < lining.Length; k++)
+                    if (lining[k - 1] != lining[k]) CapDeckRails(k, forward(k) * (lining[k] != 0 ? 1f : -1f));
+
+            void CapDeckRails(int k, Vector3 outward)
+            {
+                float w=half[k]+piece.verge;
                 for(int side=-1;side<=1;side+=2)
                 {
                     var o=at(k,w*side);var inward=-across[k]*side;
@@ -256,14 +699,6 @@ namespace AirCity.World
                     mesh.Face(o+inward*(RailInset-RailWidth*.5f)+up*(top-RailDepth),o+inward*(RailInset+RailWidth*.5f)+up*(top-RailDepth),
                         o+inward*(RailInset+RailWidth*.5f)+up*top,o+inward*(RailInset-RailWidth*.5f)+up*top,outward);
                 }
-                mesh.colour=Plain;
-                if(!(end==0?piece.abutStart:piece.abutEnd))continue;
-                // an abutment wall under the deck's end, down into the ground the road carries on along
-                float soffit=at(k,0).y-DeckDepth,floor=Mathf.Min(ground(at(k,-w)),ground(at(k,0)),ground(at(k,w)))-.5f;
-                if(soffit-floor<.6f)continue;
-                var back=-outward*1f;var l=at(k,-w);var r=at(k,w);l.y=r.y=soffit;var fall=Vector3.down*(soffit-floor);
-                mesh.Face(l,r,r+fall,l+fall,outward);mesh.Face(l+back,r+back,r+back+fall,l+back+fall,-outward);
-                mesh.Face(l,l+back,l+back+fall,l+fall,-across[k]);mesh.Face(r,r+back,r+back+fall,r+fall,across[k]);
             }
         }
 
@@ -271,7 +706,7 @@ namespace AirCity.World
         /// edge's height, `outward`: pointing off the deck, `run`: metres along the bridge): the soffit's wing up from
         /// the girder, the paved strip, the edge beam, the barrier, and the rail on its posts.</summary>
         static void DeckEdge(StructurePiece piece,LandscapeMesh mesh,Vector3 o0,Vector3 o1,Vector3 out0,Vector3 out1,float run0,float run1,
-            Vector3 girder0,Vector3 girder1,Vector3 strip0,Vector3 strip1)
+            Vector3 girder0,Vector3 girder1,Vector3 strip0,Vector3 strip1,bool lined=false)
         {
             var up=Vector3.up;float lift=piece.stripRise,barrier=lift+BarrierHeight,top=lift+ParapetHeight;
             // every vertex lies on one of the two frames: that one's distance along the run
@@ -285,6 +720,11 @@ namespace AirCity.World
             void Band(float inA,float hA,float inB,float hB,Vector3 facing)=>mesh.Face(P(0,inA,hA),P(1,inA,hA),P(1,inB,hB),P(0,inB,hB),facing);
             mesh.colour=Plain;mesh.uv=null;
             mesh.Face(girder0,girder1,P(1,0,-EdgeDepth),P(0,0,-EdgeDepth),Vector3.down+out0*.3f);
+            if (lined)
+            {
+                Band(0,-EdgeDepth,0,0,out0);
+                return;
+            }
             Strip(piece,mesh,strip0,strip1,P(0,ParapetWidth,0),P(1,ParapetWidth,0));
             mesh.colour=Panel;mesh.uv=Along;
             Band(0,-EdgeDepth,0,lift+EdgeBeamRise,out0);                                           // the edge beam's face
@@ -352,7 +792,7 @@ namespace AirCity.World
         }
 
         static void Piers(StructurePiece piece,LandscapeMesh mesh,int n,Vector3[] centre,Vector3[] across,float[] along,float[] half,
-            Func<Vector3,float> ground,Func<Vector3,float,bool> support,List<Vector3> placed)
+            Func<Vector3,float> ground,Func<Vector3,float,bool> support,List<Vector3> placed,Func<Vector2,float?> water)
         {
             float measured=along[n-1],length=piece.length>0?piece.length:measured+piece.trimStart+piece.trimEnd;var run=piece.run;
             bool openStart=piece.capStart||piece.endStart!=null,openEnd=piece.capEnd||piece.endEnd!=null;
@@ -370,11 +810,20 @@ namespace AirCity.World
                 int columns=PierColumns(width);
                 var offsets=columns==1?new[]{0f}:columns==2?new[]{-.19f*width,.19f*width}:new[]{-.23f*width,0f,.23f*width};
                 float low=float.MaxValue,high=float.MinValue;
-                foreach(float offset in offsets){float g=ground(c+x*offset);low=Mathf.Min(low,g);high=Mathf.Max(high,g);}
-                if(soffit-high<MinPierClearance)return true;
-                float diameter=PierDiameter(soffit-low),radius=diameter*.5f;
+                bool restsOnLand=false, hasWater=false;
+                foreach(float offset in offsets)
+                {
+                    var p=c+x*offset;float g=ground(p);
+                    var surface=water?.Invoke(Alignment3D.XZ(p));
+                    hasWater|=surface.HasValue;
+                    restsOnLand|=!surface.HasValue&&soffit-g<MinPierClearance;
+                    float floor=surface.HasValue?Mathf.Max(g-.6f,surface.Value-SubmergedFootDepth):g-.6f;
+                    low=Mathf.Min(low,floor);high=Mathf.Max(high,floor);
+                }
+                if(restsOnLand||soffit-high<.3f)return true;
+                float diameter=PierDiameter(soffit-low-(hasWater?0f:.6f)),radius=diameter*.5f;
                 if(support!=null)foreach(float offset in offsets)if(!support(c+x*offset,radius+.6f))return false;
-                float cap=Mathf.Min(PierCap,soffit-high-.5f),reach=Mathf.Abs(offsets[0]);
+                float cap=Mathf.Min(PierCap,hasWater?(soffit-high)*.6f:soffit-high-1.1f),reach=Mathf.Abs(offsets[0]);
                 // the crosshead: a hammerhead on a single column, a beam across a row of them
                 float girder=width*.5f*GirderShare,deep=radius+.2f;
                 float top=columns==1?Mathf.Max(radius+.4f,width*.25f):Mathf.Min(reach+radius+.9f,girder),bottom=columns==1?radius+.15f:Mathf.Min(reach+radius+.2f,girder);
@@ -388,9 +837,15 @@ namespace AirCity.World
                 }
                 foreach(float offset in offsets)
                 {
-                    var p=c+x*offset;float floor=ground(p);
-                    for(int i=0;i<4;i++)floor=Mathf.Min(floor,ground(p+Quaternion.Euler(0,i*90f,0)*Vector3.right*radius));
-                    floor-=.6f;mesh.Tube(new Vector3(p.x,floor,p.z),foot.y-floor,radius,16);
+                    var p=c+x*offset;float floor=SupportFoot(Alignment3D.XZ(p),ground(p),water);
+                    for(int i=0;i<4;i++)
+                    {
+                        var edge=p+Quaternion.Euler(0,i*90f,0)*Vector3.right*radius;
+                        floor=Mathf.Min(floor,SupportFoot(Alignment3D.XZ(edge),ground(edge),water));
+                    }
+                    var surface=water?.Invoke(Alignment3D.XZ(p));
+                    if(surface.HasValue)floor=Mathf.Max(floor,surface.Value-SubmergedFootDepth);
+                    mesh.Tube(new Vector3(p.x,floor,p.z),foot.y-floor,radius,16);
                     placed?.Add(new Vector3(p.x,foot.y,p.z));
                 }
                 return true;
@@ -411,150 +866,304 @@ namespace AirCity.World
             }
         }
 
-        /// <summary>A point on a tunnel's edge: on the pavement's edge, with the direction to its wall, the road's
-        /// middle there (roof and terrain opening reach to it) and whether the road is under ground there.</summary>
-        struct Rim {public Vector3 p,n,mid;public float run;public bool covered;}
-
-        static void Tunnel(StructurePiece piece,LandscapeMesh mesh,List<BuiltSurfaceMap.Triangle> openings,int n,Vector3[] centre,Vector3[] across,
-            float[] along,Func<Vector3,float> ground)
+        internal static (bool roofed, bool buried) TunnelCoverAt(Vector3 left, Vector3 right, Func<Vector3,float> ground,
+            float roofThreshold = TunnelExcavationHeight - .15f)
         {
-            var up=Vector3.up;float reach=piece.verge+WallThickness;
-            var stations=piece.Stations(along);
-            float Run(int k)=>stations[k];
-            // Under ground only where the whole width has its cover: a bore never shows through a hillside's flank.
-            bool Covered(Vector3 mid,Vector3 right,float half)=>
-                mid.y-piece.surface+TunnelClearance+TunnelCover<Mathf.Min(ground(mid),ground(mid-right*(half+reach)),ground(mid+right*(half+reach)));
-            // the pavement's cross-sections, with more between them in the open: walls follow the ground closely
-            var left=new List<Rim>();var right=new List<Rim>();var under=new bool[n];
-            for(int k=0;k<n;k++)under[k]=Covered(centre[k],across[k],Vector2.Distance(Alignment3D.XZ(piece.left[k]),Alignment3D.XZ(piece.right[k]))*.5f);
-            for(int k=0;k<n;k++)
+            int parts = Mathf.Max(2, Mathf.CeilToInt(Vector3.Distance(left, right) / (2f * WallStep)));
+            float lowest = float.PositiveInfinity;
+            float highest = float.NegativeInfinity;
+            for (int i = 0; i <= parts; i++)
             {
-                int parts=k+1<n&&!(under[k]&&under[k+1])?Mathf.Max(1,Mathf.CeilToInt((along[k+1]-along[k])/WallStep)):1;
-                for(int j=0;j<parts;j++)
+                var point = Vector3.Lerp(left, right, i / (float)parts);
+                float depth = ground(point) - point.y;
+                lowest = Mathf.Min(lowest, depth);
+                highest = Mathf.Max(highest, depth);
+            }
+            // Start the lining before either shoulder overtops the retaining walls.
+            return (highest >= roofThreshold, lowest >= TunnelExcavationHeight + .4f);
+        }
+
+        struct Rim
+        {
+            public Vector3 p, n, mid;
+            public float run;
+            public bool roofed, buried;
+        }
+
+        static void Tunnel(StructurePiece piece, LandscapeMesh mesh, List<BuiltSurfaceMap.Triangle> openings,
+            int n, Vector3[] across, float[] along, Func<Vector3,float> ground)
+        {
+            var stations = piece.Stations(along);
+            var left = new List<Rim>();
+            var right = new List<Rim>();
+            var cover = new (bool roofed, bool buried)[n];
+            for (int k = 0; k < n; k++) cover[k] = Cover(piece.left[k], piece.right[k], across[k]);
+
+            for (int k = 0; k < n; k++)
+            {
+                int next = Mathf.Min(k + 1, n - 1);
+                int parts = cover[k].buried && cover[next].buried ? 1 :
+                    Mathf.Max(1, Mathf.CeilToInt((along[next] - along[k]) / WallStep));
+                for (int j = 0; j < parts; j++)
                 {
-                    float t=j/(float)parts;int next=Mathf.Min(k+1,n-1);
-                    var l=Vector3.Lerp(piece.left[k],piece.left[next],t);var r=Vector3.Lerp(piece.right[k],piece.right[next],t);
-                    var x=Vector3.Lerp(across[k],across[next],t).normalized;var mid=(l+r)*.5f;float run=Mathf.Lerp(Run(k),Run(next),t);
-                    bool covered=Covered(mid,x,Vector2.Distance(Alignment3D.XZ(l),Alignment3D.XZ(r))*.5f);
-                    left.Add(new Rim {p=l,n=-x,mid=mid,run=run,covered=covered});right.Add(new Rim {p=r,n=x,mid=mid,run=run,covered=covered});
+                    float t = j / (float)parts;
+                    var l = Vector3.Lerp(piece.left[k], piece.left[next], t);
+                    var r = Vector3.Lerp(piece.right[k], piece.right[next], t);
+                    var axis = Vector3.Lerp(across[k], across[next], t).normalized;
+                    var (roofed, buried) = j == 0 ? cover[k] : Cover(l, r, axis);
+                    var mid = (l + r) * .5f;
+                    float run = Mathf.Lerp(stations[k], stations[next], t);
+                    left.Add(new Rim { p = l, n = -axis, mid = mid, run = run, roofed = roofed, buried = buried });
+                    right.Add(new Rim { p = r, n = axis, mid = mid, run = run, roofed = roofed, buried = buried });
                 }
             }
-            int count=left.Count;
-            Bore(piece,mesh,openings,left,ground);Bore(piece,mesh,openings,right,ground);
-            for(int i=0;i+1<count;i++)
+
+            (bool roofed, bool buried) Cover(Vector3 l, Vector3 r, Vector3 axis)
             {
-                if(left[i].covered!=left[i+1].covered){int portal=left[i].covered?i:i+1;Portal(piece,mesh,left[portal],right[portal],left[portal==i?i+1:i].mid,ground);}
-                if(!left[i].covered||!left[i+1].covered)continue;
-                // lamps along the ceiling, one row over each side of the road
-                float low=Mathf.Min(left[i].run,left[i+1].run),high=Mathf.Max(left[i].run,left[i+1].run);
-                for(int lamp=Mathf.CeilToInt(low/LampSpacing-.5f);(lamp+.5f)*LampSpacing<high;lamp++)
+                float reach = piece.verge + WallThickness;
+                return TunnelCoverAt(l - axis * reach, r + axis * reach, ground);
+            }
+
+            int count = left.Count;
+            Bore(piece, mesh, openings, left, ground);
+            Bore(piece, mesh, openings, right, ground);
+            bool Roofed(int i) => left[i].roofed || left[i + 1].roofed;
+            for (int i = 0; i + 1 < count; i++)
+            {
+                bool roofed = Roofed(i);
+                if (i > 0 && roofed != Roofed(i - 1))
+                    Portal(piece, mesh, left[i], right[i], left[roofed ? i - 1 : i + 1].mid - left[i].mid);
+                if (!roofed) continue;
+
+                // Lamp spacing remains continuous through sections and bends.
+                float low = Mathf.Min(left[i].run, left[i + 1].run);
+                float high = Mathf.Max(left[i].run, left[i + 1].run);
+                for (int lamp = Mathf.CeilToInt(low / LampSpacing - .5f); (lamp + .5f) * LampSpacing < high; lamp++)
                 {
-                    float t=Mathf.InverseLerp(left[i].run,left[i+1].run,(lamp+.5f)*LampSpacing);
-                    var l=Vector3.Lerp(left[i].p,left[i+1].p,t);var r=Vector3.Lerp(right[i].p,right[i+1].p,t);var ahead=left[i+1].mid-left[i].mid;ahead.y=0;
-                    if(ahead.sqrMagnitude<1e-6f)continue;
-                    mesh.colour=Lamp;mesh.uv=null;
-                    foreach(float share in new[]{.25f,.75f})
-                        mesh.OrientedBox(Vector3.Lerp(l,r,share)+up*(TunnelClearance-.06f),new Vector3(.35f,.1f,1.6f),Quaternion.LookRotation(ahead.normalized));
-                    mesh.colour=Plain;
+                    float t = Mathf.InverseLerp(left[i].run, left[i + 1].run, (lamp + .5f) * LampSpacing);
+                    var l = Vector3.Lerp(left[i].p, left[i + 1].p, t);
+                    var r = Vector3.Lerp(right[i].p, right[i + 1].p, t);
+                    var ahead = left[i + 1].mid - left[i].mid;
+                    ahead.y = 0f;
+                    if (ahead.sqrMagnitude < 1e-6f) continue;
+                    mesh.colour = Lamp;
+                    mesh.uv = null;
+                    var rotation = Quaternion.LookRotation(ahead.normalized);
+                    foreach (float share in new[] { .25f, .75f })
+                        mesh.OrientedBox(Vector3.Lerp(l, r, share) + Vector3.up * (TunnelClearance - .06f), new Vector3(.35f,.1f,1.6f), rotation);
                 }
             }
-            for(int end=0;end<2;end++)
+
+            for (int end = 0; end < 2; end++)
             {
-                int k=end==0?0:n-1,at=end==0?0:count-1;
-                var ring=Ring(piece,end==0,WallStep);
-                if(ring==null)
+                bool start = end == 0;
+                int at = start ? 0 : count - 1;
+                bool roofed = Roofed(start ? 0 : count - 2);
+                var outward = left[at].mid - left[start ? 1 : count - 2].mid;
+                var ring = Ring(piece, start, WallStep);
+                if (ring == null)
                 {
-                    // cut off (a junction, or another kind of road carries on): the open walls show their ends
-                    if(!(end==0?piece.capStart:piece.capEnd)||left[at].covered)continue;
-                    var ahead=centre[Mathf.Min(k+1,n-1)]-centre[Mathf.Max(k-1,0)];ahead.y=0;ahead=ahead.normalized*(end==0?-1f:1f);
-                    foreach(var rim in new[]{left[at],right[at]})
+                    bool cap = start ? piece.capStart : piece.capEnd;
+                    if (roofed)
                     {
-                        var foot=rim.p+rim.n*piece.verge;float top=WallTop(piece,rim,ground);if(top<.01f)continue;
-                        mesh.colour=Plain;mesh.uv=null;
-                        mesh.Face(foot,foot+rim.n*WallThickness,foot+rim.n*WallThickness+up*top,foot+up*top,ahead);
+                        if (cap) Portal(piece, mesh, left[at], right[at], outward);
+                        else CloseLiningEnd(piece, mesh, left[at], right[at], outward);
+                    }
+                    else if (cap)
+                    {
+                        bool meetsGround = start ? piece.abutStart : piece.abutEnd;
+                        CapApproachWall(piece, mesh, left[at], outward, ground, meetsGround);
+                        CapApproachWall(piece, mesh, right[at], outward, ground, meetsGround);
                     }
                     continue;
                 }
-                // a dead end: the walls (and under ground the lining and roof) carried round it
-                float away=(end==1)!=piece.run.reversed?1f:-1f;var rims=new List<Rim>();var gone=new float[ring.Count];
-                for(int i=1;i<ring.Count;i++)gone[i]=gone[i-1]+Vector2.Distance(Alignment3D.XZ(ring[i-1].point+ring[i-1].normal*piece.verge),Alignment3D.XZ(ring[i].point+ring[i].normal*piece.verge));
-                for(int i=0;i<ring.Count;i++)
-                    rims.Add(new Rim {p=ring[i].point,n=ring[i].normal,mid=centre[k],run=Run(k)+away*Mathf.Min(gone[i],gone[ring.Count-1]-gone[i]),covered=left[at].covered});
-                Bore(piece,mesh,openings,rims,ground);
+
+                float away = (end == 1) != piece.run.reversed ? 1f : -1f;
+                var rims = new List<Rim>();
+                var gone = new float[ring.Count];
+                for (int i = 1; i < ring.Count; i++)
+                    gone[i] = gone[i - 1] + Vector2.Distance(
+                        Alignment3D.XZ(ring[i - 1].point + ring[i - 1].normal * piece.verge),
+                        Alignment3D.XZ(ring[i].point + ring[i].normal * piece.verge));
+                for (int i = 0; i < ring.Count; i++)
+                    rims.Add(new Rim { p = ring[i].point, n = ring[i].normal, mid = left[at].mid,
+                        run = left[at].run + away * Mathf.Min(gone[i], gone[ring.Count - 1] - gone[i]),
+                        roofed = roofed, buried = left[at].buried });
+                Bore(piece, mesh, openings, rims, ground);
             }
-            mesh.colour=Plain;mesh.uv=null;
         }
 
-        /// <summary>How far an open approach's wall stands above the pavement's edge: up to the ground it holds back
-        /// and a coping above that, growing out of the ground where the cut begins; never below the paved strip.</summary>
-        static float WallTop(StructurePiece piece,Rim rim,Func<Vector3,float> ground)
+        static float WallTop(StructurePiece piece, Rim rim, Func<Vector3,float> ground)
         {
-            float depth=ground(rim.p+rim.n*(piece.verge+WallThickness))-rim.p.y;
-            return Mathf.Max(piece.stripRise,Mathf.Max(0f,depth)+Coping*Mathf.SmoothStep(0f,1f,Mathf.InverseLerp(0f,.8f,depth)));
+            var inner = rim.p + rim.n * piece.verge;
+            float depth = Mathf.Max(ground(inner), ground(inner + rim.n * WallThickness)) - rim.p.y;
+            return Mathf.Max(piece.stripRise, WallRise(depth));
         }
 
-        /// <summary>One side of a tunnel along its rim. Under ground: the lining and its half of the roof. In the open:
-        /// a retaining wall with a coping that follows the ground, and the terrain opened from wall to wall.</summary>
-        static void Bore(StructurePiece piece,LandscapeMesh mesh,List<BuiltSurfaceMap.Triangle> openings,List<Rim> rims,Func<Vector3,float> ground)
+        static float WallRise(float depth) => Mathf.Min(TunnelExcavationHeight,
+            Mathf.Max(0f, depth) + Coping * Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0f, .8f, depth)));
+
+        static Vector3 WallFoot(Vector3 edge, Func<Vector3,float> ground)
         {
-            var up=Vector3.up;var rise=up*TunnelClearance;
-            var tops=new float[rims.Count];var feet=new float[rims.Count];
-            for(int i=0;i<rims.Count;i++)
+            edge.y = Mathf.Min(edge.y - TunnelFloorThickness, ground(edge) - WallEmbedment);
+            return edge;
+        }
+
+        static void CapApproachWall(StructurePiece piece, LandscapeMesh mesh, Rim rim, Vector3 outward,
+            Func<Vector3,float> ground, bool meetsGround)
+        {
+            outward.y = 0f;
+            if (outward.sqrMagnitude < 1e-6f) return;
+            outward.Normalize();
+
+            var inner = rim.p + rim.n * piece.verge;
+            var outer = inner + rim.n * WallThickness;
+            var baseOuter = WallFoot(outer, ground);
+            var baseInner = WallFoot(inner, ground);
+            var coping = Vector3.up * WallTop(piece, rim, ground);
+            mesh.colour = Plain;
+            mesh.uv = null;
+            mesh.Face(baseInner, baseOuter, outer + coping, inner + coping, outward);
+            if (!meetsGround) return;
+
+            // Close the edge below the verge and return the footing beneath the adjoining
+            // shoulder. Its edge can be lower and narrower than the tunnel's concrete strip.
+            var strip = Vector3.up * piece.stripRise;
+            var vergeStart = rim.p + rim.n * piece.stripFrom;
+            var floor = Vector3.up * TunnelFloorThickness;
+            mesh.Face(rim.mid - floor, vergeStart - floor, vergeStart, rim.mid, outward);
+            mesh.Face(WallFoot(vergeStart, ground), baseInner, inner + strip, vergeStart + strip, outward);
+
+            var approach = inner + outward * ShoulderOverlap - rim.n * .04f;
+            approach.y = Mathf.Min(ground(approach), approach.y + piece.stripRise - .12f);
+            var buriedEdge = inner + strip - Vector3.up * .12f;
+            var outerEdge = outer + strip - Vector3.up * .12f;
+            mesh.Face(approach, buriedEdge, outerEdge, Vector3.up);
+            mesh.Face(baseOuter, WallFoot(approach, ground), approach, outerEdge, rim.n);
+        }
+
+        /// <summary>Build one side of the lining and the corresponding half of its excavation.</summary>
+        static void Bore(StructurePiece piece, LandscapeMesh mesh, List<BuiltSurfaceMap.Triangle> openings,
+            List<Rim> rims, Func<Vector3,float> ground)
+        {
+            var up = Vector3.up;
+            var roof = up * TunnelClearance;
+            var slab = up * TunnelExcavationHeight;
+            var floor = up * TunnelFloorThickness;
+
+            for (int i = 0; i + 1 < rims.Count; i++)
             {
-                tops[i]=WallTop(piece,rims[i],ground);
-                // the outer face reaches into the ground wherever that lies, also below the road on a hillside's low flank
-                feet[i]=Mathf.Min(0f,ground(rims[i].p+rims[i].n*(piece.verge+WallThickness))-rims[i].p.y)-.5f;
-            }
-            for(int i=0;i+1<rims.Count;i++)
-            {
-                var a=rims[i];var b=rims[i+1];
-                var a0=a.p+a.n*piece.verge;var b0=b.p+b.n*piece.verge;
-                mesh.colour=Plain;mesh.uv=null;
-                Strip(piece,mesh,a.p+a.n*piece.stripFrom,b.p+b.n*piece.stripFrom,a0,b0);
+                var a = rims[i];
+                var b = rims[i + 1];
+                var innerA = a.p + a.n * piece.verge;
+                var innerB = b.p + b.n * piece.verge;
+                var outerA = innerA + a.n * WallThickness;
+                var outerB = innerB + b.n * WallThickness;
+                mesh.colour = Plain;
+                mesh.uv = null;
+                Strip(piece, mesh, a.p + a.n * piece.stripFrom, b.p + b.n * piece.stripFrom, innerA, innerB);
+
+                // Sample the floor and roof from the same cross-sections as the walls. Inset the
+                // excavation edge under the concrete so it stays sealed at grazing view angles.
+                var cutA = outerA - a.n * .02f;
+                var cutB = outerB - b.n * .02f;
+                bool buried = a.buried && b.buried;
+                ClearSpan(openings, cutA, cutB, b.mid, a.mid, TunnelExcavationHeight, TunnelFloorThickness, buried);
+                HalfSlab(outerA - floor, outerB - floor, a.mid - floor, b.mid - floor, -up);
+
                 Vector2 Along(Vector3 p)
                 {
-                    float d0=Mathf.Abs((p.x-a0.x)*a.n.z-(p.z-a0.z)*a.n.x),d1=Mathf.Abs((p.x-b0.x)*b.n.z-(p.z-b0.z)*b.n.x);
-                    return new Vector2(d0<=d1?a.run:b.run,0);
+                    float d0 = Mathf.Abs((p.x - innerA.x) * a.n.z - (p.z - innerA.z) * a.n.x);
+                    float d1 = Mathf.Abs((p.x - innerB.x) * b.n.z - (p.z - innerB.z) * b.n.x);
+                    return new Vector2(d0 <= d1 ? a.run : b.run, 0f);
                 }
-                if(a.covered&&b.covered)
+                mesh.colour = Panel;
+                mesh.uv = Along;
+                if (a.roofed || b.roofed)
                 {
-                    mesh.colour=Panel;mesh.uv=Along;mesh.TwoSided(a0,b0,b0+rise,a0+rise);
-                    mesh.colour=Plain;mesh.uv=null;
-                    var ma=a.mid+rise;var mb=b.mid+rise;
-                    if((ma-mb).sqrMagnitude<1e-6f){mesh.Triangle(a0+rise,b0+rise,ma);mesh.Triangle(a0+rise,ma,b0+rise);}
-                    else mesh.TwoSided(a0+rise,b0+rise,mb,ma);
+                    mesh.Face(innerA, innerB, innerB + roof, innerA + roof, -a.n);
+                    mesh.Face(outerA + slab, outerB + slab, outerB - floor, outerA - floor, a.n);
+                    mesh.colour = Plain;
+                    mesh.uv = null;
+                    HalfSlab(innerA + roof, innerB + roof, a.mid + roof, b.mid + roof, -up);
+                    HalfSlab(outerA + slab, outerB + slab, a.mid + slab, b.mid + slab, up);
                     continue;
                 }
-                var a1=a0+a.n*WallThickness;var b1=b0+b.n*WallThickness;
-                openings.Add(new BuiltSurfaceMap.Triangle(a1,b1,b.mid));openings.Add(new BuiltSurfaceMap.Triangle(a1,b.mid,a.mid));
-                var ta=up*tops[i];var tb=up*tops[i+1];
-                mesh.colour=Panel;mesh.uv=Along;
-                if(Mathf.Max(tops[i],tops[i+1])>.01f)mesh.Face(a0,b0,b0+tb,a0+ta,-a.n);
-                mesh.Face(a1+ta,b1+tb,b1+up*feet[i+1],a1+up*feet[i],a.n);
-                mesh.colour=Plain;mesh.uv=null;
-                mesh.Face(a0+ta,b0+tb,b1+tb,a1+ta,up);
+
+                var topA = up * WallTop(piece, a, ground);
+                var topB = up * WallTop(piece, b, ground);
+                var footA = WallFoot(outerA, ground);
+                var footB = WallFoot(outerB, ground);
+                mesh.Face(innerA - floor, innerB - floor, innerB + topB, innerA + topA, -a.n);
+                mesh.Face(outerA + topA, outerB + topB, footB, footA, a.n);
+                mesh.colour = Plain;
+                mesh.uv = null;
+                mesh.Face(innerA + topA, innerB + topB, outerB + topB, outerA + topA, up);
+            }
+
+            void HalfSlab(Vector3 a, Vector3 b, Vector3 midA, Vector3 midB, Vector3 normal)
+            {
+                if (midA == midB)
+                {
+                    mesh.Face(a, b, midA, normal);
+                }
+                else mesh.Face(a, b, midB, midA, normal);
             }
         }
 
-        /// <summary>Where a tunnel goes under ground: a headwall from the roof up to the ground it holds back, its
-        /// coping following that ground from one approach wall to the other, and a lintel over the opening.</summary>
-        static void Portal(StructurePiece piece,LandscapeMesh mesh,Rim left,Rim right,Vector3 open,Func<Vector3,float> ground)
+        // A roof can end exactly at a section split. Seal its thickness even if the next piece
+        // starts with an open ramp. At a buried join, this face is inside the continuous lining.
+        static void CloseLiningEnd(StructurePiece piece, LandscapeMesh mesh, Rim left, Rim right, Vector3 outward)
         {
-            var up=Vector3.up;var toward=open-left.mid;toward.y=0;if(toward.sqrMagnitude<1e-6f)return;toward.Normalize();
-            var l0=left.p+left.n*piece.verge;var r0=right.p+right.n*piece.verge;var l1=l0+left.n*WallThickness;var r1=r0+right.n*WallThickness;
-            int parts=Mathf.Max(2,Mathf.CeilToInt(Vector3.Distance(l1,r1)/WallStep));
-            Vector3 Foot(int j)=>Vector3.Lerp(l1,r1,j/(float)parts)+up*TunnelClearance;
-            Vector3 Head(int j){var p=Foot(j);p.y=Mathf.Max(p.y+LintelHeight,ground(p)+Coping);return p;}
-            mesh.colour=Plain;mesh.uv=null;
-            for(int j=0;j<parts;j++)
+            float reach = piece.verge + WallThickness;
+            var l = left.p + left.n * reach;
+            var r = right.p + right.n * reach;
+            var roof = Vector3.up * TunnelClearance;
+            var top = Vector3.up * TunnelExcavationHeight;
+            mesh.colour = Plain;
+            mesh.uv = null;
+            mesh.Face(l + roof, r + roof, r + top, l + top, outward);
+        }
+
+        /// <summary>The fixed frame projects just beyond the end of the roofed lining.</summary>
+        static void Portal(StructurePiece piece, LandscapeMesh mesh, Rim left, Rim right, Vector3 toward)
+        {
+            toward.y = 0f;
+            if (toward.sqrMagnitude < 1e-6f) return;
+            toward.Normalize();
+            var up = Vector3.up;
+            var front = toward * LintelProud;
+            var l = left.p + left.n * piece.verge;
+            var r = right.p + right.n * piece.verge;
+            var outerL = l + left.n * WallThickness;
+            var outerR = r + right.n * WallThickness;
+            int parts = Mathf.Max(2, Mathf.CeilToInt(Vector3.Distance(outerL, outerR) / WallStep));
+            float arch = piece.portalStyle == TunnelPortalStyle.Arched ? PortalArchRise : 0f;
+
+            Vector3 Roof(Vector3 point) => point + up * TunnelClearance;
+            mesh.colour = Plain;
+            mesh.uv = null;
+            mesh.Face(outerL, outerR, outerR - up * TunnelFloorThickness, outerL - up * TunnelFloorThickness, toward);
+            var crown = up * LintelHeight;
+            for (int i = 0; i < parts; i++)
             {
-                mesh.Face(Foot(j),Foot(j+1),Head(j+1),Head(j),toward);
-                mesh.Face(Head(j),Head(j+1),Head(j+1)-toward*WallThickness,Head(j)-toward*WallThickness,up);
+                float t0 = i / (float)parts, t1 = (i + 1f) / parts;
+                var a = Roof(Vector3.Lerp(l, r, t0));
+                var b = Roof(Vector3.Lerp(l, r, t1));
+                var innerA = a + front + up * (arch * Mathf.Sin(Mathf.PI * t0));
+                var innerB = b + front + up * (arch * Mathf.Sin(Mathf.PI * t1));
+                mesh.Face(innerA, innerB, innerB + crown, innerA + crown, toward);
+                mesh.Face(a, b, innerB, innerA, Vector3.down);
+                mesh.Face(innerA + crown, innerB + crown, b + crown, a + crown, up);
             }
-            var proud=toward*LintelProud;var a=l0+up*TunnelClearance;var b=r0+up*TunnelClearance;var high=up*LintelHeight;
-            mesh.Face(a+proud,b+proud,b+proud+high,a+proud+high,toward);
-            mesh.Face(a,b,b+proud,a+proud,Vector3.down);
-            mesh.Face(a+high,b+high,b+proud+high,a+proud+high,up);
+
+            foreach (var (inner, outer) in new[] { (l, outerL), (r, outerR) })
+            {
+                var top = up * (TunnelClearance + LintelHeight);
+                mesh.Face(inner + front, outer + front, outer + front + top, inner + front + top, toward);
+                mesh.Face(inner, inner + front, inner + front + top, inner + top, (r + l) * .5f - inner);
+                mesh.Face(inner + top, inner + front + top, outer + front + top, outer + top, up);
+            }
         }
     }
 }

@@ -42,8 +42,10 @@ than draping a new road over later player earthworks. Earlier worlds retain thei
 the map boundary; coastal island entrances represent ferry/harbour access. They remain part of the road graph
 and survive clone/snapshot/save. The older boundary-position convention remains a load fallback.
 
-Ground-road earthworks support the pavement with soil and blend into the terrain through cuts and 1:2 filled
-embankments, with up to 192 m of influence. Supporting heightmap limits follow the pavement's longitudinal
+Ground-road earthworks support the pavement with soil. Beyond the shoulder, a cut can rise 2 m per
+horizontal metre and fill can fall 1 m per horizontal metre. These steeper sides preserve more of the
+original hill and shoreline. A 45 cm pavement edge meets the supporting formation along ground roads.
+Supporting heightmap limits follow the pavement's longitudinal
 grade and a level soil formation across its crown; projecting the crown's steep crossfall onto coarse terrain
 corners would excavate a trench under a sloping road. Elevated road
 decks do not contribute to this roadbed. The derived earthworks preserve the stored natural elevation data.
@@ -86,8 +88,8 @@ lanes. Traffic keeps right; looking from node a to b, forward lanes are on the r
 
 `Connect` gives every junction it makes or changes its default control unless `controlChosen`
 (`DefaultControl`): **traffic lights** where a town road (any type with kerbs) meets others and traffic arrives from
-two or more roads; a **priority** junction (the road straight through keeps going, the others give way) where only
-country roads meet or one-way roads merge or part. `SetControl` chooses one by hand and it then stays.
+two or more roads; a **priority** junction (the road straight through keeps going, the others stop at a stop line; no stop-sign
+model stands there yet) where only country roads meet or one-way roads merge or part. `SetControl` chooses one by hand and it then stays.
 `RemoveSegment` drops a section and empty nodes and re-applies defaults. A road ending on another road's section
 (within 10 cm, same height) joins it there (a T junction).
 
@@ -108,20 +110,43 @@ prove vehicle swept-path clearance or a safe merge.
 
 `PublicRoadGeometry` draws every road from its type:
 - **Strips:** crowned pavement, with gravel shoulders (falling away) or 15 cm kerbs with sidewalks behind them.
-- **Markings:** edge lines on shouldered roads; a dashed or double solid centre line on undivided two-way roads;
-  dashed lines between lanes running the same way, solid for the last 25 m before a junction; yellow lines along a
-  median.
+- **Markings** follow North American practice. Edge lines on shouldered roads; a yellow centre line on undivided
+  two-way roads, broken (3 m dashes, 9 m gaps) where the type allows passing and double solid otherwise; white
+  broken lines between lanes running the same way; yellow lines along a median. For the last 25 m before a stop
+  line the broken lines turn solid: the centre line becomes a double solid line, lane lines a single one.
+  Dashes are laid out in stretches that run through a bend, or through a junction the road carries straight on
+  across without stopping (`Through`, `DashStretch`): from the middle of the section before it, round the arc or
+  across the junction, to the middle of the section after it, a whole number of dashes with the gaps evened out
+  and half a gap at each end. The sections and the bend or junction each paint their own part of the same
+  stretch, so the rhythm carries through bends, straight-through nodes and past side roads. A stretch depends
+  only on its two sections and the nodes at their ends, so a change further along the road never moves it (the
+  preview partition's two rings cover it).
 - **Medians:** raised medians are kerbed grass islands and highway medians are concrete barriers. Both stop behind
-  the stop lines.
-- **Approaches:** each road arriving at a junction gets a stop line (give-way dashes where it gives way), a zebra
-  crossing on roads with sidewalks, and a filled arrow per approach lane showing that lane's `LaneConnections` moves.
-  Lane lines stop at the stop line. `StopLine(node, edge)` says where it is.
+  the stop lines. The grass is a surface mesh drawn with the airfield's grass shader (`PublicRoadProfile.medianGrass`,
+  made by `WorldAssetSetup.MedianGrassMaterial`): blades, clumps and dry patches, not a flat colour.
+- **Approaches** (`Control`, `Approach`): each arm of a junction is controlled by signals, by a stop sign's line
+  (the roads joining a priority junction) or not at all (the road straight through a priority junction: no stop
+  line, its lines run to the junction's edge). A controlled arm gets a 0.5 m stop line across its own lanes only,
+  from the centre line to the edge line or kerb, never onto the shoulder; where the road has sidewalks, a
+  crosswalk of 3 m bars in front of it. Arrows are painted only on approaches of two or more lanes, one per lane
+  showing its `LaneConnections` moves, their tips 5 m short of the stop line; a single lane carries none. There
+  are no give-way dashes. `StopLine(node, edge)` says where an arm's lines stop.
+- **Wear:** pavement vertices carry their place in the lanes (`LaneVertex`: metres right of the centreline, lane
+  width, lanes each way, where the lanes start, and how much traffic brakes there), and the surface shader draws
+  two wheel paths per lane, darker and broken up along the road, an oil strip where traffic waits at a stop line,
+  and a junction scrubbed all over. Paint vertices carry the same in place of a runway's frame (`LanePaint`), and
+  the paint shader chips and fades road paint (`PaintWear`), fastest in the wheel paths. Airside roads and
+  runways are untouched: only public roads set these channels.
 - **Meshes:** `kerbMesh` (kerbs and barriers, two-sided) and `medianGrass` join pavement, shoulders, markings and
   structures. `ValleyView`, the road kit and `PublicRoadsView` each render all six.
 
 A node joining two
 sections of the same style and width becomes a curve (`CurveRadius`: highway 150 m, rural 60 m, ramp 45 m, others
-25 m, shortened to fit each section's share, see airfield.md) carrying the strip, shoulders and markings round; hairpins (arms under 25°
+25 m, shortened to fit each section's share, see airfield.md) carrying the strip, shoulders and markings round. A
+section that ends in a dead end or at a car park's mouth gives the bend all but a 4 m straight (`BendReach`), so a
+short stub doesn't squeeze it tight; airside service roads do the same (`TaxiwayBuilder.BendLimit`), taxiways keep
+their share because aircraft are routed round the rule's radius. Arcs are sampled every 5° of turn, at most 2 m
+apart (`Geo.ArcStep`), so a tight bend's edges are as round as a wide one's. Hairpins (arms under 25°
 apart), bends too tight for the width and mismatched sections are junctions. Junctions use the shared `JunctionShape` solver (see airfield.md,
 "Junctions at any angle"): sections are cut back clear of each other at any angle, kerbs get 8 m fillets (12 m with a
 highway) and shoulders follow the kerbs. `MisfitJunctions` lists junctions whose sections are too short for them. Curves add their arc to `links`, so roadbed
@@ -150,6 +175,13 @@ The shared Street tool (`DevStreetTool.cs`, after Road in the toolbar) serves bo
 - Click points; right-click or Esc ends.
 - Ends snap to road nodes or onto a section, joining it there.
 - Shift gives 10° / 5 m steps.
+- Selecting or hovering a section outlines it as drawn (`PublicRoadGeometry.SectionOutline`, on a layout-only
+  geometry from `PublicRoadGeometry.Layout`): half of each bend's arc belongs to the section either side, so the
+  outline goes round a bend and never out to the corner node.
+- The Delete tool takes a section a piece at a time (`DeletePiece`: equal pieces of at most 40 m) with
+  `RemovePart`, which leaves the road either side in place, ending in dead ends, and keeps a curved section's
+  shape. Shift takes the whole section. Select + Delete key still removes the whole selected section.
+- Paint wear: white paint wears less than the yellow centre lines (`WhitePaintWear` 0.3, `PaintWear` 0.45).
 - Preview geometry keeps real elevations; the compact map label shows the total cost, including earthwork.
 - Construction clears vegetation automatically; immediate and queued rendering use the same built footprint.
 - `PublicRoadNetwork.JoinProblem` refuses shallow joins, sections too short for their junctions and highways
@@ -253,8 +285,9 @@ tunnel the wall (see below). The finish stays within the original pavement lengt
 outside-connection endpoints keep square ends.
 Asphalt carries `AirfieldKind.Road` and uses deterministic broad discoloration plus fine tonal variation.
 
-Lane arrows use continuous signed-distance triangular heads and curved turn stems contained within their
-lane. Short approaches omit arrows that cannot fit. Public-road paint is finally projected onto actual
+Lane arrows use continuous signed-distance triangular heads; a turn branches off the shaft on a 60 degree sweep,
+and a shared arrow's shaft sits off the lane's middle so the whole mark is centred in its lane. Short approaches
+omit arrows that cannot fit. Public-road paint is finally projected onto actual
 pavement triangles, choosing the closest deck to its original elevation at stacked crossings. The same
 triangle gradient drives the paint shader's pixel expansion, preventing grown corners sinking into slopes.
 Long edge/stop lines have intermediate samples so they follow graded approaches. This projection uses the
@@ -297,13 +330,46 @@ straight, constant-grade saves. Geometry, lane marks, snapping, quotes, splittin
 vehicle contact read the same path. Splits preserve the original curve and grade. Graphs remain independent:
 a height-separated crossing never becomes a junction or an aircraft route.
 
-The shared Road/Street inspector provides Auto, Ground, Bridge and Tunnel, typed elevation, held +/- controls,
-Page Up/Down and a bend slider. Height is relative to the current chain's starting datum; bridges and tunnels
-hold that construction level across valleys, water and hills. Auto divides the proposal at actual terrain
-transitions. Ground returns the next point to the local terrain. Prices include structure multipliers and
-earthwork and appear as one total. Ground roads refuse water, bridges require water clearance, tunnel mouths
-require dry land, and covered water crossings require rock cover. Terminal/depot foundations remain protected.
-Select/Delete resolve the visible deck; public-road demolition uses the public graph.
+Both road tools use a 5 m elevation stepper with Page Up / Page Down shortcuts. At 0 m, free endpoints
+follow buildable slopes. Pointing into a cliff or across a steep drop keeps the preceding road end's
+height. An elevation offset sets the working level relative to the start of the chain. Clicking onto
+an existing road takes its height. Stepping below zero opens the underground view, which can also be
+toggled from the inspector. Its cut stays at the working level as the pointer moves. Cyan tunnel
+outlines stay visible through the terrain. Click a tunnel cap to continue at its existing depth.
+
+Click the start and then the endpoint for a straight stretch. To curve a stretch, press at its endpoint,
+drag sideways to move the middle of the curve, and release to place it. The endpoint stays snapped while
+dragging, and the preview and price update as the curve changes. The planner picks ground, bridge and
+tunnel spans from the road's profile and the terrain. Bridges require water clearance, tunnel mouths
+require dry land, and covered water crossings require rock cover. Prices combine structure and grading
+costs. Terminal and depot foundations remain protected. Select and Delete resolve the visible deck.
+
+`RoadMountainToolTests` drives both tools on the bundled Yosemite and Moab terrain. It places a road
+into a steep face, ends the chain, reopens the buried cap from a different camera angle, and resumes
+with a curved road. The Yosemite south-wall route also reopens the far end beneath the summit.
+The ravine routes verify that the same alignment can run through rock, span a drop, and re-enter the
+opposite wall. At a service-road tunnel approach, optional grading fades out against steep rock
+outside the pavement.
+
+In Unity, **AirCity → Game → Play Road Terrain Scenario** starts a disposable Sandbox at the low riverbank
+with the Street tool active. Use the Street or Road tool along either bank, across the river, at the foot of
+the mesa, or across its ravine. The tidal inlet is farther west. All coordinates are metres in the world
+XZ plane.
+
+| Placement | Start | End |
+| --- | --- | --- |
+| Low east bank | (-375, -425) | (-375, -175) |
+| Low west bank | (-525, -425) | (-525, -175) |
+| River bridge | (-600, -50) | (-300, -50) |
+| Cliffside road | (600, 610) | (600, 1020) |
+| Ravine crossing | (680, 1060) | (1110, 1060) |
+| Short, tall gorge crossing | (837.5, 1237.5) | (1000, 1237.5) |
+| Coastal inlet | (-1540, 0) | (-1540, 1575) |
+
+`RoadTerrainScenarioTests` places both types of ground road near the shoreline and the cliff, measures
+the visible terrain before and after placement, and verifies four automatic crossings in the same
+Sandbox. `AirCity.EditorTools.Game.RoadTerrainScenario.CaptureFromCommandLine` writes low-angle shore
+and overview images to `Captures/RoadTerrain/`.
 
 `RoadConstructionPlan` retains its detached result and source/terrain signatures. Preview and purchase consume
 that same result once. Changed terrain/layout/funds refuse before mutation or charge. Airside roads use the
@@ -338,33 +404,72 @@ carry on unbroken through bends and from one section to the next. Other upright 
 abutments, tunnel walls) shows a lift line every 1.2 m of height. A bend between a ground road and a bridge
 or tunnel lies on the ground, with gravel or sidewalk like the ground road.
 
-Piers are spaced along a run: the whole bridge through its bends and straight-through nodes
+Regular bridge piers are spaced along the whole bridge, including its bends and straight-through nodes
 (`RoadStructureBuilder.Runs`, `PierStations`). Spans aim at 30 m and never exceed 38 m by spacing alone, and
 an end that stands in the air gets a pier just inside it. The spacing therefore does not depend on how many
 sections the bridge was drawn in. A pier that would stand on a lower road, a taxiway or a runway moves along
 the bridge (up to 16 m) instead of being dropped. A pier is a row of round columns under a crosshead: one
-column up to a 13 m deck, two up to 24 m, three beyond; columns thicken with height. Columns run down into the
-lowest ground under them (the bed, under water) and cut no opening in the terrain. Where the soffit is within
+column up to a 13 m deck, two up to 24 m, three beyond. Wet supports extend up to 1.25 m below the waterline,
+and their visible height determines their thickness. On land, columns meet the lowest ground under their
+footprint. Piers cut no opening in the terrain. Where the soffit is within
 1.6 m of the ground the deck rests on its embankment and gets no pier. Because a run's piers depend on its
 whole length, `PublicRoadPreviewPartition` redraws every section and bend of a bridge when any part of it
 changes. `RoadStructureGeometryTests` covers continuity, verges and piers; `RoadStructureReview.FromCommandLine`
 captures bridges of each width from fixed cameras (`Captures/RoadStructures`).
 
-A tunnel is under ground only where its whole width has its cover (5.5 m clearance plus 1.5 m); elsewhere it
-is an open approach. An approach has a 0.4 m retaining wall each side whose top follows the ground it holds
-back, sampled every 1.25 m, with a coping 0.35 m above it. The wall grows out of the ground where the cut
-begins, and its outer face reaches 0.5 m into the ground, also where a hillside falls away below the road. The
-terrain is opened exactly from one wall's outer face to the other's, so no ground shows inside the cut and none
-is missing outside it. Where the tunnel goes under ground a headwall stands from the roof up to the ground
-above the mouth, its coping following that ground from wall to wall, with a lintel over the opening. Under
-ground the lining has a roof and a lamp over each side of the road every 12 m (vertex colour alpha about 0.9:
-the shader shows the lamp's colour unlit).
+Public streets and service roads automatically use suspension on nearly straight, anchored bridge runs of
+at least 180 m when a substantial central span crosses water or a deep ravine. A drop that reaches 50 m
+below the deck can also trigger suspension on a run as short as 60 m, which leaves room for both towers
+and anchors. Clearance is measured to land or the waterline. It must stay at least 32 m for 18 m and one
+quarter of the run around that drop.
+Two towers carry separate
+cables outside the deck, with hangers and low anchor blocks at the ends. Wet towers use the same waterline
+as regular bridge supports. The Road and Street tools have a **Bridge design** control for Automatic, Piers,
+Arch or Suspension. It affects elevated sections. Use Select on an existing bridge to change the design
+of its whole span. The chosen design is saved with each section and is reused when a bridge is split.
+An arch uses two steel ribs above the roadway, vertical hangers, and bearings on the banks. It fits nearly
+straight spans from 30 to 350 m. An explicit suspension choice fits nearly straight spans of at least 60 m.
+Both require supported ends. When an override cannot fit, the preview shows piers and explains the fallback.
+The visible design is derived from the whole alignment, so joins, construction previews,
+terrain edits, and reloading use the same layout. Tight curves and unfinished bridge runs use regular piers.
+Ground approaches grade through the abutment and adjoining terrain sample, then stop projecting fill along
+the elevated span. The ravine floor stays at its natural height under the bridge.
+The coastal inlet, wide ravine and short gorge in the Road Terrain Scenario exercise suspension. The low river
+crossing uses regular piers.
+
+The **Tunnel portal** control chooses a rectangular or arched concrete frame sized to the road width.
+The frame projects slightly in front of a roofed lining that starts where a flank rises above the approach.
+Select a tunnel to change the style along its run. The lining gives both styles 5.5 m of clear height.
+
+Tunnel cuts use the same cross-sections as the walls and roof. The terrain shader clears the road from floor to
+roof within that footprint, keeping the natural hillside overhead and the soil under the road. Buried sections
+keep their vegetation and ground ownership. Ground-road grading ends as the approach reaches the tunnel.
+Where a straight ground approach from an older layout still enters the cliff, the lining and bounded cut
+continue onto that approach at the saved road elevation.
+When a steep diagonal route would need a long exposed entrance, the preview asks the player to cross more
+directly or lower the road. Underwater tunnels require a further 1.5 m of cover above the 5.5 m clearance.
 
 Bridges and tunnels are built against the ground as the valley draws it (`PublicRoadGeometry.DrawnGround`:
 the saved terrain with every ground road's roadbed graded in, interpolated as the terrain is), never the saved
 terrain alone: beside a ground road's cutting or embankment the two differ by metres, and a wall built to the
 saved terrain stands clear of the ground. `PublicRoadChunks` rebuilds a structure when the drawn ground along
 it changes, whether by a brush or by a ground road built or removed nearby.
+
+A road running along a steep dry bank adds a retaining wall on the uphill side. When the rock reaches the
+5.5 m lane clearance, a covered gallery spans the roadway with supports along the open downhill edge.
+The wall and roof bound the visible terrain cut. A road above the downhill slope retains its bridge deck and
+piers, while the uphill rock stays at its natural height. The concrete shoulder continues along the cliffside
+section. A dip of up to 15 m between retaining walls on the same side keeps the wall and excavation continuous.
+Ground formation preserves the hillside alongside those cuts. Other stretches of the same road section
+receive their normal roadbed, including where the alignment crosses a separate hill.
+Short dry ground connectors of the same width between bridges or tunnels use the concrete approach lining.
+
+Bridge clearance follows the full deck width and grade, starting at the underside of the deck edge.
+Tunnel cuts start at the underside of the 0.55 m floor slab, including on open approaches. The walls,
+roof and cut use the same cross-sections. Nearly straight public road joins use a single cross-section
+across both sections, including the kerbs and shoulders. At a bridge-to-tunnel join the lining can
+continue onto the bridge, with the entrance at the exposed end of the roof. Along the ground approach,
+the shoulder extends down to exposed soil and has a retaining face where the bank rises above it.
 
 A dead end on a structure is closed. The pavement's rounded end (`BuildEnd`) hands its outline to the
 structure (`StructurePiece.endStart` / `endEnd`, with `trimStart` / `trimEnd` for the run's length under it):

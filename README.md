@@ -84,12 +84,16 @@ earns $600 per 30 game days; Sandbox builds free. See [hangars](Docs/systems/han
 
 ## Aircraft
 
-Aircraft are generated from code (`ArtSource/Aircraft`), never hand-edited in Unity. Eight types, covering every ICAO
+Aircraft are generated from code (`ArtSource/Aircraft`), never hand-edited in Unity. Twelve types, covering every ICAO
 size code, all from the fictional manufacturer Starling (real type names are trademarks and never reach the player):
 
 | Model (internal) | Player name | Class | Span × length | ICAO code |
 |---|---|---|---|---|
+| `LowWingPiston` | Starling A2 | two-seat low-wing piston trainer | 10.2 × 8.0 m | A |
 | `Cessna172` | Starling A4 | light single | 11.1 × 8.3 m | A |
+| `LightJet` | Starling A6 | compact private jet with rear-mounted twin engines and a low tail | 13.0 × 14.0 m | A |
+| `ExecutiveJet` | Starling B8 | eight-seat executive twinjet with rear-mounted engines, a T-tail and winglets | 18.0 × 20.0 m | B |
+| `FlagshipJet` | Starling B12 | twelve-seat flagship private jet with raked wingtips and a T-tail | 23.0 × 26.0 m | B |
 | `Turboprop` | Starling B50 | regional turboprop, high wing, T-tail; takes grass | 23.4 × 25.6 m | B |
 | `Narrowbody` | Starling C180 | narrowbody twinjet | 35.8 × 37.6 m | C |
 | `Supersonic` | Starling D100 | supersonic airliner, four afterburning engines (flames on takeoff); code C span, but its length makes it code D | 26.2 × 61.8 m | D |

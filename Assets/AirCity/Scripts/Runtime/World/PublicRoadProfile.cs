@@ -8,5 +8,7 @@ namespace AirCity.World
         public string displayName;
         public float pavementWidth = 6.5f, shoulderWidth = 1.2f, crown = .065f;
         public Material asphalt, shoulder, markings;
+        /// <summary>The grass on raised medians (the airfield's grass surface: PublicRoadGeometry.medianGrass).</summary>
+        public Material medianGrass;
     }
 }

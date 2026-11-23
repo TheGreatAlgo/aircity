@@ -287,6 +287,8 @@ namespace AirCity.Vehicles
                 if (Geo.Overlap(outline,depot.Corners)) return "overlaps a maintenance depot";
             foreach (var hangar in airport.Hangars)
                 if (Geo.Overlap(outline,hangar.Pad)) return "overlaps an aircraft hangar";
+            foreach (var school in airport.FlyingSchools)
+                foreach (var site in school.Footprints()) if (Geo.Overlap(outline,site)) return "overlaps the flying school";
             var workBox = AirportMaintenance.Box.Of(position,area.Axis,new Bounds(Vector3.zero,new Vector3(DeicingWorkArea.Width,1f,DeicingWorkArea.Length)),.3f);
             foreach (var depot in airport.GetComponentsInChildren<BaggageDepot>())
                 if (workBox.Overlaps(depot.BuildingBox)) return "overlaps a baggage depot";

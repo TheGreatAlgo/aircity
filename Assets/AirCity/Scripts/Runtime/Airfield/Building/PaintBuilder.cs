@@ -80,8 +80,10 @@ namespace AirCity.Airfield.Building
             for(int i=first;i<mesh.Count;i++){var shape=mesh.uv1[i];shape.w=2f;mesh.uv1[i]=shape;}
         }
 
-        /// <summary>A line of constant width through points (straight runs or sampled curves).</summary>
-        public void Strip(IList<Vector2> points, float halfWidth, Color color, bool outsideParking = false)
+        /// <summary>A line of constant width through points (straight runs or sampled curves). `before` / `after`:
+        /// the line carries on this far past its first / last point in another piece (a dash across the join between
+        /// a road's section and its bend), so that end is cut square and the two pieces meet without a seam.</summary>
+        public void Strip(IList<Vector2> points, float halfWidth, Color color, bool outsideParking = false, float before = 0f, float after = 0f)
         {
             int n = points.Count;
             if (n < 2) return;
@@ -93,15 +95,16 @@ namespace AirCity.Airfield.Building
             float total = 0f;
             for (int i = 1; i < n; i++) total += (points[i] - points[i - 1]).magnitude;
             if (total < 1e-3f) return;
-            var box = new Vector4(halfWidth, total * 0.5f, total * 0.5f, 0f);
-            float s = 0f;
+            float whole = before + total + after;
+            var box = new Vector4(halfWidth, whole * 0.5f, whole * 0.5f, 0f);
+            float s = before;
             int b = mesh.Count;
             for (int i = 0; i < n; i++)
             {
                 if (i > 0) s += (points[i] - points[i - 1]).magnitude;
                 var dir = (points[Mathf.Min(i + 1, n - 1)] - points[Mathf.Max(i - 1, 0)]).normalized;
                 var across = Geo.Right(dir);
-                var grow = i == 0 ? -dir : i == n - 1 ? dir : Vector2.zero;
+                var grow = i == 0 && before <= 0f ? -dir : i == n - 1 && after <= 0f ? dir : Vector2.zero;
                 for (int side = -1; side <= 1; side += 2)
                 {
                     var p = points[i] + across * (side * halfWidth);
@@ -132,33 +135,25 @@ namespace AirCity.Airfield.Building
                 else Box(a + d * (s + dash * 0.5f), d, halfWidth, dash * 0.5f, color);
         }
 
-        /// <summary>Dashes along a polyline (a sampled curve), laid out like Dashes; each dash bends with the line.</summary>
-        public void Dashes(IList<Vector2> points, float halfWidth, float dash, float gap, Color color, bool outsideParking = false)
+        /// <summary>
+        /// Dashes on one part of a longer line. The pattern is laid out over the whole stretch [start, end] (metres
+        /// along the line; it may run on past this part, round a bend into the next section): a whole number of
+        /// dashes, their gaps stretched or squeezed to fit, with half a gap at each end. Stretches laid end to end
+        /// therefore keep the rhythm across their joins, and every part of one stretch paints the same dashes. A
+        /// stretch shorter than a dash has none. Only [from, to] is
+        /// painted; `line(a, b)` is the line between two distances, running from a to b.
+        /// </summary>
+        public void Dashes(System.Func<float, float, IList<Vector2>> line, float from, float to, float start, float end,
+            float halfWidth, float dash, float gap, Color color, bool outsideParking = false)
         {
-            int n = points.Count;
-            if (n < 2) return;
-            var at = new float[n];
-            for (int i = 1; i < n; i++) at[i] = at[i - 1] + (points[i] - points[i - 1]).magnitude;
-            float len = at[n - 1];
-            if (len < dash) return;
-            int count = Mathf.FloorToInt((len + gap) / (dash + gap));
-            float s = (len - (count * (dash + gap) - gap)) * 0.5f;
-            var piece = new List<Vector2>();
-            Vector2 Point(float d)
+            if (end - start < dash || to - from < 0.01f) return;
+            int count = Mathf.Max(1, Mathf.RoundToInt((end - start) / (dash + gap)));
+            float period = (end - start) / count, half = Mathf.Min(dash, period * 0.75f) * 0.5f;
+            for (int k = 0; k < count; k++)
             {
-                int i = 1;
-                while (i < n - 1 && at[i] < d) i++;
-                float seg = at[i] - at[i - 1];
-                return Vector2.Lerp(points[i - 1], points[i], seg > 1e-6f ? (d - at[i - 1]) / seg : 0f);
-            }
-            for (int k = 0; k < count; k++, s += dash + gap)
-            {
-                piece.Clear();
-                piece.Add(Point(s));
-                for (int i = 1; i < n - 1; i++)
-                    if (at[i] > s && at[i] < s + dash) piece.Add(points[i]);
-                piece.Add(Point(s + dash));
-                Strip(piece, halfWidth, color, outsideParking);
+                float centre = start + (k + 0.5f) * period, lo = centre - half, hi = centre + half;
+                float a = Mathf.Max(lo, from), b = Mathf.Min(hi, to);
+                if (b - a > 0.05f) Strip(line(a, b), halfWidth, color, outsideParking, a - lo, hi - b);
             }
         }
 

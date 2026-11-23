@@ -19,3 +19,4 @@ MonoBehaviour:
   asphalt: {fileID: 2100000, guid: cfcca074b51ef4699b3ffe2f074c74de, type: 2}
   shoulder: {fileID: 2100000, guid: 1676f6901117741e3932e3d8bf782471, type: 2}
   markings: {fileID: 2100000, guid: ac1ec82c342c1453e95f019cf67fa822, type: 2}
+  medianGrass: {fileID: 2100000, guid: 84716cdd9d0bc4d4b84ba4b9cca17d16, type: 2}

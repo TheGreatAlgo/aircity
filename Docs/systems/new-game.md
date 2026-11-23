@@ -206,7 +206,10 @@ occlusion maps, rather than mud reused as rock. Source/processing details are in
 patches, actual canopy coverage, height/slope, river banks and saved earthworks.
 Terrain layers use constant matte smoothness; opaque albedo alpha must not become a glossy ground surface.
 `ValleyTerrainSampling.hlsl` blends three stable random texture offsets, with matched albedo/normal/mask
-lookups and explicit mip gradients. This breaks repeating scan stripes. `ValleyTerrainShaderSetup` rebases
+lookups and explicit mip gradients. This breaks repeating scan stripes. Those lookups are most of the terrain's
+cost, so `ValleySampleWeighted` skips a layer the pixel does not show (its splat weight) and any lattice sample
+under 1%, and `ValleyCliffs.hlsl` likewise skips projections and patches under 1%; on 2026-11-19 this cut the
+terrain's frame time by 25–35% in Woodland and about half in Tropical, with no visible change. `ValleyTerrainShaderSetup` rebases
 the small sampling extension onto installed URP terrain passes, including the extra-layer and basemap passes;
 generated copies retain Unity's license notice. Daylight uses neutral sunlight and lower ambient fill so
 forms and forest shadows remain visible.

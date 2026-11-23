@@ -152,10 +152,10 @@ void NormalMapMix(float4 uvSplat01, float4 uvSplat23, inout half4 splatControl, 
 {
     #if defined(_NORMALMAP)
         half3 nrm = half(0.0);
-        nrm += splatControl.r * UnpackNormalScale(ValleySample(TEXTURE2D_ARGS(_Normal0, sampler_Normal0), uvSplat01.xy), _NormalScale0);
-        nrm += splatControl.g * UnpackNormalScale(ValleySample(TEXTURE2D_ARGS(_Normal1, sampler_Normal0), uvSplat01.zw), _NormalScale1);
-        nrm += splatControl.b * UnpackNormalScale(ValleySample(TEXTURE2D_ARGS(_Normal2, sampler_Normal0), uvSplat23.xy), _NormalScale2);
-        nrm += splatControl.a * UnpackNormalScale(ValleySample(TEXTURE2D_ARGS(_Normal3, sampler_Normal0), uvSplat23.zw), _NormalScale3);
+        nrm += splatControl.r * UnpackNormalScale(ValleySampleWeighted(TEXTURE2D_ARGS(_Normal0, sampler_Normal0), uvSplat01.xy, splatControl.r), _NormalScale0);
+        nrm += splatControl.g * UnpackNormalScale(ValleySampleWeighted(TEXTURE2D_ARGS(_Normal1, sampler_Normal0), uvSplat01.zw, splatControl.g), _NormalScale1);
+        nrm += splatControl.b * UnpackNormalScale(ValleySampleWeighted(TEXTURE2D_ARGS(_Normal2, sampler_Normal0), uvSplat23.xy, splatControl.b), _NormalScale2);
+        nrm += splatControl.a * UnpackNormalScale(ValleySampleWeighted(TEXTURE2D_ARGS(_Normal3, sampler_Normal0), uvSplat23.zw, splatControl.a), _NormalScale3);
 
         // avoid risk of NaN when normalizing.
         #if !HALF_IS_FLOAT
@@ -172,10 +172,10 @@ void SplatmapMix(float4 uvMainAndLM, float4 uvSplat01, float4 uvSplat23, inout h
 {
     half4 diffAlbedo[4];
 
-    diffAlbedo[0] = ValleySample(TEXTURE2D_ARGS(_Splat0, sampler_Splat0), uvSplat01.xy);
-    diffAlbedo[1] = ValleySample(TEXTURE2D_ARGS(_Splat1, sampler_Splat0), uvSplat01.zw);
-    diffAlbedo[2] = ValleySample(TEXTURE2D_ARGS(_Splat2, sampler_Splat0), uvSplat23.xy);
-    diffAlbedo[3] = ValleySample(TEXTURE2D_ARGS(_Splat3, sampler_Splat0), uvSplat23.zw);
+    diffAlbedo[0] = ValleySampleWeighted(TEXTURE2D_ARGS(_Splat0, sampler_Splat0), uvSplat01.xy, splatControl.r);
+    diffAlbedo[1] = ValleySampleWeighted(TEXTURE2D_ARGS(_Splat1, sampler_Splat0), uvSplat01.zw, splatControl.g);
+    diffAlbedo[2] = ValleySampleWeighted(TEXTURE2D_ARGS(_Splat2, sampler_Splat0), uvSplat23.xy, splatControl.b);
+    diffAlbedo[3] = ValleySampleWeighted(TEXTURE2D_ARGS(_Splat3, sampler_Splat0), uvSplat23.zw, splatControl.a);
 
     half4 diffuseAlpha = half4(diffAlbedo[0].a, diffAlbedo[1].a, diffAlbedo[2].a, diffAlbedo[3].a);
     half4 smoothnessConstants = half4(_Smoothness0, _Smoothness1, _Smoothness2, _Smoothness3);
@@ -374,7 +374,9 @@ Varyings SplatmapVert(Attributes v)
     return o;
 }
 
-void ComputeMasks(out half4 masks[4], half4 hasMask, float4 uvSplat01, float4 uvSplat23)
+// splatControl: the layers' weights at this pixel. Every use of a mask is multiplied by its layer's weight, so a
+// layer without weight is not read.
+void ComputeMasks(out half4 masks[4], half4 hasMask, float4 uvSplat01, float4 uvSplat23, half4 splatControl)
 {
     masks[0] = 0.5h;
     masks[1] = 0.5h;
@@ -382,10 +384,10 @@ void ComputeMasks(out half4 masks[4], half4 hasMask, float4 uvSplat01, float4 uv
     masks[3] = 0.5h;
 
 #ifdef _MASKMAP
-    masks[0] = lerp(masks[0], ValleySample(TEXTURE2D_ARGS(_Mask0, sampler_Mask0), uvSplat01.xy), hasMask.x);
-    masks[1] = lerp(masks[1], ValleySample(TEXTURE2D_ARGS(_Mask1, sampler_Mask0), uvSplat01.zw), hasMask.y);
-    masks[2] = lerp(masks[2], ValleySample(TEXTURE2D_ARGS(_Mask2, sampler_Mask0), uvSplat23.xy), hasMask.z);
-    masks[3] = lerp(masks[3], ValleySample(TEXTURE2D_ARGS(_Mask3, sampler_Mask0), uvSplat23.zw), hasMask.w);
+    masks[0] = lerp(masks[0], ValleySampleWeighted(TEXTURE2D_ARGS(_Mask0, sampler_Mask0), uvSplat01.xy, splatControl.r), hasMask.x);
+    masks[1] = lerp(masks[1], ValleySampleWeighted(TEXTURE2D_ARGS(_Mask1, sampler_Mask0), uvSplat01.zw, splatControl.g), hasMask.y);
+    masks[2] = lerp(masks[2], ValleySampleWeighted(TEXTURE2D_ARGS(_Mask2, sampler_Mask0), uvSplat23.xy, splatControl.b), hasMask.z);
+    masks[3] = lerp(masks[3], ValleySampleWeighted(TEXTURE2D_ARGS(_Mask3, sampler_Mask0), uvSplat23.zw, splatControl.a), hasMask.w);
 #endif
 
     masks[0] *= _MaskMapRemapScale0.rgba;
@@ -412,7 +414,6 @@ void SplatmapFragment(
 #endif
 {
     UNITY_SETUP_STEREO_EYE_INDEX_POST_VERTEX(IN);
-    AirCityClipBuiltSurface(IN.positionWS);
 #ifdef _ALPHATEST_ON
     ClipHoles(IN.uvMainAndLM.xy);
 #endif
@@ -426,12 +427,12 @@ void SplatmapFragment(
     half occlusion = 1;
 #else
 
-    half4 hasMask = half4(_LayerHasMask0, _LayerHasMask1, _LayerHasMask2, _LayerHasMask3);
-    half4 masks[4];
-    ComputeMasks(masks, hasMask, IN.uvSplat01, IN.uvSplat23);
-
     float2 splatUV = (IN.uvMainAndLM.xy * (_Control_TexelSize.zw - 1.0f) + 0.5f) * _Control_TexelSize.xy;
     half4 splatControl = SAMPLE_TEXTURE2D(_Control, sampler_Control, splatUV);
+
+    half4 hasMask = half4(_LayerHasMask0, _LayerHasMask1, _LayerHasMask2, _LayerHasMask3);
+    half4 masks[4];
+    ComputeMasks(masks, hasMask, IN.uvSplat01, IN.uvSplat23, splatControl);
 
     half alpha = dot(splatControl, 1.0h);
 #ifdef _TERRAIN_BLEND_HEIGHT
@@ -482,6 +483,7 @@ void SplatmapFragment(
         smoothness);
 #endif
 
+    AirCityClipBuiltSurface(IN.positionWS);
     InitializeBakedGIData(IN, inputData);
 
 #ifdef TERRAIN_GBUFFER

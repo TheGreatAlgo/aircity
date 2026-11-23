@@ -63,6 +63,7 @@ namespace AirCity.EditorTools.Aircraft
             public PerformanceJson performance;
             public PointJson[] points;
             public CargoDoorJson[] cargoDoors;
+            public AircraftType.Airstair airstair;
             public LightJson[] lights;
             public ExhaustJson[] exhausts;
         }
@@ -137,6 +138,7 @@ namespace AirCity.EditorTools.Aircraft
                     pivot = V3(d.pivot), axis = V3(d.axis).normalized, openAngle = d.openAngle, seconds = d.seconds, holdDepth = d.holdDepth,
                     holdSideMin = d.holdSideMin, holdSideMax = d.holdSideMax, holdHeight = d.holdHeight, holdFloorStart = d.holdFloorStart });
             t.cargoDoors = doors.ToArray();
+            t.airstair = json.airstair;
             var lights = new List<AircraftType.LightPoint>();
             foreach (var l in json.lights ?? Array.Empty<LightJson>())
                 lights.Add(new AircraftType.LightPoint

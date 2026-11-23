@@ -24,7 +24,8 @@ layout or public-road geometry changes, then disposed with the old map/world. Br
 
 Airport pavement triangles also define limits at every saved heightfield corner whose cells they touch.
 A Burst job derives those limits from the actual planes. `TerrainHeightmap.Resample` constrains supporting
-source samples to a thin formation below the pavement before refining the native heightmap. Both local
+source samples to a thin formation below the pavement and protects the wet bed and dry bank at waterlines
+before refining the native heightmap. Both local
 updates and complete rebuilds use this path, including their terrain collider.
 
 Subsequent earthworks cannot raise soil through an existing surface or drop away its support. Saved source
@@ -36,11 +37,17 @@ valley reads that geometry.
 ## Rendering
 
 `ValleyBuiltSurfaces` binds the index with `Terrain.SetSplatMaterialPropertyBlock`. `ValleyBuiltSurfaces.hlsl`
-performs exact ownership clipping in terrain forward/GBuffer, add, distant base, depth, normals and shadow
-passes. Soil under opaque pavement therefore cannot win the depth test as terrain LOD morphs at a different
-zoom. Construction drafts have separate forward-only overlay materials, so ungraded hills cannot hide
+clips soil in terrain forward/GBuffer, add, distant base, depth, normals and shadow passes. Each footprint
+carries a lower clipping depth. Road edges and slabs supply their physical thickness, and covered bores
+also supply a roof height. Soil below the lower limit still renders. Public road kerbs own the strip
+between the asphalt and the shoulder so the terrain cut covers the full road width.
+Open tunnel approaches retain a full cut between their retaining walls. Construction drafts have separate
+forward-only overlay materials, so ungraded hills cannot hide
 their proposed surfaces. Those temporary copies never change committed pavement or own terrain. The GPU query checks only the current spatial cell, rejects degenerate triangles and discards once
 after the ownership test. Unbuilt land and transparent surface fringes retain ordinary terrain rendering.
+The lit and normals passes discard at the end, after their layer and cliff lookups. Those lookups skip unseen
+layers inside dynamic branches, and on Metal (Apple GPUs) a discard before such a branch left blocks of
+garbage pixels along every road edge (2026-11-21). Keep the discard after any branch that samples a texture.
 
 `ValleyTerrainShaderSetup` reproduces every extension from the installed URP source, including the custom
 base pass. Terrain shader targets are 4.5 for the desktop structured-buffer path. Runway construction rings

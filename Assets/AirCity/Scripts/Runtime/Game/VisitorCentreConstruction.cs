@@ -128,6 +128,18 @@ namespace AirCity.Game
                 ? "Keep construction clear of the visitor centre and its parking lot." : null;
         }
 
+        /// <summary>The way out of a facility's car park at its public-road entrance node: the visitor centre's, or
+        /// a flying school's.</summary>
+        internal static Vector2? DrivewayOutward(CareerState state, PublicRoadNode entrance, Airport airport)
+        {
+            if (airport != null && FlyingSchoolLayout.IsEntrance(entrance?.terminalEntrance))
+                foreach (var school in airport.FlyingSchools)
+                    if (school.EntranceId == entrance.terminalEntrance &&
+                        Vector2.Distance(school.Entrance + Geo.XZ(airport.transform.position), Geo.XZ(entrance.position)) <= .15f)
+                        return school.DrivewayOutward;
+            return DrivewayOutward(state, entrance);
+        }
+
         internal static Vector2? DrivewayOutward(CareerState state, PublicRoadNode entrance)
         {
             var layout = state?.layout;

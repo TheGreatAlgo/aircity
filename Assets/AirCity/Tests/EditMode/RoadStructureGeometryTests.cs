@@ -14,9 +14,9 @@ namespace AirCity.Tests.World
     {
         readonly List<Object> owned=new List<Object>();
         [TearDown]public void Cleanup(){foreach(var item in owned)if(item!=null)Object.DestroyImmediate(item);owned.Clear();}
-        PublicRoadGeometry Geometry(PublicRoadNetwork graph,System.Func<Vector2,float> ground=null)
+        PublicRoadGeometry Geometry(PublicRoadNetwork graph,System.Func<Vector2,float> ground=null,System.Func<Vector2,float?> water=null)
         {
-            var g=new PublicRoadGeometry(graph,null,null,ground??(_=>0f));
+            var g=new PublicRoadGeometry(graph,null,null,ground??(_=>0f),waterHeight:water);
             owned.AddRange(new Object[]{g.pavement,g.shoulders,g.markings,g.kerbMesh,g.medianGrass,g.structures});return g;
         }
         static PublicRoadNetwork Road(PublicRoadStyle style,RoadStructure structure,params Vector3[] points)
@@ -101,6 +101,182 @@ namespace AirCity.Tests.World
             var strip=g.structures.vertices.Where(p=>p.x>-140&&p.x<-20&&Mathf.Abs(p.y-level)<.02f&&Mathf.Abs(p.z)>=half-.01f&&Mathf.Abs(p.z)<=half+type.verge+.01f).ToArray();
             Assert.Greater(strip.Length,20,"Concrete strip beside the carriageway.");
             Assert.IsTrue(strip.Any(p=>p.z>0)&&strip.Any(p=>p.z<0));
+        }
+
+        [TestCase(RoadStructure.Elevated, 10f, true)]
+        [TestCase(RoadStructure.Tunnel, 10f, true)]
+        [TestCase(RoadStructure.Tunnel, 24f, false)]
+        public void OnlyShortGroundConnectorsBetweenStructuresCarryConcrete(RoadStructure next, float length, bool lined)
+        {
+            var graph = new PublicRoadNetwork();
+            int a = graph.AddNode(new Vector3(-60f, 10f, 0f));
+            int b = graph.AddNode(new Vector3(0f, 10f, 0f));
+            int c = graph.AddNode(new Vector3(length, 10f, 0f));
+            int d = graph.AddNode(new Vector3(length + 60f, 10f, 0f));
+            graph.AddSegment(a, b, PublicRoadStyle.Avenue, RoadStructure.Elevated);
+            graph.AddSegment(b, c, PublicRoadStyle.Avenue, RoadStructure.Ground);
+            graph.AddSegment(c, d, PublicRoadStyle.Avenue, next);
+            using var chunks = new PublicRoadChunks(null, null);
+            chunks.Update(graph, _ => 10f, null);
+            foreach (var geometry in new[] { Geometry(graph, _ => 10f), chunks.Geometry })
+            {
+                Assert.That(geometry.shoulders.vertices.Any(p => p.x > .1f && p.x < length - .1f), Is.EqualTo(!lined));
+                var middle = new Vector2(length * .5f, 0f);
+                Assert.That(geometry.groundTriangles.Any(t =>
+                    t.excavationHeight >= RoadStructureBuilder.TunnelClearance && t.DistanceSquared(middle) < .0001f), Is.EqualTo(lined));
+            }
+        }
+
+        [TestCase(10f, true)]
+        [TestCase(30f, false)]
+        public void CliffsideConcreteAndExcavationCarryThroughShortDips(float length, bool roofed)
+        {
+            var graph = Road(PublicRoadStyle.Avenue, RoadStructure.Ground, new Vector3(-50f, 10f, 0f), new Vector3(50f, 10f, 0f));
+            float Ground(Vector2 p) => p.y <= 0f ? 8f : Mathf.Lerp(8f, Mathf.Abs(p.x) < length * .5f ? 9f : 22f,
+                Mathf.Clamp01(p.y / 8f));
+            var geometry = Geometry(graph, Ground);
+            Assert.That(geometry.shoulders.vertexCount, Is.Zero, "The cliffside road should have a continuous concrete shoulder.");
+            Assert.That(geometry.groundTriangles.Any(t => t.excavationHeight >= RoadStructureBuilder.TunnelClearance &&
+                t.DistanceSquared(Vector2.zero) < .0001f), Is.EqualTo(roofed), "The retaining cut must match the concrete.");
+            Assert.That(geometry.structures.vertices.Any(p => Mathf.Abs(p.x) < 5.5f &&
+                Mathf.Abs(p.y - 10.18f - RoadStructureBuilder.TunnelClearance) < .01f), Is.EqualTo(roofed));
+        }
+
+        [Test]
+        public void ACliffOnOneStretchDoesNotDisableTheRoadbedThroughADistantHill()
+        {
+            const int size = ValleyWorld.Resolution;
+            var world = new ValleyWorld { generatorVersion = 6, heights = new float[size * size] };
+            for (int z = 0; z < size; z++)
+            for (int x = 0; x < size; x++)
+            {
+                var p = new Vector2(x, z) * world.Spacing - Vector2.one * (ValleyWorld.Size * .5f);
+                world.heights[z * size + x] = p.x > 0f ? 60f : 8f + Mathf.Clamp(p.y, 0f, 16f);
+            }
+            var graph = Road(PublicRoadStyle.Avenue, RoadStructure.Ground, new Vector3(-150f,10f,0f), new Vector3(150f,10f,0f));
+            var g = Geometry(graph, world.Height);
+            var cliff = new Vector2(-100f, 0f);
+            var hill = new Vector2(100f, 0f);
+            Assert.That(g.groundTriangles.Any(t => t.excavationHeight >= RoadStructureBuilder.TunnelClearance && t.DistanceSquared(cliff) < .000001f));
+            Assert.That(g.groundTriangles.Any(t => t.excavationHeight == 0f && t.DistanceSquared(hill) < .000001f));
+            int centre = (size - 1) / 2;
+            var height = g.GradedHeightRegion(world, new RectInt(centre + Mathf.RoundToInt(hill.x / world.Spacing), centre, 1, 1));
+            Assert.That(height[0,0], Is.InRange(9.9f, 10.16f));
+        }
+
+        [Test]
+        public void TunnelLiningExtendsOverTheDeckWhereACliffCrossesTheJoinAtAnAngle()
+        {
+            var graph = new PublicRoadNetwork();
+            int a = graph.AddNode(new Vector3(-75f, 10f, 0f));
+            int b = graph.AddNode(new Vector3(0f, 10f, 0f));
+            int c = graph.AddNode(new Vector3(65f, 10f, 0f));
+            graph.AddSegment(a, b, PublicRoadStyle.Avenue, RoadStructure.Elevated);
+            graph.AddSegment(b, c, PublicRoadStyle.Avenue, RoadStructure.Tunnel);
+            float Ground(Vector2 p) => Mathf.Lerp(-3f, 24f, Mathf.Clamp01((p.x + 15f + p.y * .7f) / 14f));
+            using var chunks = new PublicRoadChunks(null, null);
+            chunks.Update(graph, Ground, null);
+            foreach (var geometry in new[] { Geometry(graph, Ground), chunks.Geometry })
+            {
+                var joins = new Vector2(-3f, 4f);
+                var cut = geometry.groundTriangles.Where(t => t.DistanceSquared(joins) < .0001f).ToArray();
+                Assert.That(cut, Is.Not.Empty);
+                Assert.That(cut.All(t => t.foundation == 0 && t.excavationHeight == RoadStructureBuilder.TunnelExcavationHeight));
+                Assert.That(cut.All(t => t.Height(joins) < 10.3f && t.Height(joins) + t.excavationHeight < Ground(joins)),
+                    "The cut follows pavement grade and preserves rock above the lining.");
+                Assert.That(geometry.structures.vertices.Any(p => p.x < -1f && p.x > -12f &&
+                    Mathf.Abs(p.y - 10.18f - RoadStructureBuilder.TunnelExcavationHeight) < .015f), Is.True,
+                    "Rock above the deck's clearance needs a concrete roof.");
+                var away = new Vector2(-45f, 0f);
+                var open = geometry.groundTriangles.Where(t => t.DistanceSquared(away) < .0001f).ToArray();
+                Assert.That(open, Is.Not.Empty);
+                Assert.That(open.All(t => !t.OwnsGround && t.Height(away) > Ground(away) + 1f &&
+                    t.excavationHeight == RoadStructureBuilder.TunnelClearance), "The open deck preserves the land beneath it.");
+            }
+        }
+
+        [Test]
+        public void KerbsOwnTheStripBetweenPavementAndShoulderAlongSectionsAndBends()
+        {
+            var graph = Road(PublicRoadStyle.Avenue, RoadStructure.Ground, new Vector3(-100,10,0),
+                new Vector3(0,10,0), new Vector3(70,10,70));
+            var geometry = Geometry(graph, _ => 10f);
+            var kerb = geometry.kerbMesh;
+            var vertices = kerb.vertices;
+            var indices = kerb.triangles;
+            int checkedFaces = 0;
+            for (int i = 0; i < indices.Length; i += 3)
+            {
+                var a = vertices[indices[i]];
+                var b = vertices[indices[i + 1]];
+                var c = vertices[indices[i + 2]];
+                if (Vector3.Cross(b - a, c - a).y <= .0001f) continue;
+                var probe = Alignment3D.XZ((a + b + c) / 3f);
+                Assert.That(geometry.groundTriangles.Any(t => t.DistanceSquared(probe) < .000001f),
+                    Is.True, "Unclaimed kerb surface at " + probe);
+                checkedFaces++;
+            }
+            Assert.That(checkedFaces, Is.GreaterThan(40));
+        }
+
+        [TestCase(false)]
+        [TestCase(true)]
+        public void AngledPortalJoinSharesThePavementAndExcavationCrossSection(bool reverse)
+        {
+            var graph = new PublicRoadNetwork();
+            var join = new Vector3(615.6f, 106.8f, 1025.12f);
+            int a = graph.AddNode(join + new Vector3(-56f, -3f, 0f));
+            int b = graph.AddNode(join);
+            int c = graph.AddNode(join + Quaternion.Euler(0f,.45f,0f) * new Vector3(38f,4f,0f));
+            var before = graph.AddSegment(a, b, PublicRoadStyle.Avenue, RoadStructure.Ground);
+            var after = graph.AddSegment(reverse ? c : b, reverse ? b : c, PublicRoadStyle.Avenue, RoadStructure.Tunnel);
+            using var chunks = new PublicRoadChunks(null, null);
+            chunks.Update(graph, _ => join.y, null);
+            var approach = chunks.Parts.Single(p => !p.junction && p.id == before.id).geometry;
+            var tunnel = chunks.Parts.Single(p => !p.junction && p.id == after.id).geometry;
+            var edge = approach.pavement.vertices.Where(p => Mathf.Abs(p.x - join.x) < .1f).Distinct().ToArray();
+            Assert.That(edge.Length, Is.EqualTo(3));
+            foreach (var point in edge)
+                Assert.That(tunnel.pavement.vertices.Min(p => Vector3.Distance(point, p)), Is.LessThan(.0005f));
+            var left = edge.OrderBy(p => p.z).First();
+            var right = edge.OrderBy(p => p.z).Last();
+            for (int i = 0; i <= 20; i++)
+            {
+                var probe = Alignment3D.XZ(Vector3.Lerp(left, right, i / 20f));
+                Assert.That(approach.groundTriangles.Any(t => t.DistanceSquared(probe) < .000001f));
+                Assert.That(tunnel.groundTriangles.Any(t => t.DistanceSquared(probe) < .000001f &&
+                    t.excavationDepth == RoadStructureBuilder.TunnelFloorThickness));
+            }
+            var vertices = tunnel.structures.vertices;
+            var normals = tunnel.structures.normals;
+            Assert.That(Enumerable.Range(0, vertices.Length).Any(i => normals[i].y < -.95f &&
+                Mathf.Abs(vertices[i].x - join.x) < .1f &&
+                Mathf.Abs(vertices[i].y - (left.y - RoadStructureBuilder.TunnelFloorThickness)) < .001f));
+        }
+
+        [Test]
+        public void CutFaceFollowsABankThatRisesBetweenShoulderEndpoints()
+        {
+            var mesh = new LandscapeMesh();
+            RoadStructureBuilder.SealShoulder(mesh, new Vector3(0,10,2), new Vector3(5,10,2), Vector3.forward,
+                p => 10f + Mathf.Max(0f, 2f - Mathf.Abs(p.x - 2.5f)));
+            var closure = mesh.Create("Cut beside shoulder");
+            owned.Add(closure);
+            Assert.That(closure.vertices.Any(p => Mathf.Abs(p.x - 2.5f) < .001f && Mathf.Abs(p.z - 2f) < .001f && p.y >= 12f));
+        }
+
+        [Test]
+        public void PortalShoulderClosureExtendsFromThePavementEdgeToTheRock()
+        {
+            var mesh = new LandscapeMesh();
+            var a = new Vector3(0f, 10f, 2f);
+            var b = new Vector3(5f, 10f, 2f);
+            RoadStructureBuilder.SealShoulder(mesh, a, b, Vector3.forward, p => 10f - p.x);
+            var closure = mesh.Create("Portal shoulder closing face");
+            owned.Add(closure);
+            Assert.That(closure.bounds.max.y, Is.EqualTo(9.56f).Within(.01f));
+            Assert.That(closure.bounds.min.y, Is.LessThan(5f));
+            Assert.That(closure.bounds.size.z, Is.Zero.Within(.001f));
         }
 
         static float[] Along(IEnumerable<Vector3> piers)=>piers.Select(p=>p.x).OrderBy(x=>x).ToArray();
@@ -188,6 +364,112 @@ namespace AirCity.Tests.World
         }
 
         [Test]
+        public void ShortBridgeColumnsAndTheirThicknessIgnoreDepthBelowTheWaterline()
+        {
+            var graph=Road(PublicRoadStyle.Avenue,RoadStructure.Elevated,new Vector3(-67,5,0),new Vector3(67,5,0));
+            var deep=Geometry(graph,_=>-100f,_=>0f);
+            var shallow=Geometry(graph,_=>-12f,_=>0f);
+            Assert.IsNotEmpty(deep.piers);
+            Assert.AreEqual(-RoadStructureBuilder.SubmergedFootDepth,deep.structures.bounds.min.y,.01f);
+            CollectionAssert.AreEqual(deep.structures.vertices,shallow.structures.vertices);
+        }
+
+        [Test]
+        public void LegacyRiverSupportsUseTheRenderedBankWidth()
+        {
+            var world=new ValleyWorld {hasRiver=true,river=new RiverCourse{halfWidth=40f},
+                heights=Enumerable.Repeat(10f,ValleyWorld.Resolution*ValleyWorld.Resolution).ToArray()};
+            Assert.That(world.IsWater(new Vector2(51f,0f)),Is.False);
+            Assert.That(world.BridgeWaterAt(new Vector2(51f,0f)),Is.EqualTo(world.WaterHeight(0f)));
+            Assert.That(world.BridgeWaterAt(new Vector2(70f,0f)),Is.Null);
+        }
+
+        [TestCase(false,65f,44f,true)]
+        [TestCase(false,25f,44f,false)]
+        [TestCase(false,65f,7f,false)]
+        [TestCase(true,65f,44f,true)]
+        [TestCase(true,6f,44f,false)]
+        public void ShortBridgeChoosesSuspensionFromTheSustainedVisibleDrop(bool wet,float clearance,float halfGap,bool suspension)
+        {
+            const float deck=100f;
+            var graph=Road(PublicRoadStyle.Avenue,RoadStructure.Elevated,new Vector3(-65,deck,0),
+                new Vector3(0,deck,0),new Vector3(65,deck,0));
+            bool InGap(Vector2 p)=>Mathf.Abs(p.x)<halfGap;
+            float Ground(Vector2 p)=>InGap(p)?(wet?-120f:deck-clearance):deck-.2f;
+            float? Water(Vector2 p)=>wet&&InGap(p)?deck-clearance:(float?)null;
+            var geometry=Geometry(graph,Ground,Water);
+            Assert.That(geometry.SuspensionFor(graph.segments[0])!=null,Is.EqualTo(suspension));
+            if(suspension)
+            {
+                Assert.That(geometry.piers,Is.Empty);
+                Assert.That(geometry.structures.bounds.max.y,Is.GreaterThan(deck+10f));
+            }
+            else
+            {
+                Assert.That(geometry.structures.bounds.max.y,Is.LessThan(deck+3f));
+            }
+        }
+
+        [Test]
+        public void ArchDesignFollowsASplitAndBuildsTheSameMeshInChunks()
+        {
+            var graph=Road(PublicRoadStyle.Highway,RoadStructure.Elevated,
+                new Vector3(-100,14,0),new Vector3(100,14,0));
+            var first=graph.segments[0];
+            first.bridgeDesign=RoadBridgeDesign.Arch;
+            graph.Split(first,new Vector3(21,14,0));
+            Assert.That(graph.segments.Select(e=>e.bridgeDesign),Is.All.EqualTo(RoadBridgeDesign.Arch));
+            float Ground(Vector2 point)=>Mathf.Abs(point.x)>89f?14f:0f;
+            var geometry=Geometry(graph,Ground);
+            using var chunks=new PublicRoadChunks(null,null);
+            chunks.Update(graph,Ground,null);
+            Assert.That(geometry.BridgeFor(first).Design,Is.EqualTo(RoadBridgeDesign.Arch));
+            Assert.That(chunks.Geometry.BridgeFor(first).Design,Is.EqualTo(RoadBridgeDesign.Arch));
+            Assert.That(geometry.piers,Is.Empty);
+            Assert.That(geometry.structures.bounds.max.y,Is.GreaterThan(49f));
+            CollectionAssert.AreEquivalent(geometry.structures.vertices,chunks.Geometry.structures.vertices);
+        }
+
+        [TestCase(false)]
+        [TestCase(true)]
+        public void LongCrossingsUseTwoTowersAndStaySuspendedAcrossChunks(bool water)
+        {
+            float deck=water?10f:94f;
+            var graph=Road(PublicRoadStyle.Highway,RoadStructure.Elevated,new Vector3(-285,deck,0),new Vector3(-176.7f,deck,0),
+                new Vector3(-44,deck,0),new Vector3(86,deck,0),new Vector3(285,deck,0));
+            float Ground(Vector2 point)=>Mathf.Abs(point.x)>266f?deck-.2f:(water?-180f:14f);
+            float? Water(Vector2 point)=>water&&Mathf.Abs(point.x)<=266f?0f:(float?)null;
+            var whole=Geometry(graph,Ground,Water);
+            Assert.IsNotNull(whole.SuspensionFor(graph.segments[0]));
+            using var chunks=new PublicRoadChunks(null,null);
+            chunks.Update(graph,Ground,null,waterHeight:Water);
+            Assert.IsEmpty(whole.piers);
+            Assert.IsEmpty(chunks.Geometry.piers);
+            Assert.That(whole.structures.bounds.max.y,Is.GreaterThan(deck+25f));
+            Assert.That(whole.structures.bounds.min.y,Is.EqualTo(water?-RoadStructureBuilder.SubmergedFootDepth:13.4f).Within(.02f));
+            CollectionAssert.AreEquivalent(whole.structures.vertices,chunks.Geometry.structures.vertices);
+            var tallest=whole.structures.vertices.Where(p=>p.y>whole.structures.bounds.max.y-.1f).Select(p=>p.x).ToArray();
+            Assert.That(tallest.Any(x=>Mathf.Abs(x+176.7f)<6f)&&tallest.Any(x=>Mathf.Abs(x-176.7f)<6f),Is.True);
+            Assert.That(tallest.All(x=>Mathf.Abs(x)>165f),Is.True);
+
+            var picked=graph.segments[1].id;
+            Assert.That(PublicRoadGeometry.Layout(graph).SetBridgeDesign(new[]{picked},RoadBridgeDesign.Piers),Is.True);
+            chunks.Update(graph,Ground,null,waterHeight:Water);
+            Assert.That(chunks.Geometry.BridgeFor(graph.segments[0]).Design,Is.EqualTo(RoadBridgeDesign.Piers));
+            Assert.That(chunks.Geometry.piers,Is.Not.Empty);
+            PublicRoadGeometry.Layout(graph).SetBridgeDesign(new[]{picked},RoadBridgeDesign.Automatic);
+            chunks.Update(graph,Ground,null,waterHeight:Water);
+            Assert.That(chunks.Geometry.piers,Is.Empty);
+
+            // A lower left bank turns this into an unfinished crossing. Every chunk switches back to piers.
+            float ChangedGround(Vector2 point)=>point.x<-270f?deck-13f:Ground(point);
+            chunks.Update(graph,ChangedGround,null,waterHeight:Water);
+            Assert.IsNull(chunks.Geometry.SuspensionFor(graph.segments[0]));
+            Assert.IsNotEmpty(chunks.Geometry.piers);
+            Assert.That(chunks.Geometry.structures.bounds.max.y,Is.LessThan(deck+3f));
+        }
+
+        [Test]
         public void DeckSidesCarryPanelDistancesAndARailOnEvenlySpacedPostsRoundABend()
         {
             var graph=Road(PublicRoadStyle.Urban,RoadStructure.Elevated,new Vector3(-150,12,0),new Vector3(0,12,0),new Vector3(100,12,120));
@@ -236,6 +518,30 @@ namespace AirCity.Tests.World
             Assert.GreaterOrEqual(piers.Count,9);
             foreach(var p in piers)Assert.LessOrEqual(piers.Where(q=>q!=p).Min(q=>Vector3.Distance(p,q)),RoadStructureBuilder.MaxPierSpan+1f);
             Assert.IsTrue(piers.Any(p=>p.x<-145)&&piers.Any(p=>p.x>80&&p.z>80));
+        }
+
+        [TestCase(190f,8f)]
+        [TestCase(65f,65f)]
+        public void ServiceRoadCrossingUsesTheSameSuspensionAndWaterline(float halfLength,float deck)
+        {
+            root=new GameObject("Service suspension fixture");root.SetActive(false);
+            var airport=root.AddComponent<Airport>();airport.groundSize=0;
+            float bank=halfLength*.81f;
+            airport.TerrainHeight=p=>Mathf.Abs(p.x)>bank?deck:-100f;
+            airport.BridgeWaterHeight=p=>Mathf.Abs(p.x)<=bank?0f:(float?)null;
+            root.SetActive(true);
+            var net=airport.Taxiways;
+            int a=net.AddNode(new Vector3(-halfLength,deck,0)),b=net.AddNode(new Vector3(0,deck,0)),
+                c=net.AddNode(new Vector3(halfLength,deck,0));
+            net.Connect(a,b,7,PavementSurface.Asphalt,false,RoadClass.Service,false,RoadStructure.Elevated);
+            net.Connect(c,b,7,PavementSurface.Asphalt,false,RoadClass.Service,false,RoadStructure.Elevated);
+            var piers=new List<Vector3>();
+            var mesh=AirfieldRoadGeometry.Structures(airport,net,new TaxiwayBuilder(net,airport.Runways),
+                new List<BuiltSurfaceMap.Triangle>(),piers).Create("Service suspension bridge");
+            owned.Add(mesh);
+            Assert.IsEmpty(piers);
+            Assert.That(mesh.bounds.max.y,Is.GreaterThan(deck+10f));
+            Assert.That(mesh.bounds.min.y,Is.EqualTo(-RoadStructureBuilder.SubmergedFootDepth).Within(.02f));
         }
     }
 }

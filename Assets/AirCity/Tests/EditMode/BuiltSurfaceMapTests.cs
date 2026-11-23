@@ -71,6 +71,15 @@ namespace AirCity.Tests.World
             CollectionAssert.AreEqual(new[]{3},map.Exclude(props).Select(p=>p.id));
         }
         [Test]
+        public void PavementSeamToleranceCrossesASurfaceMapCellBoundary()
+        {
+            using var map = new BuiltSurfaceMap();
+            Rectangle(map, 28f, 31.9996f, 4f, 12f, 10f, false);
+            Assert.That(map.Contains(new Vector2(32.0002f, 8f)), Is.True);
+            Assert.That(map.Contains(new Vector2(32.01f, 8f)), Is.False);
+        }
+
+        [Test]
         public void GrassRunwayOwnsItsOpaqueCoreAndLeavesItsTransparentFringeOverNaturalGround()
         {
             var airport=Airport();var runway=airport.AddRunway(new Vector3(-300,0,0),new Vector3(300,0,0),PavementSurface.Grass,18f);runway.naturalEdges=true;runway.Rebuild();

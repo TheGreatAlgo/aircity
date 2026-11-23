@@ -9,6 +9,9 @@
 // snow cm, unused), uv1 = (half width, half length, along-centre, kind 0 = box / 1 = glyph / 2 = triangular arrowhead), uv2 = glyph
 // atlas (u0, v0, u per metre, v per metre), uv3 = (strip along, strip across, runway length, wear), uv4 = the
 // ploughs at work (AirfieldCommon.hlsl StripWorked), color = paint colour and opacity.
+// Public-road paint (PublicRoadGeometry.LanePaint) carries its lanes in place of the runway's frame: uv3 = (metres
+// from the inner edge of its side's lanes, lanes that side, minus the lane width, wear): it chips and fades all
+// over, and fastest in the wheel paths.
 Shader "AirCity/AirfieldPaint"
 {
     Properties
@@ -148,8 +151,34 @@ Shader "AirCity/AirfieldPaint"
 
                 // wear rubs the paint off in patches; touchdown rubber covers it
                 half wear = i.runway.w;
-                alpha *= i.color.a * (1.0 - smoothstep(1.0 - wear * 0.8 - 0.1, 1.0 - wear * 0.8 + 0.1, macro.r * 0.6 + grain * 0.4) * 0.85);
-                half rubber = TouchdownRubber(i.runway.x, i.runway.y, i.runway.z);
+                half rubber = 0;
+                if (i.runway.z < -0.5)
+                {
+                    // road paint: tyres grind it away in the two wheel paths of each lane, the rest chips in specks
+                    // and flakes, and all of it dulls with dirt
+                    float width = -i.runway.z;
+                    half path = 0;
+                    if (i.runway.y > 0.5)
+                    {
+                        half inLanes = step(0.0, i.runway.x) * step(i.runway.x, i.runway.y * width);
+                        float fromMiddle = abs((frac(i.runway.x / width) - 0.5) * width);
+                        path = (1.0 - smoothstep(0.1, 0.55, abs(fromMiddle - 0.86))) * inLanes;   // (edge and lane lines lie clear of the paths)
+                    }
+                    else if (i.runway.y < -0.5) path = 0.35;   // inside a junction: turning traffic crosses everything a little
+                    half speck = SAMPLE_TEXTURE2D(_MacroMap, sampler_MacroMap, xz / 0.83 + 0.31).g;
+                    half flake = SAMPLE_TEXTURE2D(_MacroMap, sampler_MacroMap, xz / 4.3 + 0.57).r;
+                    half noise = speck * 0.45 + flake * 0.35 + macro.b * 0.2;
+                    half worn = saturate(wear * (0.62 + 0.75 * path + (macro.r - 0.5) * 0.5));
+                    alpha *= i.color.a * (1.0 - smoothstep(1.0 - worn - 0.07, 1.0 - worn + 0.07, noise) * (0.72 + 0.2 * path));
+                    alpha *= 1.0 - wear * (0.12 + 0.2 * path);
+                    albedo = lerp(albedo, dot(albedo, half3(0.3, 0.5, 0.2)) * half3(0.86, 0.85, 0.82), wear * (0.22 + 0.2 * flake));
+                    albedo *= 1.0 - wear * (0.1 + 0.12 * path);
+                }
+                else
+                {
+                    alpha *= i.color.a * (1.0 - smoothstep(1.0 - wear * 0.8 - 0.1, 1.0 - wear * 0.8 + 0.1, macro.r * 0.6 + grain * 0.4) * 0.85);
+                    rubber = TouchdownRubber(i.runway.x, i.runway.y, i.runway.z);
+                }
                 half streak = SAMPLE_TEXTURE2D(_MacroMap, sampler_MacroMap, float2(i.runway.y / 1.9, i.runway.x / 95.0)).b;
                 rubber *= saturate(streak * 1.5 - 0.15) * (0.5 + 0.5 * wear);
                 albedo = lerp(albedo, half3(0.03, 0.03, 0.03), rubber * 0.8);

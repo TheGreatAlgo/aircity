@@ -68,6 +68,9 @@ FBX, textures and type data automatically.
 - `SCHEMES`: a mask function for **every** `AirCity.Aircraft.LiveryStyle`. R, G and B mark zones 1, 2 and 3 over
   the base colour, with the same meaning on every type (zone 1 = main stripe / swoosh / belly / nose, zone 2 =
   accent / cheatline / tips, zone 3 = trim / tail / engines). Then one airline livery fits its whole fleet.
+- Optional `LIVERIES`: example palettes in display order. The first is the default paint baked into the model.
+- Optional `AIRSTAIR`: passenger door point, open angle and duration. Stage 2 cuts the hinged door from the
+  painted skin and adds the aircraft's folded tread geometry.
 - `REG_BOX` per scheme (clear of its stripes), `REG_FACES_U/V`, `REG_TEX_W`: the registration patch.
 - `LOGO_BOX`: the tail-logo area on the fin (station from / to, height from / to).
 - `panel_lines(p)`, `detail_extra(p)`, `dirt_extra(p)`: shading and grime specific to the type.

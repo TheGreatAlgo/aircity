@@ -223,6 +223,12 @@ namespace AirCity.Vehicles
             }
             problem = airport.Baggage.DepartureBlocker(aircraft);
             if (problem != null) return null;
+            if (aircraft.Airstair is AircraftAirstair airstair && !airstair.Stowed)
+            {
+                airstair.SetOpen(false);
+                problem = "the airstair is stowing";
+                return null;
+            }
             if (TowOf(aircraft) != null)
             {
                 problem = "it's being pushed back already";

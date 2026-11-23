@@ -345,6 +345,8 @@ def render_previews(model, paths, views, prefix):
     cam.clip_end = 1000
     os.makedirs(paths.previews, exist_ok=True)
     for n in views:
+        if hasattr(model, "preview_pose"):
+            model.preview_pose(n)
         loc, tgt, lens = model.VIEWS[n]
         cam_ob.location = loc
         if lens < 0:
@@ -681,7 +683,7 @@ def write_profile(model, paths, px_per_m, reg, font, bounds, wing, service):
         "examples": [{"name": n, "style": v[0], "baseColor": v[1], "color1": v[2], "color2": v[3], "color3": v[4],
                       "registrationColor": v[5], "registration": v[6],
                       "logo": f"../../Liveries/Logos/{v[7]}.png" if v[7] else ""}
-                     for n, v in airlines.LIVERIES.items()],
+                     for n, v in getattr(model, "LIVERIES", airlines.LIVERIES).items()],
         "gear": {
             "wheels": [{"name": n, "position": to_unity(pos), "radius": r, "steerable": st}
                        for n, pos, r, st in gear["wheels"]],
@@ -709,6 +711,9 @@ def write_profile(model, paths, px_per_m, reg, font, bounds, wing, service):
         "exhausts": [{"name": n, "position": to_unity(pos), "direction": to_unity(d), "radius": r, "afterburner": ab}
                      for n, pos, d, r, ab in getattr(model, "EXHAUSTS", [])],
     }
+    airstair = cargo_doors.airstair_definition(model)
+    if airstair:
+        profile["airstair"] = {key: airstair[key] for key in ("point", "transform", "openAngle", "seconds")}
     with open(os.path.join(paths.unity, f"{model.NAME}.aircraft"), "w") as fh:
         json.dump(profile, fh, indent=2, default=float)
     if font is None:   # geometry-only export reuses the existing shared font
@@ -1044,7 +1049,8 @@ def stage2(model):
     box_aspect = (model.LOGO_BOX[1] - model.LOGO_BOX[0]) / (model.LOGO_BOX[3] - model.LOGO_BOX[2])
     ones = np.ones_like(detail)
     produced = {}
-    for livery, (scheme, base, c1, c2, c3, regcol, regtext, logo) in airlines.LIVERIES.items():
+    liveries = getattr(model, "LIVERIES", airlines.LIVERIES)
+    for livery, (scheme, base, c1, c2, c3, regcol, regtext, logo) in liveries.items():
         colors = [paint.hexrgb(c) for c in (base, c1, c2, c3)]
         m = masks[scheme]
         unshaded = paint.compose((m[..., 0], m[..., 1], m[..., 2]), colors, ones)
@@ -1061,7 +1067,7 @@ def stage2(model):
         print("livery", livery)
 
     # the default livery ships with the model so it looks right before any script runs
-    default = next(iter(airlines.LIVERIES))
+    default = next(iter(liveries))
     shutil.copyfile(produced[default][0], tex("Body_Default"))
     shutil.copyfile(produced[default][1], tex("Registration_Default"))
     set_image(body_mat, texturing.load_image(tex("Body_Default")))

@@ -1,0 +1,901 @@
+{
+  "model": "LowWingPiston",
+  "displayName": "Low-wing trainer",
+  "seats": 2,
+  "category": "GeneralAviation",
+  "bounds": {
+    "min": [
+      -5.109,
+      0.0,
+      -4.8838
+    ],
+    "max": [
+      5.109,
+      2.549,
+      3.12
+    ]
+  },
+  "wingOutline": [
+    -5.1,
+    -0.34,
+    -4.94,
+    -0.503,
+    -0.563,
+    -0.908,
+    -0.563,
+    0.999,
+    -4.649,
+    0.482,
+    -4.94,
+    0.381,
+    -5.1,
+    0.23
+  ],
+  "serviceFootprints": [
+    {
+      "name": "Fuselage",
+      "bottom": 0.722,
+      "outline": [
+        -0.563,
+        0.531,
+        -0.554,
+        -0.312,
+        -0.551,
+        -0.442,
+        -0.55,
+        -0.48,
+        -0.549,
+        -0.506,
+        -0.546,
+        -0.571,
+        -0.541,
+        -0.636,
+        -0.515,
+        -0.88,
+        -0.506,
+        -0.96,
+        -0.498,
+        -1.025,
+        -0.04,
+        -4.68,
+        -0.034,
+        -4.72,
+        -0.023,
+        -4.785,
+        -0.012,
+        -4.85,
+        -0.0,
+        -4.88,
+        0.012,
+        -4.85,
+        0.023,
+        -4.785,
+        0.034,
+        -4.72,
+        0.04,
+        -4.68,
+        0.498,
+        -1.025,
+        0.506,
+        -0.96,
+        0.515,
+        -0.88,
+        0.541,
+        -0.636,
+        0.546,
+        -0.571,
+        0.549,
+        -0.506,
+        0.55,
+        -0.48,
+        0.551,
+        -0.442,
+        0.554,
+        -0.312,
+        0.563,
+        0.531,
+        0.563,
+        0.661,
+        0.562,
+        0.725,
+        0.559,
+        0.855,
+        0.555,
+        1.0,
+        0.551,
+        1.114,
+        0.541,
+        1.28,
+        0.539,
+        1.309,
+        0.533,
+        1.374,
+        0.527,
+        1.439,
+        0.429,
+        2.476,
+        0.422,
+        2.541,
+        0.421,
+        2.55,
+        0.412,
+        2.606,
+        0.398,
+        2.67,
+        0.383,
+        2.72,
+        0.377,
+        2.735,
+        0.337,
+        2.8,
+        -0.0,
+        2.852,
+        -0.337,
+        2.8,
+        -0.377,
+        2.735,
+        -0.383,
+        2.72,
+        -0.398,
+        2.67,
+        -0.412,
+        2.606,
+        -0.421,
+        2.55,
+        -0.422,
+        2.541,
+        -0.429,
+        2.476,
+        -0.527,
+        1.439,
+        -0.533,
+        1.374,
+        -0.539,
+        1.309,
+        -0.541,
+        1.28,
+        -0.551,
+        1.114,
+        -0.555,
+        1.0,
+        -0.559,
+        0.855,
+        -0.562,
+        0.725,
+        -0.563,
+        0.661
+      ]
+    },
+    {
+      "name": "Tail",
+      "bottom": 1.17,
+      "outline": [
+        -1.69,
+        -4.884,
+        1.69,
+        -4.884,
+        1.69,
+        -4.333,
+        0.03,
+        -2.836,
+        0.015,
+        -2.824,
+        -0.0,
+        -2.82,
+        -0.015,
+        -2.824,
+        -0.03,
+        -2.836,
+        -1.69,
+        -4.333
+      ]
+    },
+    {
+      "name": "Left wing",
+      "bottom": 0.696,
+      "outline": [
+        -5.1,
+        -0.34,
+        -5.03,
+        -0.437,
+        -4.94,
+        -0.503,
+        -0.618,
+        -0.904,
+        -0.563,
+        -0.908,
+        -0.563,
+        0.999,
+        -2.958,
+        0.737,
+        -3.17,
+        0.713,
+        -3.381,
+        0.689,
+        -3.592,
+        0.663,
+        -3.803,
+        0.635,
+        -4.015,
+        0.604,
+        -4.226,
+        0.569,
+        -4.437,
+        0.528,
+        -4.649,
+        0.482,
+        -4.85,
+        0.423,
+        -4.86,
+        0.419,
+        -4.94,
+        0.381,
+        -5.03,
+        0.307,
+        -5.1,
+        0.23
+      ]
+    },
+    {
+      "name": "Right wing",
+      "bottom": 0.696,
+      "outline": [
+        0.563,
+        -0.908,
+        0.618,
+        -0.904,
+        4.94,
+        -0.503,
+        5.03,
+        -0.437,
+        5.1,
+        -0.34,
+        5.1,
+        0.23,
+        5.03,
+        0.307,
+        4.94,
+        0.381,
+        4.86,
+        0.419,
+        4.85,
+        0.423,
+        4.649,
+        0.482,
+        4.437,
+        0.528,
+        4.226,
+        0.569,
+        4.015,
+        0.604,
+        3.803,
+        0.635,
+        3.592,
+        0.663,
+        3.381,
+        0.689,
+        3.17,
+        0.713,
+        2.958,
+        0.737,
+        0.563,
+        0.999
+      ]
+    }
+  ],
+  "deicingWing": [],
+  "atlasSize": 2048,
+  "texelsPerMetre": 257.3919982910156,
+  "detail": "Textures/LowWingPiston_Detail.png",
+  "dirt": "Textures/LowWingPiston_Dirt.png",
+  "registrationDirt": "Textures/LowWingPiston_RegistrationDirt.png",
+  "logoUV": "Textures/LowWingPiston_LogoUV.png",
+  "logoBox": [
+    7.05,
+    7.78,
+    1.74,
+    2.24
+  ],
+  "groundShadow": "Textures/LowWingPiston_GroundShadow.png",
+  "font": "../Shared/RegistrationFont.regfont",
+  "defaultBody": "Textures/LowWingPiston_Body_Default.png",
+  "defaultRegistration": "Textures/LowWingPiston_Registration_Default.png",
+  "uvTemplate": "Textures/LowWingPiston_UV_Template.png",
+  "schemes": [
+    {
+      "style": "Classic",
+      "mask": "Textures/LowWingPiston_Mask_Classic.png",
+      "registrationBox": [
+        4.94,
+        6.13,
+        0.078,
+        0.22
+      ]
+    },
+    {
+      "style": "Swoosh",
+      "mask": "Textures/LowWingPiston_Mask_Swoosh.png",
+      "registrationBox": [
+        4.94,
+        6.13,
+        0.078,
+        0.22
+      ]
+    },
+    {
+      "style": "TwoTone",
+      "mask": "Textures/LowWingPiston_Mask_TwoTone.png",
+      "registrationBox": [
+        4.94,
+        6.13,
+        0.078,
+        0.22
+      ]
+    },
+    {
+      "style": "Trainer",
+      "mask": "Textures/LowWingPiston_Mask_Trainer.png",
+      "registrationBox": [
+        4.94,
+        6.13,
+        0.078,
+        0.22
+      ]
+    }
+  ],
+  "registration": {
+    "textureWidth": 896,
+    "halfHeight": 164,
+    "port": {
+      "crop": [
+        0.5835967063903809,
+        0.11075346916913986,
+        0.8137513399124146,
+        0.15239225327968597
+      ],
+      "k": 0.12890534696193165,
+      "tu": -0.0322193184027649,
+      "tv": 0.11149528112140111,
+      "sign": 1.0
+    },
+    "starboard": {
+      "crop": [
+        0.18759936094284058,
+        0.3425220847129822,
+        0.41775402426719666,
+        0.3841608762741089
+      ],
+      "k": 0.12890534993225905,
+      "tu": 1.0335700296184587,
+      "tv": 0.3432639101228646,
+      "sign": -1.0
+    }
+  },
+  "examples": [
+    {
+      "name": "SpruceGold",
+      "style": "Classic",
+      "baseColor": "#F5F2E8",
+      "color1": "#174A40",
+      "color2": "#BF9954",
+      "color3": "#174A40",
+      "registrationColor": "#174A40",
+      "registration": "C-FSLA",
+      "logo": ""
+    },
+    {
+      "name": "ClassicBlue",
+      "style": "Classic",
+      "baseColor": "#F4F4F1",
+      "color1": "#1B2A5C",
+      "color2": "#C9A13A",
+      "color3": "#1B2A5C",
+      "registrationColor": "#1B2A5C",
+      "registration": "N172CB",
+      "logo": ""
+    },
+    {
+      "name": "SunsetRed",
+      "style": "Classic",
+      "baseColor": "#F5F3EE",
+      "color1": "#A3141B",
+      "color2": "#3A3A3E",
+      "color3": "#A3141B",
+      "registrationColor": "#2B2B2E",
+      "registration": "N4721R",
+      "logo": "../../Liveries/Logos/SunsetRed.png"
+    },
+    {
+      "name": "SkyhawkSP",
+      "style": "Swoosh",
+      "baseColor": "#F6F6F4",
+      "color1": "#1D3E72",
+      "color2": "#8E98A6",
+      "color3": "#1D3E72",
+      "registrationColor": "#1D3E72",
+      "registration": "N652SP",
+      "logo": ""
+    },
+    {
+      "name": "FlightSchool",
+      "style": "Trainer",
+      "baseColor": "#F7F7F5",
+      "color1": "#C62026",
+      "color2": "#C62026",
+      "color3": "#1F2F57",
+      "registrationColor": "#1F2F57",
+      "registration": "N35FS",
+      "logo": ""
+    },
+    {
+      "name": "RegionalAir",
+      "style": "TwoTone",
+      "baseColor": "#F7F7F4",
+      "color1": "#B8BEC6",
+      "color2": "#0F6B4F",
+      "color3": "#0F6B4F",
+      "registrationColor": "#0F6B4F",
+      "registration": "N208RA",
+      "logo": "../../Liveries/Logos/RegionalAir.png"
+    },
+    {
+      "name": "BushYellow",
+      "style": "TwoTone",
+      "baseColor": "#F1B91C",
+      "color1": "#1E1E1E",
+      "color2": "#F7F7F4",
+      "color3": "#1E1E1E",
+      "registrationColor": "#1E1E1E",
+      "registration": "C-FBSH",
+      "logo": ""
+    },
+    {
+      "name": "BlossomPink",
+      "style": "Swoosh",
+      "baseColor": "#F8F6F5",
+      "color1": "#E2457F",
+      "color2": "#7D1A45",
+      "color3": "#E2457F",
+      "registrationColor": "#7D1A45",
+      "registration": "N520BP",
+      "logo": "../../Liveries/Logos/BlossomPink.png"
+    }
+  ],
+  "gear": {
+    "wheels": [
+      {
+        "name": "Wheel_Nose",
+        "position": [
+          -0.0,
+          0.182,
+          2.2
+        ],
+        "radius": 0.182,
+        "steerable": true
+      },
+      {
+        "name": "Wheel_L",
+        "position": [
+          -1.49,
+          0.237,
+          -0.0
+        ],
+        "radius": 0.237,
+        "steerable": false
+      },
+      {
+        "name": "Wheel_R",
+        "position": [
+          1.49,
+          0.237,
+          -0.0
+        ],
+        "radius": 0.237,
+        "steerable": false
+      }
+    ],
+    "steeringPivot": [
+      -0.0,
+      0.0,
+      2.2
+    ],
+    "maxSteeringAngle": 38.0
+  },
+  "performance": {
+    "takeoffDistance": 445.0,
+    "landingDistance": 385.0,
+    "maxTakeoffMass": 935.0,
+    "unpavedRunways": true,
+    "taxiSpeed": 6.5,
+    "rotateSpeed": 25.0,
+    "approachSpeed": 30.0,
+    "climbRate": 3.8,
+    "climbSpeed": 35.5
+  },
+  "points": [
+    {
+      "name": "Door_R",
+      "type": "PassengerDoor",
+      "position": [
+        0.4797,
+        0.91,
+        0.74
+      ],
+      "normal": [
+        1.0,
+        0.0,
+        -0.0
+      ],
+      "size": [
+        1.08,
+        0.97
+      ]
+    },
+    {
+      "name": "Baggage",
+      "type": "CargoDoor",
+      "position": [
+        0.3764,
+        0.94,
+        -1.3
+      ],
+      "normal": [
+        1.0,
+        0.0,
+        -0.0
+      ],
+      "size": [
+        0.44,
+        0.36
+      ]
+    },
+    {
+      "name": "Fuel_L",
+      "type": "Fuel",
+      "position": [
+        -1.32,
+        1.0013,
+        0.3677
+      ],
+      "normal": [
+        -0.0,
+        1.0,
+        -0.0
+      ],
+      "size": [
+        0.064,
+        0.064
+      ]
+    },
+    {
+      "name": "Fuel_R",
+      "type": "Fuel",
+      "position": [
+        1.32,
+        1.0013,
+        0.3677
+      ],
+      "normal": [
+        -0.0,
+        1.0,
+        -0.0
+      ],
+      "size": [
+        0.064,
+        0.064
+      ]
+    },
+    {
+      "name": "TowBar",
+      "type": "TowAttach",
+      "position": [
+        -0.0,
+        0.182,
+        2.32
+      ],
+      "normal": [
+        -0.0,
+        0.0,
+        1.0
+      ],
+      "size": [
+        0,
+        0
+      ]
+    },
+    {
+      "name": "Chock_Nose",
+      "type": "WheelChock",
+      "position": [
+        -0.0,
+        0.0,
+        2.2
+      ],
+      "normal": [
+        -0.0,
+        0.0,
+        1.0
+      ],
+      "size": [
+        0.124,
+        0
+      ]
+    },
+    {
+      "name": "Chock_L",
+      "type": "WheelChock",
+      "position": [
+        -1.49,
+        0.0,
+        -0.0
+      ],
+      "normal": [
+        -0.0,
+        0.0,
+        1.0
+      ],
+      "size": [
+        0.154,
+        0
+      ]
+    },
+    {
+      "name": "Chock_R",
+      "type": "WheelChock",
+      "position": [
+        1.49,
+        0.0,
+        -0.0
+      ],
+      "normal": [
+        -0.0,
+        0.0,
+        1.0
+      ],
+      "size": [
+        0.154,
+        0
+      ]
+    },
+    {
+      "name": "TieDown_L",
+      "type": "TieDown",
+      "position": [
+        -3.37,
+        1.0033,
+        0.0927
+      ],
+      "normal": [
+        -0.0,
+        -1.0,
+        -0.0
+      ],
+      "size": [
+        0,
+        0
+      ]
+    },
+    {
+      "name": "TieDown_R",
+      "type": "TieDown",
+      "position": [
+        3.37,
+        1.0033,
+        0.0927
+      ],
+      "normal": [
+        -0.0,
+        -1.0,
+        -0.0
+      ],
+      "size": [
+        0,
+        0
+      ]
+    },
+    {
+      "name": "TieDown_Tail",
+      "type": "TieDown",
+      "position": [
+        -0.0,
+        1.0981,
+        -4.13
+      ],
+      "normal": [
+        -0.0,
+        -1.0,
+        -0.0
+      ],
+      "size": [
+        0,
+        0
+      ]
+    }
+  ],
+  "cargoDoors": [
+    {
+      "point": "Baggage",
+      "transform": "CargoDoor_Baggage",
+      "pivot": [
+        0.4876,
+        1.12,
+        -1.08
+      ],
+      "axis": [
+        -0.0,
+        1.0,
+        -0.0
+      ],
+      "openAngle": -104.0,
+      "seconds": 2.2,
+      "holdDepth": 0.6021741390228272,
+      "holdSideMin": -0.22,
+      "holdSideMax": 0.22,
+      "holdHeight": 0.36,
+      "holdFloorStart": 0.05
+    }
+  ],
+  "lights": [
+    {
+      "name": "Nav_L",
+      "type": "Navigation",
+      "position": [
+        -5.115,
+        1.2163,
+        0.0825
+      ],
+      "direction": [
+        -0.82,
+        0.0,
+        0.57
+      ],
+      "spread": 110,
+      "color": [
+        1,
+        0.07,
+        0.04
+      ]
+    },
+    {
+      "name": "Nav_R",
+      "type": "Navigation",
+      "position": [
+        5.115,
+        1.2163,
+        0.0825
+      ],
+      "direction": [
+        0.82,
+        0.0,
+        0.57
+      ],
+      "spread": 110,
+      "color": [
+        0.12,
+        1,
+        0.31
+      ]
+    },
+    {
+      "name": "Nav_Tail",
+      "type": "Navigation",
+      "position": [
+        -0.0,
+        1.186,
+        -4.89
+      ],
+      "direction": [
+        -0.0,
+        0.0,
+        -1.0
+      ],
+      "spread": 140,
+      "color": [
+        1,
+        0.97,
+        0.91
+      ]
+    },
+    {
+      "name": "Strobe_L",
+      "type": "Strobe",
+      "position": [
+        -5.093,
+        1.2413,
+        0.0475
+      ],
+      "direction": [
+        -0.0,
+        1.0,
+        -0.0
+      ],
+      "spread": 360,
+      "color": [
+        1,
+        0.97,
+        0.91
+      ]
+    },
+    {
+      "name": "Strobe_R",
+      "type": "Strobe",
+      "position": [
+        5.093,
+        1.2413,
+        0.0475
+      ],
+      "direction": [
+        -0.0,
+        1.0,
+        -0.0
+      ],
+      "spread": 360,
+      "color": [
+        1,
+        0.97,
+        0.91
+      ]
+    },
+    {
+      "name": "Beacon",
+      "type": "Beacon",
+      "position": [
+        -0.0,
+        2.542,
+        -4.39
+      ],
+      "direction": [
+        -0.0,
+        1.0,
+        -0.0
+      ],
+      "spread": 360,
+      "color": [
+        1,
+        0.07,
+        0.04
+      ]
+    },
+    {
+      "name": "Landing",
+      "type": "Landing",
+      "position": [
+        -1.06,
+        0.8659,
+        0.9118
+      ],
+      "direction": [
+        -0.0,
+        0.0,
+        1.0
+      ],
+      "spread": 35,
+      "color": [
+        1,
+        0.97,
+        0.91
+      ]
+    },
+    {
+      "name": "Taxi",
+      "type": "Taxi",
+      "position": [
+        1.06,
+        0.8659,
+        0.9118
+      ],
+      "direction": [
+        -0.0,
+        0.0,
+        1.0
+      ],
+      "spread": 60,
+      "color": [
+        1,
+        0.97,
+        0.91
+      ]
+    }
+  ],
+  "exhausts": []
+}

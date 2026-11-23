@@ -65,9 +65,11 @@ the airport view to switch between day and night.
 ## Scope
 
 The executive spots accept aircraft tagged as business jets or general aviation, with a maximum 24 m
-wingspan, 30 m length and 8.7 m height. The current catalog supplies the Starling A4 for those bays.
-Private jet models are a separate aircraft addition. The airline bay accepts airliners up to 83 m
-wingspan, 88 m length and 26.7 m height. Hangar pushback for larger aircraft is simulated with the
+wingspan, 30 m length and 8.7 m height. The [Starling A2](../assets/LowWingPiston.md), Starling A4, [Starling A6](../assets/LightJet.md),
+[Starling B8](../assets/ExecutiveJet.md) and [Starling B12](../assets/FlagshipJet.md) are available to lease in
+these bays. The A6 can taxi to a paved Code A stand from the Code B executive hangar approach. The B8 and B12
+need a paved Code B or larger stand.
+The airline bay accepts airliners up to 83 m wingspan, 88 m length and 26.7 m height. Hangar pushback for larger aircraft is simulated with the
 validated ground path and traffic clearances. A stand that requires pushback still uses the airport's tug system.
 
 A moving flight cannot be reassigned through the ground-transfer controls. Land at an ordinary stand first,
@@ -99,9 +101,9 @@ parking centres the actual aircraft bounds inside the shell. Floor and throat el
 aircraft instead of leaving its wheels below the slab.
 
 `FlightKind.GroundTransfer` starts in `Ready` and finishes in `Parked`, without approach or takeoff phases.
-The planner reuses its stand-entry geometry through a temporary `StandLayout`; that layout is never added
-to the airport's stands or saved. `TaxiRoute.hangar` retains the real destination and `leavingHangar` retains
-door/floor ownership during exit. Replanning preserves the requested destination. An occupied bay only takes
+The planner reuses stand-entry geometry through a temporary `StandLayout` with an aircraft-specific stop
+at the bay centre. A wider taxiway leaves that stop in place. `TaxiRoute.hangar` retains the destination and
+`leavingHangar` retains door/floor ownership during exit. Replanning preserves the requested destination. An occupied bay only takes
 its own resident, and an incoming aircraft reserves the lease before movement starts.
 
 `AirportSaveData` appends `SmallHangar` to its allowed component kinds without changing earlier indices.

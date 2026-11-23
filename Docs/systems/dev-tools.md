@@ -193,7 +193,7 @@ How it's built:
 | Right-drag / middle-drag or WASD / scroll / Q E / F | orbit / pan / zoom / rotate / re-centre (`DevOrbitCamera`). Each wheel notch zooms 25% (`zoomStep`), eased (`zoomSharpness`), towards the point under the cursor (`zoomToCursor`) |
 | Click | Select tool: select an aircraft (`DevSandboxControls`), or a runway, taxiway / road section, depot, stand / de-icing bay or apron (`DevAirfieldTool`). The selection is outlined in amber and hover in white |
 | Delete / Backspace | remove the selection: the aircraft or the airfield one, whichever was selected last (`DevToolbar`) |
-| X, click (Shift+click) | delete tool: click anything to remove it (it's outlined in red first). Shift+click takes a taxiway's or road's whole run. Aircraft too |
+| X, click (Shift+click) | delete tool: click anything to remove it (it's outlined in red first). A taxiway, service road or public road goes a piece at a time, however long it was when laid: equal pieces of at most 40 m (`PublicRoadNetwork.DeletePiece`), the one under the pointer outlined, so the middle of a long line can be taken out. Shift+click takes the whole section of a public road, or a taxiway's or service road's whole run. Aircraft too |
 | Esc | end the line being laid, else back to Select, else deselect |
 | H | hide / show the HUD |
 | N, + / − | day / night, dusk |
@@ -309,8 +309,10 @@ signal prefab and kerb material; in the editor it finds them by path if a scene 
 
 ## 3D road integration (2026-11-15)
 
-The Road/Street inspector exposes Auto/Ground/Bridge/Tunnel, typed elevation, held +/- and Page Up/Down,
-and a horizontal bend slider. Tunnel mode opens the temporary underground cutaway; Surface view restores it.
+Road and Street choose their structures from the terrain and the drawn road height. The inspector's elevation
+stepper and Page Up / Page Down move by 5 m. Below zero the underground cutaway opens, and Surface view
+restores the terrain. Click an endpoint to place a straight stretch or drag sideways from the endpoint
+and release to place a curve. Shift still snaps the endpoint to angle and distance steps.
 Select/Delete use visible deck heights and public roads can be removed by section. Native graphics review:
 `AirCity.EditorTools.Game.PavementOwnershipReview.RunStructuresFromCommandLine`; warm cursor benchmark:
 `AirCity.EditorTools.Game.PavementOwnershipReview.RunPerformanceFromCommandLine`. Run in an isolated project

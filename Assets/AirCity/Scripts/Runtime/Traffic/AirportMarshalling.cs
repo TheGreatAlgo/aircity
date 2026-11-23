@@ -21,7 +21,8 @@ namespace AirCity.Traffic
         {
             foreach (var flight in flights)
                 if (flight.kind == FlightKind.Arrival && flight.Phase == FlightPhase.Taxi && flight.Route?.stand != null &&
-                    !flight.Route.stand.stand.DeIcing && flight.Route.path.Length-flight.Along < 100f && For(flight) == null)
+                    !flight.Route.stand.stand.DeIcing && !flight.Route.stand.stand.Owned &&
+                    flight.Route.path.Length-flight.Along < 100f && For(flight) == null)
                     crew.Add(new StandMarshaller(airport,flight));
             foreach (var worker in crew) worker.Step(dt);
             crew.RemoveAll(c => c.Phase == MarshallerPhase.Complete);

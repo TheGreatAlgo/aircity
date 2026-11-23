@@ -193,6 +193,128 @@ namespace AirCity.Traffic
             return PlanDeparture(a, null, out _, out problem);
         }
 
+        // ------------------------------------------------------------------ circuit training
+
+        /// <summary>A circuit follows the aircraft landing before it at least this far behind, and gives way to one
+        /// already on final that would land within this long after it (seconds).</summary>
+        const float PatternGap = 75f, PatternClose = 40f;
+
+        /// <summary>
+        /// Send an aircraft off for circuit training: it takes off, flies the visible circuit (crosswind, downwind,
+        /// base) back to the runway it left, touches down and takes off again `touchAndGoes` times, then lands to a
+        /// full stop and taxis to a stand (a flying school's aircraft: its own). Null, with the reason, if it can't.
+        /// </summary>
+        public Flight DepartForCircuits(Aircraft.Aircraft a, int touchAndGoes, out string problem)
+        {
+            if (a == null || a.type == null)
+            {
+                problem = "no aircraft";
+                return null;
+            }
+            if (!CanFlyCircuits(a.type, out problem)) return null;
+            var f = Depart(a, out problem);
+            if (f == null) return null;
+            f.PatternWork = true;
+            f.CircuitsLeft = Mathf.Max(0, touchAndGoes);
+            return f;
+        }
+
+        /// <summary>Is there a runway in use this type can take off from, land on and fly touch-and-goes on now?</summary>
+        public bool CanFlyCircuits(AircraftType type, out string problem)
+        {
+            problem = "the airport has no runway";
+            foreach (var r in airport.Runways)
+            {
+                if (!Usable(r, type, true, out _, out string why) || !Usable(r, type, false, out _, out why))
+                {
+                    problem = $"{r.Designation}: {why}";
+                    continue;
+                }
+                if (TouchAndGoFits(type, r))
+                {
+                    problem = null;
+                    return true;
+                }
+                problem = $"{r.Designation}: too short for touch-and-goes";
+            }
+            return false;
+        }
+
+        /// <summary>Room to touch down, roll a few seconds and take off again.</summary>
+        bool TouchAndGoFits(AircraftType type, Runway r)
+        {
+            var f = RunwayRules.LengthFactors(r.surface, airport.Condition, r.snow, r.grass);
+            if (f == null) return false;
+            return r.Length >= TouchdownDistance(type, r) + type.TouchdownSpeed * 4f + 0.35f * type.takeoffDistance * f.Value.x + 100f;
+        }
+
+        /// <summary>The way of a touch-and-go: the runway only, from the touchdown point.</summary>
+        TaxiRoute TouchAndGoRoute(AircraftType type, Runway r, bool fromStart)
+        {
+            var T = fromStart ? r.Axis2D : -r.Axis2D;
+            float touchdown = TouchdownDistance(type, r);
+            var gear = Geo.XZ(fromStart ? r.start : r.end) + T * touchdown;
+            float wb = Mathf.Max(type.Wheelbase, 0.3f);
+            var builder = new TaxiPath.Builder(gear + T * wb, T);
+            builder.Limit(type.TouchdownSpeed, Flight.TaxiBraking);
+            builder.Ahead(30f);
+            return new TaxiRoute { path = builder.Build(gear, wb, TaxiPlanner.Lateral), runway = r, fromStart = fromStart, touchdownS = touchdown, touchAndGo = true };
+        }
+
+        /// <summary>
+        /// For a flight turning into the circuit: its way down this time round, on the runway it is using. Another
+        /// touch-and-go while it has some to fly, else the landing and the way to its stand; if that can't be
+        /// planned it goes round again (twice at most). False when it can't come back to this runway at all (the
+        /// wind has turned, the runway has closed, no stand): it leaves the airfield.
+        /// </summary>
+        internal bool PlanCircuit(Flight f)
+        {
+            var r = f.Route != null ? f.Route.runway : null;
+            if (r == null || !System.Linq.Enumerable.Contains(airport.Runways, r)) return false;
+            bool fromStart = f.Route.fromStart;
+            ReleaseAll(f);
+            passed.Remove(f);
+            f.queuedSince = -1f;
+            if (UsedFromStart(r) != fromStart || !Usable(r, f.type, false, out _, out _)) return false;
+            TaxiRoute route = null;
+            TaxiPlanner.Start start = null;
+            bool touchAndGo = TouchAndGoFits(f.type, r);
+            if (f.CircuitsLeft > 0 && touchAndGo) route = TouchAndGoRoute(f.type, r, fromStart);
+            else
+            {
+                var stands = FreeStands(f.type, f);
+                if (stands.Count > 0)
+                {
+                    var planner = new TaxiPlanner(airport, f.type, this, f);
+                    var starts = planner.LandingStarts(r, fromStart, TouchdownDistance(f.type, r), LandingDecel(f.type, r));
+                    route = planner.Arrival(r, fromStart, starts, stands, out _, out start);
+                }
+                if (route == null && touchAndGo && f.patternTries++ < 2) route = TouchAndGoRoute(f.type, r, fromStart);
+            }
+            if (route == null) return false;
+            f.Route = route;
+            f.start = start;
+            f.kind = FlightKind.Arrival;
+            return true;
+        }
+
+        /// <summary>
+        /// For a circuit at the end of its downwind leg, which would touch down in `eta` seconds if it turned base
+        /// now: whoever lands first, too close ahead of it (or, already on final or base, just behind it), so it
+        /// flies on downwind and follows them in. Null: it turns base.
+        /// </summary>
+        internal string PatternWait(Flight f, float eta)
+        {
+            foreach (var g in flights)
+            {
+                if (g == f || g.Finished || g.Route == null || g.Route.runway != f.Route.runway) continue;
+                float due = g.DueIn;
+                if (due == float.MaxValue || due <= eta - PatternGap) continue;
+                if (due < eta || (g.CommittedToLand && due < eta + PatternClose)) return g.Name;
+            }
+            return null;
+        }
+
         TaxiRoute PlanDeparture(Aircraft.Aircraft a, Flight self, out TaxiPlanner.Start from, out string problem)
         {
             from = null;
@@ -286,7 +408,8 @@ namespace AirCity.Traffic
                 float edgeLen = net.EdgeLength(stand.edge);
                 if (!stand.TaxiOut)
                 {
-                    bool hand = type.maxTakeoffMass < LightMass && !AnyTugFor(type);
+                    // a school's own aircraft are always moved by hand on its flight line
+                    bool hand = type.maxTakeoffMass < LightMass && (!AnyTugFor(type) || stand.stand.Owned);
                     if (!hand && !AnyTugFor(type))
                     {
                         problem = "no tug here can push it back";
@@ -414,6 +537,19 @@ namespace AirCity.Traffic
             return flight;
         }
 
+        /// <summary>Taxi an aircraft over the taxiways to one stand (a flying school's aircraft back to its own).</summary>
+        public Flight TaxiToStand(Aircraft.Aircraft a, Stand destination, out string problem)
+        {
+            if (!GroundAvailable(a,out problem)) return null;
+            var layout=destination!=null ? airport.Taxiways.Layout(destination) : null;
+            if (layout==null || layout.edge==null) { problem="That stand is not connected to a taxiway."; return null; }
+            var route=PlanGroundTransfer(a,null,layout,null,out var start,out problem);
+            if (route==null) return null;
+            var flight=new Flight(this,FlightKind.GroundTransfer,a,route) { start=start };
+            flights.Add(flight);
+            return flight;
+        }
+
         bool GroundAvailable(Aircraft.Aircraft a,out string problem)
         {
             problem=a==null || a.type==null ? "Choose an aircraft." : FlightOf(a)!=null ? "The aircraft is already moving."
@@ -470,7 +606,7 @@ namespace AirCity.Traffic
             }
             else
             {
-                goals=FreeStands(a.type,self);
+                goals=FreeStands(a.type,self,a);
                 if (destination!=null) goals.RemoveAll(l=>l.stand!=destination.stand);
                 else goals.RemoveAll(l=>l.Contains(pos));
                 if (goals.Count==0) { problem="No free compatible aircraft stand is available."; return null; }
@@ -507,7 +643,7 @@ namespace AirCity.Traffic
                 problem = "no aircraft";
                 return null;
             }
-            var route = PlanArrival(a.type, null, out problem);
+            var route = PlanArrival(a.type, null, out problem, a);
             if (route == null) return null;
             var f = new Flight(this, FlightKind.Arrival, a, route) { start = lastStart };
             flights.Add(f);
@@ -520,11 +656,11 @@ namespace AirCity.Traffic
 
         TaxiPlanner.Start lastStart;
 
-        TaxiRoute PlanArrival(AircraftType type, Flight self, out string problem)
+        TaxiRoute PlanArrival(AircraftType type, Flight self, out string problem, Aircraft.Aircraft who = null)
         {
             var choices = Choices(type, false, out problem);
             if (choices.Count == 0) return null;
-            var stands = FreeStands(type, self);
+            var stands = FreeStands(type, self, who);
             if (stands.Count == 0)
             {
                 problem = "no free stand takes it";
@@ -572,19 +708,22 @@ namespace AirCity.Traffic
 
         /// <summary>The parking stands this type can use that nobody is on, heading for or still leaving (in front of it,
         /// pushed back or taxiing out).</summary>
-        List<StandLayout> FreeStands(AircraftType type, Flight self)
+        /// A flying school's flight line takes only that school's aircraft, each on its own stand, and they use no other.
+        List<StandLayout> FreeStands(AircraftType type, Flight self, Aircraft.Aircraft who = null)
         {
             var list = new List<StandLayout>();
             var net = airport.Taxiways;
             var t = airport.transform;
+            var home = FlyingSchool.HomeOf(self != null ? self.aircraft : who);
             foreach (var l in net.Layouts())
             {
+                if (home != null ? l.stand != home : l.stand.Owned) continue;
                 if (l.stand.DeIcing || l.edge == null || net.CheckStand(l.stand, type) != StandProblem.None ||
                     airport.Baggage.Reserved(l.stand)) continue;
                 bool taken = false;
                 foreach (var a in Aircraft.Aircraft.All)
                 {
-                    if (a == null || (self != null && a == self.aircraft)) continue;
+                    if (a == null || a == who || (self != null && a == self.aircraft)) continue;
                     var at = t.InverseTransformPoint(a.transform.position);
                     if (at.y < 3f && l.Contains(new Vector2(at.x, at.z))) taken = true;
                 }
@@ -606,9 +745,10 @@ namespace AirCity.Traffic
             float d = f.type.ApproachSpeed * FinalTime;
             bool departing = flights.Exists(g => g.kind == FlightKind.Departure && g.Route != null && g.Route.runway == r && g.OnGround && g.Phase <= FlightPhase.LinedUp);
             float spacing = ArrivalSpacing + (departing ? DepartureGap : 0f);
+            // behind whoever is on final for it, and behind circuits on their way round to it
             foreach (var g in flights)
-                if (g != f && g.Route != null && g.Route.runway == r && g.Phase == FlightPhase.Approach)
-                    d = Mathf.Max(d, g.ToTouchdown / Mathf.Max(g.type.ApproachSpeed, 1f) * f.type.ApproachSpeed + spacing * f.type.ApproachSpeed);
+                if (g != f && g.Route != null && g.Route.runway == r && g.DueIn < float.MaxValue)
+                    d = Mathf.Max(d, g.DueIn * f.type.ApproachSpeed + spacing * f.type.ApproachSpeed);
             return d;
         }
 
@@ -656,6 +796,7 @@ namespace AirCity.Traffic
             ReleaseAll(f);
             if (f.Route?.hangar != null) f.Route.hangar.StoreAircraft(f.aircraft);
             SmallHangar.OfResident(f.aircraft)?.CaptureResidentState();
+            FlyingSchool.OfTrainer(f.aircraft)?.OnTrainerParked(f.aircraft);
         }
 
         /// <summary>A departure (or an arrival that couldn't come back) has flown out of sight: it's taken away.</summary>
@@ -665,6 +806,9 @@ namespace AirCity.Traffic
             f.Phase = FlightPhase.Gone;
             if (f.aircraft == null) return;
             SmallHangar.OfResident(f.aircraft)?.OnResidentGone(f.aircraft);
+            // a flying school's aircraft is kept out of sight and comes back to land
+            var school = FlyingSchool.OfTrainer(f.aircraft);
+            if (school != null && school.OnTrainerGone(f.aircraft)) return;
             f.aircraft.Highlight = AircraftHighlight.None;
             if (Application.isPlaying) Object.Destroy(f.aircraft.gameObject);
             else f.aircraft.gameObject.SetActive(false);
@@ -827,10 +971,9 @@ namespace AirCity.Traffic
                 : (h.release - h.at) / taxi + 5f;
             need += Flight.DecisionTime;
             foreach (var g in flights)
-                if (g != f && g.kind == FlightKind.Arrival && g.Route.runway == h.runway && g.Phase == FlightPhase.Approach &&
-                    g.TimeToTouchdown < need)
+                if (g != f && g.kind == FlightKind.Arrival && g.Route != null && g.Route.runway == h.runway && g.DueIn < need)
                 {
-                    why = $"holding short of {name}: {g.Name} on final";
+                    why = $"holding short of {name}: {g.Name} {(g.Phase == FlightPhase.Approach ? "on final" : "in the circuit")}";
                     return false;
                 }
             return true;

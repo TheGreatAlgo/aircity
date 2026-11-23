@@ -85,6 +85,7 @@ namespace AirCity.World
                 else {next.AddMesh(builtAirport.Taxiways.SurfaceMesh,toWorld);airportOnly.AddMesh(builtAirport.Taxiways.SurfaceMesh,toWorld);}
                 next.AddMesh(builtAirport.ApronMesh,toWorld);airportOnly.AddMesh(builtAirport.ApronMesh,toWorld);
                 AddHangarFloors(next,builtAirport);AddHangarFloors(airportOnly,builtAirport);
+                AddFlyingSchools(next,builtAirport);AddFlyingSchools(airportOnly,builtAirport);
             }
             AddVisitorCentre(next);AddVisitorCentre(airportOnly);
             Rect? bounds=airportOnly.TriangleCount>0?airportOnly.Bounds:(Rect?)null;
@@ -128,9 +129,20 @@ namespace AirCity.World
                 }
             }
         }
+        static void AddFlyingSchools(BuiltSurfaceMap map,Airport airport,bool foundation=true)
+        {
+            // Terrace, forecourt, car park and driveway throat own the ground; the flight line's stands already do.
+            var matrix=airport.transform.localToWorldMatrix;
+            foreach(var school in airport.FlyingSchools)
+                foreach(var polygon in FlyingSchoolLayout.PavedPolygons(school.Origin,school.Heading,school.Lane,school.DrivewaySide))
+                {
+                    Vector3 P(int index)=>matrix.MultiplyPoint3x4(new Vector3(polygon[index].x,0f,polygon[index].y));
+                    for(int i=1;i+1<polygon.Length;i++)map.AddTriangle(new BuiltSurfaceMap.Triangle(P(0),P(i),P(i+1),foundation));
+                }
+        }
         static void AddOwnership(BuiltSurfaceMap map,IReadOnlyList<BuiltSurfaceMap.Triangle> source,Matrix4x4 matrix,bool foundation=true)
         {
-            foreach(var t in source)map.AddTriangle(new BuiltSurfaceMap.Triangle(matrix.MultiplyPoint3x4(t.a),matrix.MultiplyPoint3x4(t.b),matrix.MultiplyPoint3x4(t.c),foundation&&t.foundation!=0));
+            foreach(var t in source)map.AddTriangle(t.Transform(matrix, foundation));
         }
         void BindBuiltSurfaces()
         {

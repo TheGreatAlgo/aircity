@@ -83,6 +83,21 @@ namespace AirCity.World
         internal void SetInlandSurface(float[] surface)
         { inlandSurfaceSource = waterHeights; inlandSurfaceConditioned = generatorVersion >= 6; inlandSurface = surface; }
         public float SeaLevel => seaLevel;
+        internal float RiverSurfaceHalfWidth => generatorVersion < 3 ? 120f : River.halfWidth + 24f;
+
+        /// <summary>Road grading keeps natural water beds and the dry bank over every rendered water surface.</summary>
+        internal float RetainShore(Vector2 point, float original, float graded)
+        {
+            if (original == graded) return original;
+            float level = Mathf.Max(HasOcean ? SeaLevel : 0f, InlandWaterHeight(point));
+            if (HasRiver && Mathf.Abs(point.x - RiverX(point.y)) <= RiverSurfaceHalfWidth + Spacing)
+                level = Mathf.Max(level, WaterHeight(point.y));
+            if (level <= 0f) return graded;
+            // Allow for the ocean mesh's surface bias and wave motion. Keep a naturally lower bank at its saved height.
+            if (original <= level + .15f) return original;
+            return Mathf.Max(graded, Mathf.Min(original, level + .25f));
+        }
+
         public bool IsWater(Vector2 p)
         {
             if (HasOcean && Height(p) <= SeaLevel + .15f ||
@@ -112,6 +127,21 @@ namespace AirCity.World
             if(HasOcean)height=Mathf.Max(height,SeaLevel);
             if(HasRiver&&Mathf.Abs(p.x-RiverX(p.y))<River.halfWidth)height=Mathf.Max(height,WaterHeight(p.y));
             return Mathf.Max(height,InlandWaterHeight(p));
+        }
+        internal float? BridgeWaterAt(Vector2 point)
+        {
+            float bed=Height(point);
+            float? surface=null;
+            if(HasOcean&&bed<=SeaLevel+.15f)surface=SeaLevel;
+            float inland=InlandWaterHeight(point);
+            if(inland>0f&&bed<=inland+.15f)surface=Mathf.Max(surface??inland,inland);
+            // The legacy river is drawn wider than its authored channel to reach the irregular banks.
+            if(HasRiver&&Mathf.Abs(point.x-RiverX(point.y))<=RiverSurfaceHalfWidth)
+            {
+                float river=WaterHeight(point.y);
+                if(bed<=river+.15f)surface=Mathf.Max(surface??river,river);
+            }
+            return surface;
         }
         public Rect RegionBounds => new Rect(-Size * .5f, -Size * .5f, Size, Size);
         public string PresetName => preset == RegionPreset.Mountains ? "Alpine Highlands" : preset == RegionPreset.Tropical ? "Volcanic Lagoon" :

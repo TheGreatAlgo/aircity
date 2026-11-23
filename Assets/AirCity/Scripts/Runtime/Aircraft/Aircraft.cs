@@ -26,6 +26,8 @@ namespace AirCity.Aircraft
         public const string LayerName = "Aircraft";
 
         public AircraftType type;
+        public AircraftAirstair Airstair => type != null && type.airstair.seconds > 0f ? GetComponent<AircraftAirstair>() : null;
+
         public AircraftCargoDoors CargoDoors
         {
             get

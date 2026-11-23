@@ -65,10 +65,20 @@ namespace AirCity.Dev
             var key=(chainNode,end,NewWidth,surface,road,airport.LayoutVersion,game.State.funds);
             if(key==airsideQuoteKey){roadProblem=airsideQuoteProblem;return;}
             airsideQuoteKey=key;
-            var from=airport.Taxiways.At(chainNode)+Geo.XZ(airport.transform.position);var to=Geo.XZ(end)+Geo.XZ(airport.transform.position);
+            var start = airport.Taxiways.Node(chainNode).position;
+            var min = Vector2.Min(Geo.XZ(start), Geo.XZ(end));
+            var max = Vector2.Max(Geo.XZ(start), Geo.XZ(end));
+            if (road && roadBuildSettings.bend != 0f)
+            {
+                var control = roadBuildSettings.Shape(start, end).control;
+                min = Vector2.Min(min, control);
+                max = Vector2.Max(max, control);
+            }
+            var origin = Geo.XZ(airport.transform.position);
             // Include the previous bend's approaches and the largest possible junction flare in the prop query.
-            const float margin=350f;
-            var bounds=Rect.MinMaxRect(Mathf.Min(from.x,to.x)-margin,Mathf.Min(from.y,to.y)-margin,Mathf.Max(from.x,to.x)+margin,Mathf.Max(from.y,to.y)+margin);
+            const float margin = 350f;
+            var bounds = Rect.MinMaxRect(min.x + origin.x - margin, min.y + origin.y - margin,
+                max.x + origin.x + margin, max.y + origin.y + margin);
             AirsideTerrainPlan.TryCreate(game.State,airport,chainNode,end,lineSnap.node,lineSnap.edge,lineSnap.runway,NewWidth,
                 road && surface==PavementSurface.Grass?PavementSurface.Asphalt:surface,road?RoadClass.Service:RoadClass.None,
                 out airsideTerrain,out roadProblem,game.valley.GroundCandidates(bounds),road?(RoadBuildSettings?)roadBuildSettings:null);

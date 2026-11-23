@@ -21,6 +21,12 @@ namespace AirCity.Dev
         string previousFocus = "";
         readonly Dictionary<string, (string text, Action<float> change)> numberFields = new Dictionary<string, (string, Action<float>)>();
         static float U(float value) => GateDesignerGui.U(value);
+        static readonly AirfieldWorkspaceGui.Tab[] TerminalTabs =
+        {
+            new AirfieldWorkspaceGui.Tab("Structure", "structure"),
+            new AirfieldWorkspaceGui.Tab("Appearance", "gates"),
+            new AirfieldWorkspaceGui.Tab("Baggage", "baggage")
+        };
         JetBridge SelectedBridge => Stand == null || Stand.bridges.Count == 0 ? null : Stand.bridges[Mathf.Clamp(bridgeIndex, 0, Stand.bridges.Count - 1)];
         BridgeHead SelectedHead => Stand?.BridgeHeads.ElementAtOrDefault(headIndex);
         Terminal SelectedTerminal => Airport?.terminals.ElementAtOrDefault(terminalIndex);
@@ -56,12 +62,35 @@ namespace AirCity.Dev
             numberFields.Clear();
             float width = Mathf.Min(U(420), Screen.width - U(36));
             float preferredHeight = 790;
-            Panel = new Rect(Screen.width - U(18) - width, U(18), width, Mathf.Min(U(preferredHeight), Screen.height - U(108)));
+            Panel = terminalWorkspace
+                ? AirfieldWorkspaceGui.PanelRect(airfield.game != null ? Game.CareerHud.ContentTop : AirfieldWorkspaceGui.Margin, 650)
+                : new Rect(Screen.width - U(18) - width, U(18), width, Mathf.Min(U(preferredHeight), Screen.height - U(108)));
             DrawWorld(airfield.GetComponent<Camera>());
-            GateDesignerGui.Panel(Panel);
             if (Event.current.type == EventType.MouseDown && !Panel.Contains(Event.current.mousePosition)) GUI.FocusControl(null);
-            var area = new Rect(Panel.x + U(24), Panel.y + U(20), Panel.width - U(48), Panel.height - U(40));
             var previousSkin = GUI.skin; GUI.skin = GateDesignerGui.Skin;
+            if (terminalWorkspace) DrawTerminalWorkspace();
+            else DrawGateWorkspace();
+            GUI.skin = previousSkin;
+            string focus = GUI.GetNameOfFocusedControl();
+            DevGui.KeyboardCaptured = focus.StartsWith(FocusPrefix, StringComparison.Ordinal);
+            if (previousFocus != focus && numberFields.ContainsKey(previousFocus) && drafts.ContainsKey(previousFocus + "-dirty"))
+            { string field = previousFocus; Queue(() => CommitNumberField(field)); }
+            previousFocus = focus;
+            if (pending != null)
+            {
+                var action = pending; pending = null; Try(action);
+                if (Event.current.type != EventType.Layout && Event.current.type != EventType.Repaint) GUIUtility.ExitGUI();
+            }
+            GameObject template = traffic != null && Aircraft != null ? traffic.TemplateFor(Aircraft) : null;
+            if (template == null && Aircraft != null)
+                foreach (var a in AirCity.Aircraft.Aircraft.All) if (a.type == Aircraft) { template = a.gameObject; break; }
+            RefreshPreview(template);
+        }
+
+        void DrawGateWorkspace()
+        {
+            GateDesignerGui.Panel(Panel);
+            var area = new Rect(Panel.x + U(24), Panel.y + U(20), Panel.width - U(48), Panel.height - U(40));
             GUILayout.BeginArea(area);
             Header();
             GUILayout.Space(U(18));
@@ -82,21 +111,48 @@ namespace AirCity.Dev
             GateDesignerGui.Fill(new Rect(footer.x, footer.y, footer.width, U(1)), GateDesignerGui.Border, 0);
             Footer(new Rect(footer.x, footer.y + U(8), footer.width, U(40)));
             GUILayout.EndArea();
-            GUI.skin = previousSkin;
-            string focus = GUI.GetNameOfFocusedControl();
-            DevGui.KeyboardCaptured = focus.StartsWith(FocusPrefix, StringComparison.Ordinal);
-            if (previousFocus != focus && numberFields.ContainsKey(previousFocus) && drafts.ContainsKey(previousFocus + "-dirty"))
-            { string field = previousFocus; Queue(() => CommitNumberField(field)); }
-            previousFocus = focus;
-            if (pending != null)
+        }
+
+        void DrawTerminalWorkspace()
+        {
+            var layout = new AirfieldWorkspaceGui.Layout(Panel);
+            var terminal = SelectedTerminal;
+            void Done() => Queue(() => { GUI.FocusControl(null); Close(); });
+            AirfieldWorkspaceGui.Frame(layout, "Terminal Builder", terminal != null ? "Terminal " + (terminalIndex + 1) : "Terminal",
+                "terminal", Done, pause ? "Paused" : "Live", () => Queue(() => SetPaused(!pause)));
+            int page = tab == 2 ? 1 : tab == 3 ? 2 : 0;
+            AirfieldWorkspaceGui.Navigation(layout, TerminalTabs, page, next => Queue(() =>
             {
-                var action = pending; pending = null; Try(action);
-                if (Event.current.type != EventType.Layout && Event.current.type != EventType.Repaint) GUIUtility.ExitGUI();
+                tab = next == 0 ? 0 : next + 1;
+                scroll = Vector2.zero; drafts.Clear(); familyPicker = false;
+                GUI.FocusControl(null);
+            }));
+
+            GUILayout.BeginArea(layout.Body);
+            scroll = GUILayout.BeginScrollView(scroll, false, false, GUIStyle.none, GUI.skin.verticalScrollbar, GUIStyle.none);
+            GUILayout.BeginHorizontal();
+            GUILayout.Space(U(14));
+            GUILayout.BeginVertical(GUILayout.Width(layout.Body.width - U(46)));
+            GUILayout.Space(U(12));
+            if (terminal == null) Notice("Select a terminal to edit.");
+            else if (tab == 2) ExteriorPanel(terminal.exterior, terminal.EdgeCount);
+            else if (tab == 3) TerminalBaggage(terminal);
+            else
+            {
+                if (Airport.terminals.Count > 1) ChooseTerminal(terminal);
+                TerminalStructure(terminal);
             }
-            GameObject template = traffic != null && Aircraft != null ? traffic.TemplateFor(Aircraft) : null;
-            if (template == null && Aircraft != null)
-                foreach (var a in AirCity.Aircraft.Aircraft.All) if (a.type == Aircraft) { template = a.gameObject; break; }
-            RefreshPreview(template);
+            if (!string.IsNullOrEmpty(Message)) Notice(Message);
+            GUILayout.Space(U(10));
+            GUILayout.EndVertical();
+            GUILayout.EndHorizontal();
+            GUILayout.EndScrollView();
+            GUILayout.EndArea();
+
+            var footer = layout.Footer;
+            GUI.Label(new Rect(footer.x + U(14), footer.y, footer.width - U(115), footer.height),
+                "Changes apply as you edit", DevGui.Small);
+            if (DevGui.PrimaryButton(new Rect(footer.xMax - U(90), footer.y + U(9), U(76), U(32)), "Done")) Done();
         }
 
         void Footer(Rect rect)
@@ -131,7 +187,7 @@ namespace AirCity.Dev
             if (tool.Tool == DevTool.Stand) Label("PLACING A NEW PARKING STAND");
             else if (tool.Tool == DevTool.Bridge) Label(tool.BridgeTarget ?? "NEW CONNECTION · choose a wall, then a gate");
             else if (Airport.Taxiways.stands.Count > 0)
-                Selector(null, Airport.Taxiways.stands.Where(x => !x.DeIcing).ToList(), Stand, x => x.Name, next =>
+                Selector(null, Airport.Taxiways.stands.Where(x => !x.DeIcing && !x.Owned).ToList(), Stand, x => x.Name, next =>
                 { Stand = next; Aircraft = DefaultAircraft(); tool.SelectStand(next); bridgeIndex = headIndex = 0; NewBridgeMode = Stand.bridges.Count == 0; drafts.Clear(); preview.Dispose(); });
         }
         void Navigation()
@@ -335,22 +391,38 @@ namespace AirCity.Dev
         }
         void TerminalPanel()
         {
-            Section("Terminal building");
             var terminal = SelectedTerminal;
             if (terminal == null) { Notice("Use the Terminal tool to place a building in the airport."); return; }
+            ChooseTerminal(terminal);
+            TerminalStructure(terminal);
+            Notice("Choose Appearance for facade styles, wall angles and shaped roofs.");
+            if (Button("Edit facade appearance")) Queue(() => { tab = 2; scroll = Vector2.zero; });
+            TerminalBaggage(terminal);
+        }
+
+        void ChooseTerminal(Terminal terminal)
+        {
             Selector(null, Airport.terminals, terminal, x => "Terminal " + (Airport.terminals.IndexOf(x) + 1), next => { terminalIndex = Airport.terminals.IndexOf(next); drafts.Clear(); });
+        }
+
+        void TerminalStructure(Terminal terminal)
+        {
+            Section("Building dimensions");
             // Corridors board at a floor: keep that floor when storeys change height or count.
             void KeepingBoarding(Action<Terminal> edit) => EditTerminal(terminal, t => { int floor = t.BoardingFloor(); edit(t); t.SetBoardingFloor(floor); });
             Number("Storeys", "terminal-count", terminal.floors, value => KeepingBoarding(t => t.floors = Mathf.Clamp(Mathf.RoundToInt(value), 1, Terminal.MaxFloors)), 1);
             for (int i = 0; i < terminal.floors; i++)
             { int f = i; Number("Floor " + (i + 1) + " height (m)", "terminal-height-" + i, terminal.StoreyHeight(i), value => KeepingBoarding(t => t.SetStoreyHeight(f, value))); }
+            Section("Connections");
             if (terminal.floors >= 2)
                 Selector("Boarding floor", Enumerable.Range(1, terminal.floors - 1).ToList(), terminal.BoardingFloor(),
                     f => "Floor " + (f + 1) + " · " + terminal.FloorElevation(f).ToString("0.##", CultureInfo.InvariantCulture) + " m",
                     f => EditTerminal(terminal, t => t.SetBoardingFloor(f)));
             else Notice("Add a storey to give corridors a floor to board at.");
-            Notice("Choose Appearance for facade styles, wall angles and shaped roofs.");
-            if (Button("Edit facade appearance")) Queue(() => { tab = 2; scroll = Vector2.zero; });
+        }
+
+        void TerminalBaggage(Terminal terminal)
+        {
             Section("Baggage connection");
             var facility=Airport.Baggage.TerminalFacility(terminal);
             Note($"Check-in queue {facility.CheckIn.Count} · Reclaimed {facility.Delivered}");
@@ -361,6 +433,7 @@ namespace AirCity.Dev
             Selector("Reclaim floor",levels,facility.ReclaimFloor,FloorName,
                 f=>Airport.Baggage.SetTerminalBaggageFloors(terminal,facility.CheckInFloor,f,out _));
             var halls=Airport.GetComponentsInChildren<BaggageDepot>().Where(d=>d.isActiveAndEnabled).ToList();
+            if (halls.Count == 0) Note("Build a baggage hall to connect this terminal.");
             foreach (var hall in halls)
             {
                 Label(hall.name);
@@ -686,7 +759,7 @@ namespace AirCity.Dev
             float stepFrom = float.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out float edited) && !float.IsNaN(edited) && !float.IsInfinity(edited) ? edited : value;
             var r = GUILayoutUtility.GetRect(0, U(40), GUILayout.ExpandWidth(true));
             GateDesignerGui.Fill(r, Color.white, 8); GateDesignerGui.Outline(r, GateDesignerGui.Border);
-            bool down = GateDesignerGui.Button(new Rect(r.x + U(4), r.y + U(4), U(34), r.height - U(8)), "−");
+            bool down = GateDesignerGui.Button(new Rect(r.x + U(4), r.y + U(4), U(34), r.height - U(8)), "-");
             bool up = GateDesignerGui.Button(new Rect(r.xMax - U(38), r.y + U(4), U(34), r.height - U(8)), "+");
             bool stepped = down || up;
             if (stepped) Queue(() => { change(stepFrom + (up ? step : -step)); drafts.Clear(); GUI.FocusControl(null); });

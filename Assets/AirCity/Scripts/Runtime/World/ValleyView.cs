@@ -136,7 +136,7 @@ namespace AirCity.World
             if (repaint) { PaintRoads(); RebuildGroundCover(); } RebuildForest();
         }
 
-        /// <summary>How far a road's grading (31 m), ground paint (about 53 m) and kept-clear ground cover reach from it.</summary>
+        /// <summary>Roadbed grading plus the affected surface paint and ground cover.</summary>
         public const float RoadInfluence = PublicRoadGeometry.EarthworkReach + 32f;
 
         /// <summary>
@@ -221,10 +221,10 @@ namespace AirCity.World
         public void RefreshLand(Rect brushBounds)
         {
             if (data == null || World == null) return;
-            if (roadNetwork.segments.Any(e => e.structure != RoadStructure.Ground && roadNetwork.Path(e).Bounds(e.Type.FullWidth).Overlaps(brushBounds)))
+            if (roadNetwork.segments.Any(e => roadNetwork.Path(e).Bounds(e.Type.FullWidth+8f).Overlaps(brushBounds)))
                 BuildRoadGeometry(false, brushBounds);
-            if (builtAirport != null && builtAirport.Taxiways.edges.Any(e => e.structure != RoadStructure.Ground &&
-                builtAirport.Taxiways.Path(e).Bounds(e.width).Overlaps(new Rect(brushBounds.position - new Vector2(builtAirport.transform.position.x,builtAirport.transform.position.z),brushBounds.size))))
+            if (builtAirport != null && builtAirport.Taxiways.edges.Any(e => e.IsRoad &&
+                builtAirport.Taxiways.Path(e).Bounds(e.width+8f).Overlaps(new Rect(brushBounds.position - new Vector2(builtAirport.transform.position.x,builtAirport.transform.position.z),brushBounds.size))))
                 builtAirport.Taxiways.RefreshStructures();
             // A changed source sample influences the finer native grid for one whole source cell around it.
             float interpolation = data.heightmapResolution > ValleyWorld.Resolution ? World.Spacing : 0f;
@@ -233,7 +233,7 @@ namespace AirCity.World
             var source = TerrainHeightmap.SourceBounds(region, data.heightmapResolution);
             SyncBuiltSurfaces(brushBounds,brushBounds);
             var coarse = roadGeometry.GradedHeightRegion(World, source);
-            var h = TerrainHeightmap.Resample(coarse, source, region, data.heightmapResolution, ValleyWorld.HeightRange, builtSurfaces);
+            var h = TerrainHeightmap.Resample(coarse, source, region, data.heightmapResolution, ValleyWorld.HeightRange, builtSurfaces, World);
             data.SetHeights(region.x, region.y, h);
             // Bilinear height interpolation reaches one height sample beyond the actual edit.
             float margin = World.Spacing;
@@ -247,7 +247,7 @@ namespace AirCity.World
             var target = new RectInt(0, 0, data.heightmapResolution, data.heightmapResolution);
             SyncBuiltSurfaces();
             var roadbed = roadGeometry.GradedHeightRegion(World, source);
-            var h = TerrainHeightmap.Resample(roadbed, source, target, data.heightmapResolution, ValleyWorld.HeightRange, builtSurfaces);
+            var h = TerrainHeightmap.Resample(roadbed, source, target, data.heightmapResolution, ValleyWorld.HeightRange, builtSurfaces, World);
             data.SetHeights(0, 0, h);
         }
 
@@ -258,7 +258,7 @@ namespace AirCity.World
             {
                 float z0 = -ValleyWorld.Size * .5f + i * ValleyWorld.Size / 512f, z1 = z0 + ValleyWorld.Size / 512f;
                 float x0 = World.RiverX(z0), x1 = World.RiverX(z1);
-                float width = World.generatorVersion < 3 ? 120f : World.River.halfWidth + 24f;
+                float width = World.RiverSurfaceHalfWidth;
                 mesh.Quad(new Vector3(x0 - width, World.WaterHeight(z0), z0), new Vector3(x1 - width, World.WaterHeight(z1), z1),
                     new Vector3(x1 + width, World.WaterHeight(z1), z1), new Vector3(x0 + width, World.WaterHeight(z0), z0));
             }
@@ -289,12 +289,12 @@ namespace AirCity.World
                 RoadMesh("Lanes and stop bars",geometry.markings,ruralRoad!=null?ruralRoad.markings:sceneryMaterial,chunk.transform);
                 RoadMesh("Bridges and supports",geometry.structures,roadStructureMaterial,chunk.transform);
                 RoadMesh("Kerbs and barriers",geometry.kerbMesh,kerb!=null?kerb:sceneryMaterial,chunk.transform);
-                RoadMesh("Median islands",geometry.medianGrass,medianGrass!=null?medianGrass:sceneryMaterial,chunk.transform);
+                RoadMesh("Median islands",geometry.medianGrass,ruralRoad!=null&&ruralRoad.medianGrass!=null?ruralRoad.medianGrass:medianGrass!=null?medianGrass:sceneryMaterial,chunk.transform);
                 if(part.junction)
                 {
                     var local=chunk.AddComponent<PublicRoadSignalsView>();local.Build(roadNetwork,trafficSignalPrefab,geometry.StopLine,new HashSet<int>{part.id});local.SetClock(roadClock);
                 }
-            },force,terrainChange);
+            },force,terrainChange,World.RetainShore,World.BridgeWaterAt);
             roadGeometry=roadChunks.Geometry;roadSignals.Clear();
             foreach(var part in roadChunks.Parts)if(part.root!=null)
             {var signal=part.root.GetComponent<PublicRoadSignalsView>();if(signal!=null)roadSignals.Add(signal);}

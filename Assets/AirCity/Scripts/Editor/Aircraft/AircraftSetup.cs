@@ -44,6 +44,7 @@ namespace AirCity.EditorTools.Aircraft
                 else
                 {
                     InstallCargoDoors(prefabPath);
+                    InstallAirstair(type, prefabPath);
                     InstallAfterburner(type, prefabPath);
                 }
             }
@@ -63,6 +64,19 @@ namespace AirCity.EditorTools.Aircraft
             try
             {
                 root.AddComponent<AircraftCargoDoors>();
+                PrefabUtility.SaveAsPrefabAsset(root, path);
+            }
+            finally { PrefabUtility.UnloadPrefabContents(root); }
+        }
+
+        static void InstallAirstair(AircraftType type, string path)
+        {
+            if (type.airstair.seconds <= 0f ||
+                AssetDatabase.LoadAssetAtPath<GameObject>(path).GetComponent<AircraftAirstair>() != null) return;
+            var root = PrefabUtility.LoadPrefabContents(path);
+            try
+            {
+                root.AddComponent<AircraftAirstair>();
                 PrefabUtility.SaveAsPrefabAsset(root, path);
             }
             finally { PrefabUtility.UnloadPrefabContents(root); }
@@ -146,6 +160,7 @@ namespace AirCity.EditorTools.Aircraft
 
                 inst.AddComponent<AircraftControlSurfaces>().FindParts();
                 inst.AddComponent<AircraftCargoDoors>();
+                if (type.airstair.seconds > 0f) inst.AddComponent<AircraftAirstair>();
                 inst.AddComponent<AircraftGroundMotion>().FindParts(type);
                 foreach (var t in inst.GetComponentsInChildren<Transform>(true))
                     if ((t.name.StartsWith("Propeller") || t.name.StartsWith("Fan_")) && t.GetComponent<PropellerSpinner>() == null)

@@ -81,7 +81,6 @@ void DepthNormalOnlyFragment(
 #endif
     )
 {
-    AirCityClipBuiltSurface(IN.positionWS);
     #ifdef _ALPHATEST_ON
         ClipHoles(IN.uvMainAndLM.xy);
     #endif
@@ -118,7 +117,7 @@ void DepthNormalOnlyFragment(
     #if defined(_WRITE_SMOOTHNESS)
         half4 hasMask = half4(_LayerHasMask0, _LayerHasMask1, _LayerHasMask2, _LayerHasMask3);
         half4 masks[4];
-        ComputeMasks(masks, hasMask, IN.uvSplat01, IN.uvSplat23);
+        ComputeMasks(masks, hasMask, IN.uvSplat01, IN.uvSplat23, splatControl);
 
         half weight;
         half4 mixedDiffuse;
@@ -130,6 +129,8 @@ void DepthNormalOnlyFragment(
 
         outNormalWS.a = smoothness;
     #endif
+
+    AirCityClipBuiltSurface(IN.positionWS);
 
     #ifdef _WRITE_RENDERING_LAYERS
     outRenderingLayers = EncodeMeshRenderingLayer();

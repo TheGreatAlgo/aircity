@@ -90,50 +90,155 @@ namespace AirCity.Tests.World
             var graph=Road(style,(new Vector3(-300,0,0),RoadStructure.Ground),(new Vector3(-100,0,0),RoadStructure.Ground),
                 (new Vector3(0,-5,0),RoadStructure.Tunnel),(new Vector3(300,-5,0),RoadStructure.Tunnel));
             var g=Geometry(graph,_=>6f);var walls=g.structures.vertices;
-            Assert.Less(g.DrawnGround(new Vector2(-95,reach+thick)),.5f);Assert.AreEqual(6f,g.DrawnGround(new Vector2(250,reach+thick)),.01f);
+            Assert.Less(g.DrawnGround(new Vector2(-95,reach+thick)),5f,"The approach cuts into the saved 6 m terrain.");
+            Assert.AreEqual(6f,g.DrawnGround(new Vector2(250,reach+thick)),.01f);
             float Top(float x){float top=float.MinValue;foreach(var p in walls)if(Mathf.Abs(p.x-x)<1.3f&&Mathf.Abs(Mathf.Abs(p.z)-reach-thick)<.05f)top=Mathf.Max(top,p.y);return top;}
-            // the open approach: with 6 m of ground over a road going down, the tunnel is under ground within 30 m
-            using var mask=Opened(g);
-            Assert.IsTrue(mask.Contains(new Vector2(-82,0)));Assert.IsFalse(mask.Contains(new Vector2(-60,0)),"Covered from where the ground is 7 m above the road.");
-            for(float x=-95;x<=-80;x+=2.5f)
+            using var mask = Opened(g);
+            Assert.IsTrue(mask.Contains(new Vector2(-96, 0)));
+            Assert.IsFalse(mask.Contains(new Vector2(-60, 0)), "The preserved surface is above the tunnel roof.");
+            for (float x = -95; x <= -85; x += 2.5f)
+                Assert.LessOrEqual(Top(x), -5f * Mathf.InverseLerp(-100, 0, x) + .18f + RoadStructureBuilder.TunnelExcavationHeight + .8f);
+            Assert.Less(Top(-95),6f,"The wall follows the cut at this station, below the saved terrain.");
+        }
+
+        [TestCase(PublicRoadStyle.Rural)]
+        [TestCase(PublicRoadStyle.Avenue)]
+        public void OpenTunnelWallClosesBelowTheGroundShoulder(PublicRoadStyle style)
+        {
+            var graph = Road(style, (new Vector3(-40f, 0f, 0f), RoadStructure.Ground),
+                (Vector3.zero, RoadStructure.Ground), (new Vector3(40f, 0f, 0f), RoadStructure.Tunnel),
+                (new Vector3(80f, 0f, 0f), RoadStructure.Ground));
+            var geometry = Geometry(graph, p => .05f * p.y);
+            const float pavement = .18f;
+            float reach = Reach(style);
+            float wallMiddle = reach + RoadStructureBuilder.WallThickness * .5f;
+            root = new GameObject("Open tunnel wall joins");
+            var mesh = root.AddComponent<MeshCollider>();
+            mesh.sharedMesh = geometry.structures;
+            Physics.SyncTransforms();
+
+            foreach (float side in new[] { -1f, 1f })
+            foreach (float end in new[] { 0f, 40f })
             {
-                // Top looks 1.3 m either way along the wall, and the graded ground is steep here: compare like with like
-                float ground=g.DrawnGround(new Vector2(x,reach+thick)),highest=Mathf.Max(ground,g.DrawnGround(new Vector2(x-1.3f,reach+thick)),g.DrawnGround(new Vector2(x+1.3f,reach+thick)));
-                Assert.Less(Top(x),Mathf.Max(highest,-5f*Mathf.InverseLerp(-100,0,x)+.33f)+RoadStructureBuilder.Coping+.25f,"The wall stands clear of the drawn ground at x = "+x);
-                Assert.Greater(Top(x),ground-.05f,"The drawn ground comes over the wall at x = "+x);
+                var direction = end == 0f ? Vector3.right : Vector3.left;
+                var origin = new Vector3(end, pavement - .2f, side * wallMiddle) - direction;
+                Assert.That(mesh.Raycast(new Ray(origin, direction), out var hit, 1.01f), Is.True);
+                Assert.That(hit.point.x, Is.EqualTo(end).Within(.3f));
             }
-            Assert.Less(Top(-95),1.2f,"No 6 m wall beside the graded roadbed.");
+
+            Assert.That(geometry.structures.vertices.Any(p => p.x < -.3f && p.y < pavement && Mathf.Abs(p.z) > reach - .1f));
+            Assert.That(geometry.structures.vertices.Any(p => p.x > 40.3f && p.y < pavement && Mathf.Abs(p.z) > reach - .1f));
         }
 
         [Test]
-        public void PortalHeadwallHoldsTheHillAndOnlyTheOpenCutOpensTheTerrain()
+        public void GravelShoulderClosesTheStepAtTheAsphaltEdge()
         {
-            // level road two metres down, into a hill rising 40 %: under ground from about x = 13
-            float Ground(Vector2 p)=>Mathf.Clamp(p.x*.4f,0f,40f);
-            var style=PublicRoadStyle.Urban;float reach=Reach(style),verge=Verge(style),thick=RoadStructureBuilder.WallThickness;
-            var graph=Road(style,(new Vector3(-100,-2,0),RoadStructure.Tunnel),(new Vector3(200,-2,0),RoadStructure.Tunnel));
-            var g=Geometry(graph,Ground);var mesh=g.structures;var v=mesh.vertices;var colours=mesh.colors32;
-            float roof=-2+.18f+RoadStructureBuilder.TunnelClearance;
-            using var mask=Opened(g);
-            Assert.IsTrue(mask.Contains(new Vector2(0,0)));Assert.IsTrue(mask.Contains(new Vector2(10,0)));
-            Assert.IsFalse(mask.Contains(new Vector2(17,0)),"Covered ground stays whole.");Assert.IsFalse(mask.Contains(new Vector2(100,0)));
-            // the portal: where the terrain opening stops, a headwall from the roof up to the ground, coping above it
-            float portal=0;for(float x=10;x<17;x+=.05f)if(mask.Contains(new Vector2(x,0)))portal=x;
-            Assert.Greater(portal,12.4f);Assert.Less(portal,15f);
-            var head=v.Where(p=>Mathf.Abs(p.x-portal)<.5f&&p.y>roof+.01f).ToArray();
-            Assert.IsNotEmpty(head);
-            Assert.AreEqual(Ground(new Vector2(portal,0))+RoadStructureBuilder.Coping,head.Max(p=>p.y),.25f,"The headwall reaches the ground it holds back.");
-            Assert.IsTrue(head.Any(p=>p.z>reach)&&head.Any(p=>p.z<-reach),"The headwall spans from wall to wall.");
-            // the bore itself stays under its cover, and is lit
-            foreach(var p in v)if(p.x>portal+1f)Assert.Less(p.y,Ground(new Vector2(p.x,p.z))-1f,"The bore shows through the hill at "+p);
-            var lamps=Enumerable.Range(0,v.Length).Where(i=>colours[i].a>200&&colours[i].a<245).Select(i=>v[i]).ToArray();
-            Assert.GreaterOrEqual(lamps.Length,36*2*10);Assert.IsTrue(lamps.All(p=>p.x>portal&&p.y<roof&&p.y>roof-.2f));
+            var graph = Road(PublicRoadStyle.Rural, (new Vector3(-40f, 0f, 0f), RoadStructure.Ground),
+                (new Vector3(40f, 0f, 0f), RoadStructure.Ground));
+            var geometry = Geometry(graph, _ => 0f);
+            root = new GameObject("Asphalt and gravel joint");
+            var mesh = root.AddComponent<MeshCollider>();
+            mesh.sharedMesh = geometry.shoulders;
+            Physics.SyncTransforms();
+
+            float halfWidth = RoadTypes.Of(PublicRoadStyle.Rural).Width * .5f;
+            foreach (float side in new[] { -1f, 1f })
+            {
+                var origin = new Vector3(3f, .16f, side * (halfWidth + 2f));
+                Assert.That(mesh.Raycast(new Ray(origin, -side * Vector3.forward), out var hit, 2.01f), Is.True);
+                Assert.That(hit.point.z, Is.EqualTo(side * halfWidth).Within(.01f));
+            }
+        }
+
+        [Test]
+        public void PortalProjectsFromTheRoofAndPreservesTheCoveredHill()
+        {
+            float Ground(Vector2 p) => Mathf.Clamp(p.x * .4f, 0f, 40f);
+            var style = PublicRoadStyle.Urban;
+            float verge = Verge(style), thick = RoadStructureBuilder.WallThickness;
+            var graph = Road(style, (new Vector3(-100, -2, 0), RoadStructure.Tunnel), (new Vector3(200, -2, 0), RoadStructure.Tunnel));
+            var g = Geometry(graph, Ground);
+            var v = g.structures.vertices;
+            var colours = g.structures.colors32;
+            float roof = -2f + .18f + RoadStructureBuilder.TunnelClearance;
+            using var mask = Opened(g);
+            Assert.IsTrue(mask.Contains(new Vector2(0, 0)));
+            Assert.IsFalse(mask.Contains(new Vector2(17, 0)));
+            Assert.IsFalse(mask.Contains(new Vector2(100, 0)));
+
+            float front = v.Where(p => Mathf.Abs(p.y - (roof + RoadStructureBuilder.LintelHeight)) < .001f).Min(p => p.x);
+            Assert.That(front, Is.InRange(8f, 11f));
+            Assert.That(v.Max(p => p.y), Is.EqualTo(roof + RoadStructureBuilder.LintelHeight).Within(.01f));
+            Assert.That(v.Any(p => p.x > front + 1f && Mathf.Abs(p.y - (roof + RoadStructureBuilder.TunnelRoofThickness)) < .01f));
+            var lamps = Enumerable.Range(0, v.Length).Where(i => colours[i].a > 200 && colours[i].a < 245).Select(i => v[i]).ToArray();
+            Assert.That(lamps.Length, Is.GreaterThanOrEqualTo(36 * 2 * 10));
+            Assert.That(lamps.All(p => p.x > front && p.y < roof && p.y > roof - .2f));
             // both dead ends are closed round the pavement's rounded end: a wall in the open cut, the lining under ground
             Assert.LessOrEqual(g.pavement.bounds.max.x,200.001f);Assert.GreaterOrEqual(g.pavement.bounds.min.x,-100.001f);
-            Assert.AreEqual(-100-verge-thick,v.Min(p=>p.x),.02f);Assert.AreEqual(200+verge,v.Max(p=>p.x),.02f);
+            Assert.AreEqual(-100-verge-thick,v.Min(p=>p.x),.02f);Assert.AreEqual(200+verge+thick,v.Max(p=>p.x),.02f);
             Assert.IsTrue(mask.Contains(new Vector2(-100-verge-thick+.1f,0)));Assert.IsFalse(mask.Contains(new Vector2(-100-verge-thick-.2f,0)));
             var endWall=v.Where(p=>p.x<-100-verge+.01f).ToArray();
             Assert.AreEqual(RoadStructureBuilder.Coping,endWall.Max(p=>p.y),.02f,"The end wall's coping stands just above the ground.");
+        }
+
+        [Test]
+        public void ArchedPortalChangesTheFrameWithoutMovingTheOpening()
+        {
+            float Ground(Vector2 p) => Mathf.Clamp(p.x * .4f, 0f, 40f);
+            var style = PublicRoadStyle.Urban;
+            var road = Road(style, (new Vector3(-100, -2, 0), RoadStructure.Tunnel),
+                (new Vector3(200, -2, 0), RoadStructure.Tunnel));
+            var rectangle = Geometry(road, Ground);
+            road.segments[0].tunnelPortalStyle = TunnelPortalStyle.Arched;
+            var arch = Geometry(road, Ground);
+            var opening = rectangle.groundTriangles.Where(t => t.excavationHeight > 0f).ToArray();
+            CollectionAssert.AreEqual(opening, arch.groundTriangles.Where(t => t.excavationHeight > 0f));
+            float frameTop = -2f + .18f + RoadStructureBuilder.TunnelClearance + RoadStructureBuilder.LintelHeight;
+            float face = rectangle.structures.vertices.Where(p => Mathf.Abs(p.y - frameTop) < .001f).Min(p => p.x);
+            float FrameTop(Mesh mesh)
+            {
+                var vertices = mesh.vertices;
+                var colors = mesh.colors32;
+                return vertices.Where((point, index) => colors[index].a == 255 && Mathf.Abs(point.x - face) < .01f)
+                    .Max(point => point.y);
+            }
+            Assert.That(FrameTop(arch.structures) - FrameTop(rectangle.structures), Is.GreaterThan(1f));
+        }
+
+        [Test]
+        public void ASteepDiagonalAvenueHasASolidRoofAndAnExcavationBoundedInHeight()
+        {
+            float Ground(Vector2 p) => Mathf.Clamp(2f * (p.x + 1.8f * p.y), 0f, 70f);
+            var graph = Road(PublicRoadStyle.Avenue, (new Vector3(-65f, 0f, 0f), RoadStructure.Ground),
+                (new Vector3(-25f, 0f, 0f), RoadStructure.Tunnel), (new Vector3(100f, 0f, 0f), RoadStructure.Tunnel));
+            var geometry = Geometry(graph, Ground);
+            const float floor = .18f;
+            float top = floor + RoadStructureBuilder.TunnelClearance + RoadStructureBuilder.LintelHeight;
+            Assert.That(geometry.structures.bounds.max.y, Is.EqualTo(top).Within(.02f));
+
+            var highLane = new Vector2(1f, 5f);
+            var lowLane = new Vector2(1f, -5f);
+            Assert.That(Ground(highLane), Is.GreaterThan(15f));
+            Assert.That(Ground(lowLane), Is.EqualTo(0f));
+
+            var cuts = geometry.groundTriangles.Where(triangle => triangle.excavationHeight > 0f).ToArray();
+            Assert.That(cuts.All(t => t.foundation == 0 && t.excavationHeight == RoadStructureBuilder.TunnelExcavationHeight));
+            foreach (var point in new[] { highLane, lowLane, new Vector2(60f, 0f) })
+            {
+                var triangle = cuts.First(t => t.DistanceSquared(point) < .000001f);
+                Assert.That(triangle.Height(point), Is.EqualTo(floor).Within(.015f));
+                Assert.That(triangle.OwnsGround, Is.EqualTo(point.x < 60f));
+                var moved = triangle.Transform(Matrix4x4.Translate(Vector3.up * 40f), false);
+                Assert.That(moved.Height(point), Is.EqualTo(floor + 40f).Within(.015f));
+                Assert.That(moved.excavationHeight, Is.EqualTo(triangle.excavationHeight));
+                Assert.That(moved.OwnsGround, Is.EqualTo(triangle.OwnsGround));
+            }
+
+            var roof = geometry.structures.vertices.Where(p => Mathf.Abs(p.y - (floor + RoadStructureBuilder.TunnelExcavationHeight)) < .01f);
+            Assert.That(roof.Any(p => p.x < 1f && p.z > 5f));
+            Assert.That(roof.Any(p => p.x < 1f && p.z < -5f));
+            using var mask = Opened(geometry);
+            Assert.That(mask.Contains(new Vector2(60f, 0f)), Is.False);
         }
 
         [TestCase(PublicRoadStyle.Urban)] [TestCase(PublicRoadStyle.Rural)] [TestCase(PublicRoadStyle.Avenue)] [TestCase(PublicRoadStyle.Highway)]
@@ -165,6 +270,24 @@ namespace AirCity.Tests.World
         {
             root=new GameObject("Service road ends");root.SetActive(false);
             var airport=root.AddComponent<Airport>();airport.groundSize=0;airport.TerrainHeight=_=>0;root.SetActive(true);return airport;
+        }
+
+        [Test]
+        public void ServiceRoadGroundApproachUsesTheTunnelLiningAcrossTheSlope()
+        {
+            var airport = Airfield();
+            airport.TerrainHeight = p => Mathf.Clamp(2f * (p.x + 3f * p.y), 0f, 60f);
+            var net = airport.Taxiways;
+            int start = net.AddNode(new Vector3(-40f, 0f, 0f));
+            int mouth = net.AddNode(Vector3.zero);
+            int end = net.AddNode(new Vector3(80f, 0f, 0f));
+            net.Connect(start, mouth, 7f, PavementSurface.Asphalt, false, RoadClass.Service, true);
+            net.Connect(mouth, end, 7f, PavementSurface.Asphalt, false, RoadClass.Service, true, RoadStructure.Tunnel);
+            var geometry = new TaxiwayDraft(airport, net);
+            var cut = geometry.ownership.Where(t => t.DistanceSquared(new Vector2(-2f, 3f)) < .00001f).ToArray();
+            Assert.That(cut, Is.Not.Empty);
+            Assert.That(cut.All(t => t.excavationHeight > 0f));
+            Assert.That(net.edges.Single(e => e.a == start).structure, Is.EqualTo(RoadStructure.Ground));
         }
 
         [Test]

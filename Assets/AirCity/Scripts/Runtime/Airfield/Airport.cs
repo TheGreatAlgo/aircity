@@ -90,7 +90,7 @@ namespace AirCity.Airfield
     /// their airport-local support height through PavementElevationAt.
     /// </summary>
     [ExecuteAlways, DisallowMultipleComponent]
-    public class Airport : MonoBehaviour
+    public partial class Airport : MonoBehaviour
     {
         [Header("Materials (AirfieldSetup creates them)")]
         public Material concrete;
@@ -169,6 +169,7 @@ namespace AirCity.Airfield
             elevationVersion=layoutVersion;
         }
         [NonSerialized] public Func<Vector2,float> TerrainHeight;
+        [NonSerialized] internal Func<Vector2,float?> BridgeWaterHeight;
         public bool HasElevatedPavement { get {CacheElevation();return hasElevatedRunways || elevatedTaxiways || hasElevatedStands;} }
 
         /// <summary>Airport-local support height, shared by runway/taxiway meshes, aircraft and vehicles.</summary>
@@ -233,6 +234,10 @@ namespace AirCity.Airfield
         }
         public float RoadEdgeElevation(TaxiwayEdge edge,Vector2 p)
         {CacheElevation();return roadElevationBuilder.RoadHeight(edge,p);}
+
+        /// <summary>A taxiway or road section's outline as it is drawn, round its bends (TaxiwayBuilder.SectionOutline).</summary>
+        public bool SectionOutline(TaxiwayEdge edge,float from,float to,float half,List<Vector3> loop)
+        {CacheElevation();return roadElevationBuilder.SectionOutline(edge,from,to,half,loop);}
 
         public Vector2 PavementGradientAt(Vector2 p)
         {
@@ -383,6 +388,8 @@ namespace AirCity.Airfield
                 if (HangarConnection.Approach(other, out var approach) && Geo.Overlap(outline, approach))
                     return "Keep the building clear of existing hangar approaches.";
             }
+            foreach (var school in FlyingSchools)
+                if (school.Footprints().Any(p=>Geo.Overlap(outline,p))) return "Keep hangars clear of the flying school.";
             foreach (var terminal in terminals)
                 if (terminal!=null && terminal.Footprints().Any(p=>Geo.Overlap(outline,p))) return "Overlaps a terminal.";
             foreach (var runway in Runways)
@@ -751,6 +758,7 @@ namespace AirCity.Airfield
             {
                 Maintenance.Simulate(seconds); Traffic.Simulate(seconds); Bridges.Simulate(seconds);
             }
+            SimulateSchools(seconds);
             ApplyGlobals();
         }
 

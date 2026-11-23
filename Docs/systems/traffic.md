@@ -6,6 +6,9 @@ takes off; an arrival flies a 3° final, lands, takes the first exit it can and 
 aircraft apart on the runways, through junctions and along taxiways. Flights are simulated in game seconds from
 `Airport.Simulate`, like the depots' teams, so tests run them headless.
 
+A [flying school](flying-school.md)'s aircraft fly circuits with touch-and-goes over the same runways and
+taxiways: see [circuit training](#circuit-training).
+
 Compatible aircraft can make ground-only trips to and from [hangars](hangars.md).
 `AirTraffic.TaxiToHangar` reserves the bay and follows the taxiway graph into its doors.
 `TaxiToStand` backs a nose-in resident out and taxis to a free stand. These use
@@ -59,6 +62,9 @@ Departure:  Ready ─► PushBack (tug) / HandPush (light aircraft) ─► Start
             Ready ─► StartingEngines (taxi-out stand, or already on a taxiway) ─► Taxi ...
 Arrival:    Approach ─► Landing (the roll, until slow) ─► Taxi ─► Parked
             Approach ─► GoAround (no landing clearance 12 s out) ─► out of sight for 90 s ─► Approach (behind the others)
+Circuits:   ... ─► TakeoffRoll ─► Climb ─► Pattern (crosswind, downwind, base) ─► Approach ─► TouchAndGo ─► TakeoffRoll ─► ...
+            ... ─► Pattern ─► Approach ─► Landing ─► Taxi ─► Parked     (after the last touch-and-go)
+            Approach ─► GoAround ─► Pattern (round again, in sight)
 ```
 
 - **Jet bridges:** a departure's docked jet bridges pull back first (`Airport.Bridges.Clear`, about 50 s); the
@@ -86,6 +92,39 @@ Arrival:    Approach ─► Landing (the roll, until slow) ─► Taxi ─► Pa
 Flight figures come from `AircraftType` (`taxiSpeed`, `rotateSpeed`, `approachSpeed`, `climbRate`, `climbSpeed`,
 set in each model's `PERFORMANCE` in `ArtSource/Aircraft/<Model>/model.py`; types imported before they existed
 fall back to light-aircraft / jet values).
+
+## Circuit training
+
+`AirTraffic.DepartForCircuits(aircraft, touchAndGoes)` sends an aircraft off like any departure, with
+`Flight.PatternWork` set. `CanFlyCircuits(type)` says whether a runway in use is long enough: usable for
+takeoff and landing, with room to touch down, roll four seconds and take off again (`TouchAndGoFits`).
+
+- **Joining:** climbing out, at `Flight.CrosswindHeight` (110 m) it asks the tower for its way down
+  (`AirTraffic.PlanCircuit`) and becomes an arrival (`Flight.kind` changes; it is a property now). While it has
+  touch-and-goes to fly the way is the runway only (`TaxiRoute.touchAndGo`: no taxiways, holds or stand). For
+  the last landing it is the ordinary arrival route to a stand. With nowhere to land (the wind has turned, the
+  runway has closed) it leaves the airfield like a departure.
+- **The pattern** (`FlightPhase.Pattern`, `Flight.StepPattern`): a left-hand racetrack of four quarter turns
+  and three straights, built from the point it joins at. The turn radius comes from the climb speed at
+  `PatternBank` (27°); the crosswind and base straights are 0.6 radius; downwind runs back past the touchdown
+  point to where base brings it onto final `finalFrom` out (50 s at approach speed, at least 1500 m). It
+  climbs to `PatternHeight` (240 m), descends from abeam the touchdown point and rolls out on the centreline
+  exactly on the 3° glide path, so `StartApproach` takes over without a jump. Aircraft bank in the turns.
+- **Touch-and-go** (`FlightPhase.TouchAndGo`): at touchdown it rolls four seconds with the flaps coming up,
+  then the ordinary takeoff roll goes on from there. It holds the runway from landing clearance until 60 m up
+  on the way out, like a landing followed by a takeoff, and counts as a movement on the runway each time.
+- **Sequencing:** `Flight.DueIn` is the time to touchdown on final or in the pattern. Departures hold short
+  while any inbound flight is due before they would be done (`RunwayFree`), and new arrivals start on final
+  at least `ArrivalSpacing` behind a circuit's `DueIn` (`FinalDistance`). At the end of downwind a circuit
+  extends the leg (`AirTraffic.PatternWait`) while someone would land less than `PatternGap` (75 s) ahead of
+  it, or is already on final or base and would land less than `PatternClose` (40 s) behind it; two circuits
+  on downwind together cannot both wait, as only the later one yields. An extension ends after 3 km.
+- **Going around:** a circuit refused landing clearance climbs straight ahead and joins the pattern again in
+  sight, instead of leaving for 90 s.
+
+A flying school's flight line is made of stands with `Stand.owner` set: `FreeStands` offers them only to the
+aircraft that lives there and offers that aircraft nothing else, `Gone` keeps a school's aircraft (hidden)
+for the school to bring back, and no marshaller is sent to an owned stand.
 
 ## Route planning (TaxiPlanner)
 
@@ -221,6 +260,10 @@ the runway and in the air), engines and afterburners; the sandbox light / engine
 | `Arrival_DoesNotTakeAStandADepartureIsStillLeaving` | a stand being pushed back off is taken until the departure has taxied clear of its front; then the arrival gets it, and both get by |
 | `DeadEndTaxilane_DepartureAndArrivalTakeTurns` | a departure out of and an arrival into the same dead-end taxilane (arriving at once, a minute and 150 s after): both done, nobody touches, at most one go-around |
 | `SandboxAirport_BusyHourClearsWithoutGridlock` | four departures and two arrivals at once: all done, nobody touches, at most 2 go-arounds |
+
+Circuits are covered by `FlyingSchoolTests` (`Circuits_*`): the phases in order, the pattern's side, height and
+roll-out on the glide path, no jumps between legs, following an arrival instead of cutting in, and the runway
+given back.
 
 ## Gotchas
 

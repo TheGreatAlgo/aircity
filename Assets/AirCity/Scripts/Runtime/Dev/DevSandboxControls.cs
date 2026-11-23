@@ -77,7 +77,7 @@ namespace AirCity.Dev
             var net = a.Taxiways;
             foreach (var l in net.Layouts())
             {
-                if (l.stand.DeIcing || net.CheckStand(l.stand, selected.type) != StandProblem.None) continue;
+                if (l.stand.DeIcing || l.stand.Owned || net.CheckStand(l.stand, selected.type) != StandProblem.None) continue;
                 bool taken = false;
                 foreach (var other in Aircraft.Aircraft.All)
                     if (other != null && other != selected && l.Contains(Geo.XZ(t.InverseTransformPoint(other.transform.position))))
@@ -95,6 +95,7 @@ namespace AirCity.Dev
                 return;
             }
             Taxiing = false;
+            selected.Airstair?.StowForDeparture(float.PositiveInfinity);
             selected.transform.SetPositionAndRotation(t.TransformPoint(Geo.X0Z(best.ParkPosition(selected.type))),
                 Quaternion.LookRotation(t.TransformDirection(Geo.X0Z(best.nose)), Vector3.up));
             Message = null;
@@ -203,14 +204,16 @@ namespace AirCity.Dev
 
             foreach (var l in FindObjectsByType<AircraftLights>(FindObjectsInactive.Exclude))
             {
-                if (Flying(l.GetComponent<Aircraft.Aircraft>()) || SmallHangar.OfResident(l.GetComponentInParent<Aircraft.Aircraft>())!=null) continue;
+                if (Flying(l.GetComponent<Aircraft.Aircraft>()) || SmallHangar.OfResident(l.GetComponentInParent<Aircraft.Aircraft>())!=null ||
+                    FlyingSchool.OfTrainer(l.GetComponentInParent<Aircraft.Aircraft>())!=null) continue;
                 l.beacon = Beacons || Engines;
                 l.strobes = Strobes;
                 l.landing = l.taxi = Landing;
                 l.logo = Logos;
             }
             foreach (var p in FindObjectsByType<PropellerSpinner>(FindObjectsInactive.Exclude))
-                if (!Flying(p.GetComponentInParent<Aircraft.Aircraft>()) && SmallHangar.OfResident(p.GetComponentInParent<Aircraft.Aircraft>())==null) p.rpm = Engines ? (p.name.StartsWith("Fan") ? 1100f : 900f) : 0f;
+                if (!Flying(p.GetComponentInParent<Aircraft.Aircraft>()) && SmallHangar.OfResident(p.GetComponentInParent<Aircraft.Aircraft>())==null &&
+                    FlyingSchool.OfTrainer(p.GetComponentInParent<Aircraft.Aircraft>())==null) p.rpm = Engines ? (p.name.StartsWith("Fan") ? 1100f : 900f) : 0f;
             foreach (var a in FindObjectsByType<AircraftAfterburner>(FindObjectsInactive.Exclude))
                 if (!Flying(a.GetComponent<Aircraft.Aircraft>())) a.reheat = Reheat ? 1f : 0f;
             // (a tug moves an aircraft it's pushing back)
@@ -219,10 +222,11 @@ namespace AirCity.Dev
                 var motion = selected.GetComponent<AircraftGroundMotion>();
                 if (motion != null)
                 {
-                    float speed = Taxiing ? 6f : 0f;
-                    float steer = Taxiing ? Mathf.Sin(Time.time * 0.4f) * 0.6f : 0f;
+                    bool canTaxi = Taxiing && (selected.Airstair?.StowForDeparture(Time.deltaTime) ?? true);
+                    float speed = canTaxi ? 6f : 0f;
+                    float steer = canTaxi ? Mathf.Sin(Time.time * 0.4f) * 0.6f : 0f;
                     motion.Drive(speed, steer);
-                    if (Taxiing)
+                    if (canTaxi)
                     {
                         float turn = motion.SteeringAngle == 0f ? 0f
                             : speed / motion.TurnRadius(selected.type) * Mathf.Rad2Deg * Mathf.Sign(motion.SteeringAngle);

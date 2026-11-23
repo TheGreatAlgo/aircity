@@ -100,6 +100,23 @@ namespace AirCity.Dev
             building.Set(builder.mesh.Apply(building.Target,"Hangar draft",false,2),HangarBuilder.MaterialFor(airport, size));
         }
 
+        /// <summary>The whole school in its site frame (Pose places it): clubhouse, site and the flight line's stands.</summary>
+        public void FlyingSchool(Airport airport, float lane, int side, PavementSurface pavement, IEnumerable<AircraftType> types)
+        {
+            var art = new FlyingSchoolBuilder(1, lane, side); art.Structure();
+            art.Ground(); art.Markings(); art.Fixtures(); art.TieDowns(FlyingSchoolBuilder.TieDownType(airport), pavement.IsPaved());
+            var material = airport.building != null && airport.building.shader != null && airport.building.shader.name == "AirCity/Building"
+                ? airport.building : HangarBuilder.MaterialFor(null, HangarSize.Small);
+            building.Set(art.body.Apply(building.Target, "Flying school draft", false, 2), material);
+            var s = new SurfaceBuilder(Surfaces.Count); var p = new PaintBuilder();
+            for (int i = 0; i < FlyingSchoolLayout.Spots; i++)
+            {
+                var layout = StandLayout.Of(FlyingSchoolLayout.SpotStand(Vector2.zero, 0f, lane, pavement, i));
+                if (layout != null) new StandBuilder().Build(layout, s, p, types);
+            }
+            Surface(airport, s); Paint(airport, p);
+        }
+
         public void Runway(Airport airport, Vector2 from, Vector2 to, float width, PavementSurface pavement)
         {
             EnsureData();

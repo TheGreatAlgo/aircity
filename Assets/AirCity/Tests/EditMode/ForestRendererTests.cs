@@ -31,7 +31,7 @@ namespace AirCity.Tests.World
         [TearDown] public void TearDown() { Object.DestroyImmediate(root); }
 
         [Test]
-        public void WholeRegionViewSubmitsEachTreeOnceUsingPackedSixTriangleImpostors()
+        public void WholeRegionViewSubmitsEachTreeOnceAsItsCheapestOpaqueShape()
         {
             RequireInstancing();
             var world = Grid(); forest.Rebuild(world, _ => 80f);
@@ -40,8 +40,11 @@ namespace AirCity.Tests.World
             Assert.AreEqual(world.trees.Count, forest.LastSubmittedTrees);
             Assert.AreEqual(world.trees.Count, forest.LastImpostorTrees);
             Assert.AreEqual(0, forest.LastFullDetailTrees + forest.LastMediumDetailTrees);
-            Assert.AreEqual(world.trees.Count * 6L, forest.LastSubmittedTriangles);
-            int species = Field<TreeLibrary>(forest, "activeLibrary").variants.Length;
+            var library = Field<TreeLibrary>(forest, "activeLibrary");
+            Assert.LessOrEqual(forest.LastSubmittedTriangles, world.trees.Count * 24L, "A whole-region tree is at most 24 triangles.");
+            foreach (var variant in library.variants)
+                Assert.AreEqual(0, variant.levels[RegionTreePalette.Levels - 1].GetIndexCount(1), "The region level has no alpha-tested cards.");
+            int species = library.variants.Length;
             Assert.LessOrEqual(forest.LastDrawCalls, 64 * species,
                 "This sparse fixture needs at most one packed buffer per species per 800 m cell, rather than a draw per fine cell.");
             AssertBuffersMatch(world);

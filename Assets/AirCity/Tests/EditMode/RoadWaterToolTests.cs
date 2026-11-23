@@ -10,7 +10,6 @@ using AirCity.Game;
 using AirCity.World;
 using NUnit.Framework;
 using UnityEngine;
-using UnityEngine.TestTools;
 using F = AirCity.EditorTools.Game.RoadConnectionFixture;
 using Object = UnityEngine.Object;
 
@@ -33,7 +32,6 @@ namespace AirCity.Tests.Game
         ValleyWorld water;
         [SetUp]public void Create(){game=F.CreateWater(spawned);drive=new RoadToolDriver(game);actions=0;water=JsonUtility.FromJson<ValleyWorld>(JsonUtility.ToJson(game.State.world));}
         [TearDown]public void Cleanup(){drive?.Dispose();foreach(var go in spawned)if(go!=null)Object.DestroyImmediate(go);spawned.Clear();Shader.SetGlobalFloat("_AirCityUndergroundCut",0);}
-        static void ExpectUndergroundGrid()=>LogAssert.Expect(LogType.Error,new System.Text.RegularExpressions.Regex("Destroy may not be called from edit mode"));
 
         static void Write(string line){Directory.CreateDirectory("Logs");File.AppendAllText(Log,line+"\n");}
         void Heading(string flow){actions=0;Write($"\n### {flow}\n");Write("| # | action | result |");Write("|---|---|---|");}
@@ -157,7 +155,6 @@ namespace AirCity.Tests.Game
         }
         [Test]public void W4a_TunnelUnderTheRiverWithRampsOnTheBanks()
         {
-            ExpectUndergroundGrid();
             Street();Heading("w4a. Tunnel under the river (1.4 m deep): RW2 → Tunnel → two points on the banks → RE2");
             var before=Roads.Clone();float z=-1000;Auto();
             ClickRoad("RW2 (street 250 m west of the river)",new Vector2(-1750,z));
@@ -172,7 +169,6 @@ namespace AirCity.Tests.Game
         }
         [Test]public void W4b_TunnelUnderTheDeepChannelSaysHowMuchDeeper()
         {
-            ExpectUndergroundGrid();
             Street();Heading("w4b. Tunnel under the ocean channel (17 m deep) at the Tunnel default: OE2 → Tunnel → bank → beyond the far bank");
             var before=Roads.Clone();float z=-1000;Auto();
             ClickRoad("OE2",new Vector2(-450,z));
@@ -245,7 +241,6 @@ namespace AirCity.Tests.Game
         }
         [Test]public void WE4_ServiceTunnelUnderTheCanal()
         {
-            ExpectUndergroundGrid();
             drive.tool.SetTool(DevTool.Road);Heading("we4. Canal, Road tool, Tunnel pressed after S1: S1 → two points on the banks → S2");
             var old=Edges;Auto();Road("S1",-200,150);Mode(RoadBuildMode.Tunnel);Free("west bank",-60,150);Free("east bank",60,150);Road("S2",200,150);drive.EndChain();
             CheckCanal("we4",old,150,RoadStructure.Tunnel);

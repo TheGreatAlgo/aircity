@@ -79,6 +79,13 @@ namespace AirCity.Aircraft
         }
 
         [Serializable]
+        public struct Airstair
+        {
+            public string point, transform;
+            public float openAngle, seconds;
+        }
+
+        [Serializable]
         public struct ServiceFootprint
         {
             public string name;
@@ -202,6 +209,7 @@ namespace AirCity.Aircraft
         [Header("Gameplay points")]
         public ServicePoint[] points = Array.Empty<ServicePoint>();
         public CargoDoor[] cargoDoors = Array.Empty<CargoDoor>();
+        public Airstair airstair;
         public LightPoint[] lights = Array.Empty<LightPoint>();
         [Tooltip("Engine nozzles; those with an afterburner flame on takeoff (AircraftAfterburner).")]
         public Exhaust[] exhausts = Array.Empty<Exhaust>();

@@ -10,7 +10,6 @@ using AirCity.Game;
 using AirCity.World;
 using NUnit.Framework;
 using UnityEngine;
-using UnityEngine.TestTools;
 using F = AirCity.EditorTools.Game.RoadConnectionFixture;
 using Object = UnityEngine.Object;
 
@@ -34,7 +33,6 @@ namespace AirCity.Tests.Game
 
         /// <summary>UndergroundRoadView.Show destroys its grid plane's collider with Destroy, which Unity reports as an
         /// error outside Play mode (the first time the view opens in each fixture).</summary>
-        static void ExpectUndergroundGrid()=>LogAssert.Expect(LogType.Error,new System.Text.RegularExpressions.Regex("Destroy may not be called from edit mode"));
         static void Write(string line){Directory.CreateDirectory("Logs");File.AppendAllText(Log,line+"\n");}
         void Heading(string flow){Write($"\n### {flow}\n");Write("| # | action | result |");Write("|---|---|---|");}
         void Row(string action,string result=null){actions++;Write($"| {actions} | {action} | {result??drive.Describe()} |");}
@@ -58,6 +56,121 @@ namespace AirCity.Tests.Game
         }
         List<PublicRoadSegment> Made(PublicRoadNetwork before)=>Roads.segments.Where(e=>!before.segments.Any(o=>o.id==e.id)).ToList();
         void Result(string text){Write($"\n**Built:** {text}  \n**Actions:** {actions} (tool already chosen)\n");}
+
+        [TestCase(DevTool.Street, false)]
+        [TestCase(DevTool.Street, true)]
+        [TestCase(DevTool.Road, false)]
+        [TestCase(DevTool.Road, true)]
+        public void EndpointGesturePlacesThePreviewedStraightOrCurve(DevTool tool, bool curve)
+        {
+            drive.tool.SetTool(tool);
+            var start = new Vector2(260f, 360f);
+            var end = new Vector2(460f, 360f);
+            drive.ClickFree(start);
+            int anchor = drive.Chain;
+            var target = Geo.X0Z(end, game.valley.DisplayHeight(end));
+            drive.GestureFrame(target, true, centre: true);
+            var previewEnd = drive.Endpoint;
+            Assert.AreEqual(anchor, drive.Chain);
+
+            var pointer = target + (curve ? Vector3.forward * 30f : Vector3.zero);
+            drive.GestureFrame(pointer, true);
+            Assert.AreEqual(previewEnd, drive.Endpoint, "Dragging must keep the snapped endpoint.");
+            Assert.IsNull(drive.Problem);
+            Assert.AreEqual(anchor, drive.Chain, "The draft is committed on release.");
+            drive.GestureFrame(pointer, false);
+            Assert.AreNotEqual(anchor, drive.Chain);
+
+            Alignment3D path;
+            if (tool == DevTool.Street)
+                path = Roads.Path(Roads.At(drive.Chain).Single());
+            else
+            {
+                var net = game.Airport.Taxiways;
+                path = net.Path(net.EdgesAt(drive.Chain).Single());
+            }
+            Assert.AreEqual(curve, path.shape.curved);
+            if (curve) Assert.Greater(path.Horizontal(.5f).y, (path.start.z + path.end.z) * .5f + 15f);
+        }
+
+        [TestCase(DevTool.Street, false)]
+        [TestCase(DevTool.Street, true)]
+        [TestCase(DevTool.Road, false)]
+        public void PointsIntoTheHillKeepTheirWorkingHeightAndBuildATunnel(DevTool tool, bool elevated)
+        {
+            drive.tool.SetTool(tool);
+            var start = new Vector2(-1630f, -900f);
+            var hill = new Vector2(-1525f, -895f);
+            drive.ClickFree(start);
+            float level = drive.Endpoint.y;
+            if (elevated) drive.tool.StepRoadElevation(1);
+            Assert.AreEqual(elevated ? 5f : 0f, drive.tool.RoadElevation);
+            int anchor = drive.Chain;
+            drive.HoverFree(hill);
+            Assert.IsNull(drive.Problem);
+            Assert.AreEqual(level + (elevated ? 5f : 0f), drive.Endpoint.y, .15f);
+            drive.ClickFree(hill);
+            Assert.AreNotEqual(anchor, drive.Chain);
+            bool tunnel = tool == DevTool.Street
+                ? Roads.At(drive.Chain).Any(edge => edge.structure == RoadStructure.Tunnel)
+                : game.Airport.Taxiways.EdgesAt(drive.Chain).Any(edge => edge.structure == RoadStructure.Tunnel);
+            Assert.IsTrue(tunnel);
+        }
+
+        [TestCase(DevTool.Street)]
+        [TestCase(DevTool.Road)]
+        public void ReopenedUndergroundViewContinuesADeepTunnelFromItsEnd(DevTool tool)
+        {
+            drive.tool.SetTool(tool);
+            var net = game.Airport.Taxiways;
+            var origin = game.Airport.transform.position;
+            var start = new Vector2(300f, 360f);
+            var tip = new Vector2(410f, 360f);
+            float floor = origin.y - 185f;
+            var from = Geo.X0Z(start, floor);
+            var end = Geo.X0Z(tip, floor);
+            // An upper road projects across the cap with the driver's usual camera angle.
+            var above = Geo.X0Z(tip + Vector2.down * (185f * 100f / 220f), origin.y);
+            int endNode;
+            if (tool == DevTool.Street)
+            {
+                endNode = Roads.AddNode(end);
+                Roads.AddSegment(Roads.AddNode(from), endNode, PublicRoadStyle.Urban, RoadStructure.Tunnel);
+                Roads.AddSegment(Roads.AddNode(above), Roads.AddNode(above + Vector3.right * 120f),
+                    PublicRoadStyle.Urban, RoadStructure.Ground);
+            }
+            else
+            {
+                endNode = net.AddNode(end - origin);
+                net.Connect(net.AddNode(from - origin), endNode, RunwayRules.RoadWidth, PavementSurface.Asphalt,
+                    road: RoadClass.Service, structure: RoadStructure.Tunnel);
+                net.Connect(net.AddNode(above - origin), net.AddNode(above - origin + Vector3.right * 120f),
+                    RunwayRules.RoadWidth, PavementSurface.Asphalt, road: RoadClass.Service);
+            }
+
+            drive.HoverFree(new Vector2(480f, 460f));
+            drive.tool.SetRoadUnderground(true);
+            drive.tool.SetRoadUnderground(false);
+            drive.tool.SetRoadUnderground(true);
+            var view = game.GetComponent<UndergroundRoadView>();
+            float cut = view.Height;
+            drive.HoverFree(F.HillCentre);
+            Assert.AreEqual(cut, view.Height, .01f, "Hovering over higher terrain moved the cutaway.");
+
+            drive.ClickRoad(tip + Vector2.right * 2f, floor);
+            Assert.AreEqual(endNode, drive.Chain, "The visible tunnel cap should take priority over the upper road.");
+            var extension = tip + Vector2.right * 120f;
+            drive.HoverFree(extension);
+            Assert.IsNull(drive.Problem);
+            Assert.AreEqual(floor, drive.Endpoint.y, .01f, "The existing floor can be deeper than the elevation stepper's range.");
+            Assert.AreEqual(floor + UndergroundRoadView.Headroom, view.Height, .01f);
+            drive.ClickFree(extension);
+            Assert.AreNotEqual(endNode, drive.Chain);
+            if (tool == DevTool.Street)
+                Assert.That(Roads.At(endNode).Any(e => e.structure == RoadStructure.Tunnel && (e.a == drive.Chain || e.b == drive.Chain)));
+            else
+                Assert.That(net.EdgesAt(endNode).Any(e => e.structure == RoadStructure.Tunnel && TaxiwayNetwork.Other(e, endNode) == drive.Chain));
+        }
 
         [TestCase(HangarSize.Small, 7.5f, 16f)]
         [TestCase(HangarSize.Executive, 15f, 60f)]
@@ -188,7 +301,6 @@ namespace AirCity.Tests.Game
 
         [Test]public void C_GroundRoadDownUnderAHillAndUpOntoAnotherGroundRoad()
         {
-            ExpectUndergroundGrid();
             Heading("c. Tunnel: R4 (ground) → under the hill → R5 (ground), Street tool, Tunnel pressed after the first click");
             var before=Roads.Clone();float z=-900;
             drive.tool.SetTool(DevTool.Street);drive.tool.SetRoadMode(RoadBuildMode.Automatic);drive.tool.SetRoadElevation(0);
@@ -209,7 +321,6 @@ namespace AirCity.Tests.Game
 
         [Test]public void D_TunnelJoinsATunnelAndLeavesAHillsideAsABridge()
         {
-            ExpectUndergroundGrid();
             Heading("d1. Tunnel T1's end → T2's middle, Tunnel pressed first");
             var before=Roads.Clone();
             drive.tool.SetTool(DevTool.Street);
@@ -237,7 +348,6 @@ namespace AirCity.Tests.Game
 
         [Test]public void E_ServiceTunnelUnderATaxiwayJoinsServiceRoadsAtBothEnds()
         {
-            ExpectUndergroundGrid();
             Heading("e. Airside: S1 (service road) → tunnel under the taxiway → S2, Road tool, Tunnel pressed after the first click");
             var net=game.Airport.Taxiways;var origin=game.Airport.transform.position;var old=new HashSet<int>(net.edges.Select(e=>e.id));
             drive.tool.SetTool(DevTool.Road);drive.tool.SetRoadMode(RoadBuildMode.Automatic);drive.tool.SetRoadElevation(0);
@@ -291,7 +401,6 @@ namespace AirCity.Tests.Game
 
         [Test]public void RoadToolJoinsServiceRoadsButNeverATaxiwayAtAnotherLevel()
         {
-            ExpectUndergroundGrid();
             var origin=game.Airport.transform.position;Vector2 W(float x,float z)=>new Vector2(x+origin.x,z+origin.z);
             drive.tool.SetTool(DevTool.Road);drive.tool.SetRoadMode(RoadBuildMode.Automatic);drive.tool.SetRoadElevation(0);
             drive.ClickRoad(W(-200,0),origin.y);Assert.That(drive.Chain,Is.GreaterThanOrEqualTo(0));

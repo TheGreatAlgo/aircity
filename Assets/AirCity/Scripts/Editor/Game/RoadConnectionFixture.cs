@@ -8,6 +8,7 @@ using AirCity.Game;
 using AirCity.World;
 using UnityEngine;
 using UnityEngine.InputSystem;
+using UnityEngine.InputSystem.LowLevel;
 using UnityEngine.SceneManagement;
 using Object = UnityEngine.Object;
 
@@ -211,11 +212,14 @@ namespace AirCity.EditorTools.Game
     public sealed class RoadToolDriver : IDisposable
     {
         const BindingFlags Any=BindingFlags.Instance|BindingFlags.Public|BindingFlags.NonPublic;
+        const string PlayerUpdatesInEditMode = "RUN_PLAYER_UPDATES_IN_EDIT_MODE";
         public readonly CareerGame game;
         public readonly DevAirfieldTool tool;
         readonly Camera cam;
         readonly Mouse mouse;
         readonly Keyboard keyboard;
+        InputSettings gestureInputSettings;
+        bool originalPlayerUpdates;
         public int Clicks {get;private set;}
         public RoadToolDriver(CareerGame game)
         {
@@ -228,6 +232,11 @@ namespace AirCity.EditorTools.Game
         {
             if(mouse!=null&&mouse.added)InputSystem.RemoveDevice(mouse);
             if(keyboard!=null&&keyboard.added)InputSystem.RemoveDevice(keyboard);
+            if (gestureInputSettings != null)
+            {
+                gestureInputSettings.SetInternalFeatureFlag(PlayerUpdatesInEditMode, originalPlayerUpdates);
+                gestureInputSettings = null;
+            }
         }
         object Call(string name,params object[] args)=>typeof(DevAirfieldTool).GetMethod(name,Any).Invoke(tool,args);
         object Get(string name)=>typeof(DevAirfieldTool).GetField(name,Any).GetValue(tool);
@@ -236,24 +245,50 @@ namespace AirCity.EditorTools.Game
         Vector3 Origin=>Street?Vector3.zero:game.Airport.transform.position;
 
         Vector3 LastAim;
-        void Aim(Vector3 world)
+        void Aim(Vector3 world, Vector3? offset = null)
         {
             LastAim=world;
-            cam.transform.position=world+new Vector3(0,220,-100);cam.transform.LookAt(world);
+            cam.transform.position = world + (offset ?? new Vector3(0, 220, -100));
+            cam.transform.LookAt(world);
             float distance=Vector3.Distance(cam.transform.position,world);
             cam.fieldOfView=2f*Mathf.Atan(.4f*Mathf.Max(Screen.height,1)/(2f*distance))*Mathf.Rad2Deg;
         }
         /// <summary>One frame with the cursor over a world point.</summary>
         public void Frame(Vector3 aim,bool click)
         {
+            Aim(aim);
+            FrameAt(cam.WorldToScreenPoint(aim), click, false);
+        }
+
+        public void GestureFrame(Vector3 aim, bool held, bool centre = false, Vector3? cameraOffset = null)
+        {
+            if (gestureInputSettings == null)
+            {
+                // EditMode sends mouse events to editor controls by default. Use player updates for this fixture.
+                gestureInputSettings = InputSystem.settings;
+                originalPlayerUpdates = (bool)typeof(InputSettings).GetMethod("IsFeatureEnabled", Any)
+                    .Invoke(gestureInputSettings, new object[] { PlayerUpdatesInEditMode });
+                gestureInputSettings.SetInternalFeatureFlag(PlayerUpdatesInEditMode, true);
+            }
+            if (centre) Aim(aim, cameraOffset);
+            var screen = (Vector2)cam.WorldToScreenPoint(aim);
+            var state = new MouseState { position = screen };
+            if (held) state = state.WithButton(MouseButton.Left);
+            InputSystem.QueueStateEvent(mouse, state);
+            InputSystem.Update();
+            FrameAt(screen, mouse.leftButton.wasPressedThisFrame, true);
+        }
+
+        void FrameAt(Vector2 screen, bool click, bool gesture)
+        {
             // Play mode syncs the terrain collider every physics step; outside it a terrain ray misses until synced.
             Physics.SyncTransforms();
-            Aim(aim);var screen=(Vector2)cam.WorldToScreenPoint(aim);
             Call("RoadElevationKeys",keyboard);
             var args=new object[]{screen,null};bool on=(bool)Call("Ground",args);var point=(Vector3)args[1];
             if(on)Set("lastGround",point);else point=(Vector3)Get("lastGround");
             if(click)Clicks++;
-            if(Street)Call("StreetTool",mouse,keyboard,click,on,point);
+            if(gesture)Call("PlaceRoad",mouse,keyboard,click,on,point);
+            else if(Street)Call("StreetTool",mouse,keyboard,click,on,point);
             else Call("TaxiwayTool",click,on,point,tool.Tool==DevTool.Road);
         }
         /// <summary>Hover a free spot at (x, z): the cursor is moved until the marker ring, drawn at the working
@@ -263,9 +298,7 @@ namespace AirCity.EditorTools.Game
             float y=Street?game.valley.DisplayHeight(world):Origin.y;
             for(int i=0;i<3;i++){Frame(new Vector3(world.x,y,world.y),false);y=Endpoint.y;}
         }
-        /// <summary>Hover the visible surface of an existing road at (x, z) and height y (world).</summary>
-        /// <summary>Hover an existing road at (x, z), height y (world). Three frames: the underground view's cut follows
-        /// the cursor, so what is hidden settles over a frame or two, as it does under a moving mouse.</summary>
+        /// <summary>Hover an existing road at (x, z) and height y (world), including its outline in the cutaway.</summary>
         public void HoverRoad(Vector2 world,float y){for(int i=0;i<3;i++)Frame(RoadAim(world,y),false);}
         /// <summary>Where a player points for a road: its surface (in the underground view the roads the cut hides are
         /// outlined there since this change; before it, nothing showed them).</summary>
@@ -273,6 +306,13 @@ namespace AirCity.EditorTools.Game
         public void ClickFree(Vector2 world){HoverFree(world);Frame(LastAim,true);}
         public void ClickRoad(Vector2 world,float y){HoverRoad(world,y);Frame(RoadAim(world,y),true);}
         public void EndChain(){if(Street)Call("EndStreet");else Set("chainNode",-1);}
+
+        public void SelectAt(Vector3 world)
+        {
+            tool.SetTool(DevTool.Select);
+            Aim(world);
+            Call("Select",Call("PickAt",world));
+        }
 
         public string Snap=>Street?tool.StreetSnapName:tool.SnapText;
         public string Problem=>Street?tool.StreetProblem:tool.RoadProblem;

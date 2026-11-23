@@ -42,8 +42,8 @@ namespace AirCity.Tests.Aircraft
         {
             var expected = new Dictionary<string, string>
             {
-                { "Cessna172", "A4" }, { "Narrowbody", "C180" }, { "Widebody", "E350" }, { "Quadjet", "F450" }, { "DoubleDeck", "F550" },
-                { "Turboprop", "B50" }, { "Trijet", "D250" }, { "Supersonic", "D100" },
+                { "LowWingPiston", "A2" }, { "Cessna172", "A4" }, { "Narrowbody", "C180" }, { "Widebody", "E350" }, { "Quadjet", "F450" }, { "DoubleDeck", "F550" },
+                { "Turboprop", "B50" }, { "Trijet", "D250" }, { "Supersonic", "D100" }, { "LightJet", "A6" }, { "ExecutiveJet", "B8" }, { "FlagshipJet", "B12" },
             };
             foreach (var t in AircraftSetup.AllTypes())
             {
@@ -152,11 +152,74 @@ namespace AirCity.Tests.Aircraft
         }
 
         [Test]
+        public void LowWingTrainer_FitsSmallHangarsAndGrassStands()
+        {
+            var trainer = Type("LowWingPiston");
+            Assert.AreEqual("Starling A2", trainer.TypeName);
+            Assert.AreEqual(AircraftCategory.GeneralAviation, trainer.category);
+            Assert.That(trainer.Wingspan, Is.EqualTo(10.2f).Within(.05f));
+            Assert.That(trainer.Length, Is.EqualTo(8.00f).Within(.05f));
+            Assert.That(trainer.Height, Is.EqualTo(2.55f).Within(.05f));
+            Assert.IsTrue(SmallHangar.Fits(trainer));
+            Assert.AreEqual(StandProblem.None, RunwayRules.CheckStand(trainer, 'A', PavementSurface.Grass,
+                RunwayRules.TaxiwayWidthFor('A'), PavementSurface.Grass));
+        }
+
+        [TestCase("ExecutiveJet", "Executive twinjet", 18f, 20f, 6.1f)]
+        [TestCase("FlagshipJet", "Flagship private jet", 23f, 26f, 6.9f)]
+        public void CodeBBusinessJet_FitsCodeBStandsAndPavedTaxiways(
+            string model, string displayName, float span, float length, float height)
+        {
+            var jet = Type(model);
+            Assert.AreEqual(displayName, jet.displayName);
+            Assert.That(jet.Wingspan, Is.EqualTo(span).Within(.05f));
+            Assert.That(jet.Length, Is.EqualTo(length).Within(.05f));
+            Assert.That(jet.Height, Is.EqualTo(height).Within(.15f));
+            Assert.AreEqual('B', jet.SizeCode);
+            float taxiway = RunwayRules.TaxiwayWidthFor('B');
+            Assert.AreEqual(StandProblem.WingspanTooBig,
+                RunwayRules.CheckStand(jet, 'A', PavementSurface.Concrete, taxiway, PavementSurface.Asphalt));
+            Assert.AreEqual(StandProblem.None,
+                RunwayRules.CheckStand(jet, 'B', PavementSurface.Concrete, taxiway, PavementSurface.Asphalt));
+            Assert.IsFalse(RunwayRules.CanTaxi(jet, PavementSurface.Dirt, taxiway));
+        }
+
+        [Test]
+        public void ExecutiveTwinjet_AirstairLowersTowardTheApronAndStowsFlush()
+        {
+            var type = Type("ExecutiveJet");
+            var go = Spawn(type);
+            var aircraft = go.GetComponent<AirCity.Aircraft.Aircraft>();
+            var stair = aircraft.Airstair;
+            Assert.IsNotNull(stair);
+            Assert.IsTrue(type.TryGetPoint(type.airstair.point, out var door));
+            var hinge = go.GetComponentsInChildren<Transform>().Single(part => part.name == type.airstair.transform);
+            Assert.IsNotNull(hinge.Find(hinge.name + "_LOD1"));
+            var rest = hinge.localRotation;
+            var upperEdge = hinge.InverseTransformPoint(go.transform.TransformPoint(door.position + Vector3.up * door.size.y));
+
+            stair.SetOpen(true);
+            stair.Animate(type.airstair.seconds / 2);
+            Assert.That(Quaternion.Angle(hinge.localRotation, rest), Is.EqualTo(type.airstair.openAngle / 2).Within(.1f));
+            stair.Animate(type.airstair.seconds);
+            var deployed = go.transform.InverseTransformPoint(hinge.TransformPoint(upperEdge));
+            Assert.That(deployed.x, Is.LessThan(door.position.x - .6f));
+            Assert.That(deployed.y, Is.InRange(0f, .25f));
+
+            Assert.IsFalse(stair.StowForDeparture(type.airstair.seconds / 2));
+            Assert.IsTrue(stair.StowForDeparture(type.airstair.seconds));
+            Assert.That(Quaternion.Angle(hinge.localRotation, rest), Is.LessThan(.01f));
+            go.GetComponent<AircraftGroundMotion>().Drive(6f, 0f);
+            stair.SetOpen(true);
+            Assert.IsTrue(stair.Stowed);
+        }
+
+        [Test]
         public void Model_MatchesTypeData()
         {
             // the gameplay data (wheels, doors, lights) and the imported mesh must agree on the axes:
             // a model that faces -Z would put landing lights at the tail and wingtip lights metres off the wing
-            foreach (var model in new[] { "Cessna172", "Narrowbody", "Widebody", "DoubleDeck", "Quadjet", "Turboprop", "Trijet", "Supersonic" })
+            foreach (var model in new[] { "LowWingPiston", "Cessna172", "Narrowbody", "Widebody", "DoubleDeck", "Quadjet", "Turboprop", "Trijet", "Supersonic", "LightJet", "ExecutiveJet", "FlagshipJet" })
             {
                 var type = Type(model);
                 var go = Spawn(type);
@@ -176,7 +239,7 @@ namespace AirCity.Tests.Aircraft
         [Test]
         public void WingOutline_IsTheLeftWingFromTheFuselageToTheTip()
         {
-            foreach (var model in new[] { "Cessna172", "Narrowbody", "Widebody", "DoubleDeck", "Quadjet", "Turboprop", "Trijet", "Supersonic" })
+            foreach (var model in new[] { "LowWingPiston", "Cessna172", "Narrowbody", "Widebody", "DoubleDeck", "Quadjet", "Turboprop", "Trijet", "Supersonic", "LightJet", "ExecutiveJet", "FlagshipJet" })
             {
                 var t = Type(model);
                 var o = t.wingOutline;
@@ -255,7 +318,7 @@ namespace AirCity.Tests.Aircraft
         [Test]
         public void NavigationLights_RedOnTheLeft()
         {
-            foreach (var t in new[] { Type("Cessna172"), Type("Narrowbody"), Type("Widebody"), Type("DoubleDeck"), Type("Quadjet"), Type("Turboprop"), Type("Trijet"), Type("Supersonic") })
+            foreach (var t in new[] { Type("LowWingPiston"), Type("Cessna172"), Type("Narrowbody"), Type("Widebody"), Type("DoubleDeck"), Type("Quadjet"), Type("Turboprop"), Type("Trijet"), Type("Supersonic"), Type("LightJet"), Type("ExecutiveJet"), Type("FlagshipJet") })
             {
                 var red = t.lights.Single(l => l.type == AircraftLightType.Navigation && l.color.r > 0.9f && l.color.g < 0.2f);
                 var green = t.lights.Single(l => l.type == AircraftLightType.Navigation && l.color.g > 0.9f && l.color.r < 0.2f);
@@ -289,7 +352,7 @@ namespace AirCity.Tests.Aircraft
         [Test]
         public void Prefab_HasEveryGameplayComponent()
         {
-            foreach (var model in new[] { "Cessna172", "Narrowbody", "Widebody", "DoubleDeck", "Quadjet", "Turboprop", "Trijet", "Supersonic" })
+            foreach (var model in new[] { "LowWingPiston", "Cessna172", "Narrowbody", "Widebody", "DoubleDeck", "Quadjet", "Turboprop", "Trijet", "Supersonic", "LightJet", "ExecutiveJet", "FlagshipJet" })
             {
                 var type = Type(model);
                 var go = Spawn(type);
@@ -323,7 +386,7 @@ namespace AirCity.Tests.Aircraft
         [Test]
         public void Picking_HitsTheAircraft()
         {
-            foreach (var model in new[] { "Cessna172", "Narrowbody", "Widebody", "DoubleDeck", "Quadjet", "Turboprop", "Trijet", "Supersonic" })
+            foreach (var model in new[] { "LowWingPiston", "Cessna172", "Narrowbody", "Widebody", "DoubleDeck", "Quadjet", "Turboprop", "Trijet", "Supersonic", "LightJet", "ExecutiveJet", "FlagshipJet" })
             {
                 var type = Type(model);
                 var go = Spawn(type);
@@ -356,7 +419,7 @@ namespace AirCity.Tests.Aircraft
         [Test]
         public void Logo_IsPaintedOnTheFin()
         {
-            foreach (var model in new[] { "Cessna172", "Narrowbody", "Widebody", "DoubleDeck", "Quadjet", "Turboprop", "Trijet", "Supersonic" })
+            foreach (var model in new[] { "LowWingPiston", "Cessna172", "Narrowbody", "Widebody", "DoubleDeck", "Quadjet", "Turboprop", "Trijet", "Supersonic", "LightJet", "ExecutiveJet", "FlagshipJet" })
             {
                 var type = Type(model);
                 var example = type.examples.First(e => e.logo != null);

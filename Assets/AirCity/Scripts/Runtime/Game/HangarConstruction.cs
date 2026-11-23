@@ -65,6 +65,9 @@ namespace AirCity.Game
         {
             if (airport == null) return null;
             var strip = Strip(a, b, halfWidth);
+            foreach (var school in airport.FlyingSchools)
+                foreach (var site in school.Footprints(false))
+                    if (Geo.Overlap(strip, site)) return "Keep construction clear of the flying school.";
             foreach (var hangar in airport.HangarBuildings)
             {
                 if (Geo.Overlap(strip, hangar.BuildingPad)) return "Keep construction clear of the aircraft hangar.";

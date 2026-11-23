@@ -14,6 +14,7 @@ namespace AirCity.Airfield
         MeshRenderer renderer;
         Mesh mesh;
         public bool constructionPreview;
+        public bool previewRespectsDepth;
         readonly ConstructionMaterials previewMaterials = new ConstructionMaterials();
 
         public AirfieldPart(Transform owner, string name)
@@ -43,7 +44,7 @@ namespace AirCity.Airfield
             if (constructionPreview)
             {
                 var preview = new Material[materials.Length];
-                for (int i = 0; i < materials.Length; i++) preview[i] = previewMaterials.Get(materials[i]);
+                for (int i = 0; i < materials.Length; i++) preview[i] = previewMaterials.Get(materials[i], previewRespectsDepth);
                 renderer.sharedMaterials = preview;
             }
             else { renderer.sharedMaterials = materials; previewMaterials.Clear(); }
@@ -93,19 +94,24 @@ namespace AirCity.Airfield
     /// <summary>Temporary forward-only material copies for construction previews over ungraded land.</summary>
     sealed class ConstructionMaterials
     {
-        readonly Dictionary<Material,Material> previewMaterials = new Dictionary<Material,Material>();
+        readonly Dictionary<(Material source, bool respectDepth),Material> previewMaterials =
+            new Dictionary<(Material, bool),Material>();
 
-        public Material Get(Material source)
+        public Material Get(Material source, bool respectDepth = false)
         {
             if (source == null || !source.HasProperty("_ConstructionZTest")) return source;
-            if (previewMaterials.TryGetValue(source, out var material)) return material;
+            var key = (source, respectDepth);
+            if (previewMaterials.TryGetValue(key, out var material)) return material;
+            bool paint = source.shader.name == "AirCity/AirfieldPaint";
             material = new Material(source) { name = source.name + " construction preview", hideFlags = HideFlags.HideAndDontSave,
-                renderQueue = source.shader.name == "AirCity/AirfieldPaint" ? 3001 : 3000 };
-            material.SetFloat("_ConstructionZTest", (float)CompareFunction.Always);
-            material.SetFloat("_ConstructionZWrite", 0f);
+                renderQueue = paint ? 3001 : 3000 };
+            // A tunnel's opening already matches the draft mesh. Preserve depth against the roof
+            // and the remaining hillside when rendering a draft that includes an excavation.
+            material.SetFloat("_ConstructionZTest", (float)(respectDepth ? CompareFunction.LessEqual : CompareFunction.Always));
+            material.SetFloat("_ConstructionZWrite", respectDepth && !paint ? 1f : 0f);
             material.SetShaderPassEnabled("DepthOnly", false);
             material.SetShaderPassEnabled("DepthNormals", false);
-            previewMaterials.Add(source, material);
+            previewMaterials.Add(key, material);
             return material;
         }
 
